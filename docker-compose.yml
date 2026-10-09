@@ -1,0 +1,77 @@
+# Despliegue local de los tres servicios.
+#
+#   cp .env.example .env    # completar las credenciales de GLPI
+#   docker compose up --build
+#
+# Frontend:  http://localhost:3000
+# Backend:   http://localhost:8080
+# PostgreSQL: localhost:5432
+#
+# Docker Compose lee el archivo .env de este directorio para las variables
+# referenciadas con ${...}, y ademas se lo pasa al backend.
+#
+# Para levantar solo la base de datos y ejecutar el backend desde el IDE:
+#
+#   docker compose up -d postgres
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-gestiondemanda}
+      POSTGRES_USER: ${DB_USER:-gestiondemanda}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-gestiondemanda}
+    ports:
+      - "5432:5432"
+    volumes:
+      # Volumen con nombre: los planes y la auditoria sobreviven a "docker compose down".
+      # Solo "down -v" los borra, que es justo lo que se quiere.
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-gestiondemanda} -d ${DB_NAME:-gestiondemanda}"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      GLPI_URL: ${GLPI_URL}
+      GLPI_APP_TOKEN: ${GLPI_APP_TOKEN}
+      GLPI_USER_TOKEN: ${GLPI_USER_TOKEN}
+      GLPI_TIMEOUT: ${GLPI_TIMEOUT:-5s}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
+      # Dentro de la red de compose el motor se llama "postgres", no "localhost".
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-gestiondemanda}
+      DB_USER: ${DB_USER:-gestiondemanda}
+      DB_PASSWORD: ${DB_PASSWORD:-gestiondemanda}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # La app arranca aunque GLPI no este configurado, asi que /actuator/health no mide
+      # el estado de GLPI. Si mide el de la base de datos: desde esta fase el plan se
+      # guarda, y un backend sin PostgreSQL no puede planificar.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

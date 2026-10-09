@@ -1,0 +1,12 @@
+# El contexto solo necesita pom.xml y src/ (los COPY del Dockerfile son explicitos),
+# pero se excluye target/ para no enviar cientos de MB al demonio de Docker.
+target
+
+.git
+.gitignore
+.idea
+.vscode
+*.log
+
+Dockerfile
+.dockerignore

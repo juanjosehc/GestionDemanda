@@ -1,0 +1,25 @@
+# node_modules y dist vienen de la maquina anfitriona (Windows): copiarlos
+# sobrescribiria el node_modules instalado dentro de la imagen con binarios
+# de otra plataforma y romperia la compilacion.
+node_modules
+dist
+.vite
+*.tsbuildinfo
+
+# Secretos y configuracion local
+.env
+.env.*
+!.env.example
+
+# Control de versiones y editores
+.git
+.gitignore
+.idea
+.vscode
+*.log
+
+# Artefactos de verificacion
+.playwright-mcp
+Dockerfile
+.dockerignore
+README.md
