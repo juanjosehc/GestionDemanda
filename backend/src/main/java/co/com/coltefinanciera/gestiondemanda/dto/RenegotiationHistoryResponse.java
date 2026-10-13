@@ -18,12 +18,20 @@ import co.com.coltefinanciera.gestiondemanda.domain.model.RenegotiationChange;
  *
  * <p><strong>Las fechas viajan como fecha.</strong> El historial de la declaracion manda texto porque
  * sirve a dos tipos de valor; aqui solo hay fechas y el tipo las dice.
+ *
+ * <p><strong>Cada cambio trae su propio motivo, y ese es el punto.</strong> El motivo que se guarda en
+ * el historial es el que se dio <em>en ese cambio</em>, no el vigente: si solo viviera en el acuerdo
+ * actual, corregirlo reescribiria el pasado y esta lista afirmaria que siempre se dijo lo que se dice
+ * hoy. Con el motivo por fila, cada entrada contesta las cinco preguntas de la trazabilidad por si
+ * sola —que fecha habia, que fecha se acordo, quien, cuando y por que—, y una fila cuya fecha anterior
+ * es igual a la nueva se lee por lo que es: un cambio de motivo.
  */
 public record RenegotiationHistoryResponse(String workItemId, List<ChangeView> changes) {
 
     public record ChangeView(
             LocalDate previousDate,
             LocalDate newDate,
+            String agreedReason,
             String changedBy,
             Instant changedAt) {
 
@@ -31,6 +39,7 @@ public record RenegotiationHistoryResponse(String workItemId, List<ChangeView> c
             return new ChangeView(
                     change.previousDate(),
                     change.newDate(),
+                    change.agreedReason(),
                     change.changedBy(),
                     change.changedAt());
         }

@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Renegotiations } from '@/pages/Renegotiations'
 import {
   ACORDADO_ID,
+  MOTIVO_ACORDADO,
+  MOTIVO_REMOVIDO,
   PENDIENTE_ID,
   REMOVIDO_ID,
   renegotiationHistoryFixture,
@@ -112,7 +114,12 @@ function serve({ list, detail: read, history: log, write }: Routes) {
  */
 function conAcuerdo(
   workItemId: string,
-  acuerdo: { agreedDate: string; agreedBy: string; status: RenegotiationStatus },
+  acuerdo: {
+    agreedDate: string
+    agreedBy: string
+    agreedReason?: string
+    status: RenegotiationStatus
+  },
 ) {
   const items = renegotiationsFixture().items.map((item) =>
     item.workItemId === workItemId
@@ -123,6 +130,7 @@ function conAcuerdo(
             workItemId,
             agreedDate: acuerdo.agreedDate,
             agreedBy: acuerdo.agreedBy,
+            agreedReason: acuerdo.agreedReason ?? MOTIVO_ACORDADO,
             agreedAt: '2026-10-08T10:00:00Z',
             source: 'HTTP',
           },
@@ -231,10 +239,18 @@ function escribir(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 }
 
-/** Rellena el formulario y guarda. */
-function guardar(agreedDate: string, agreedBy: string) {
+/**
+ * Rellena el formulario y guarda.
+ *
+ * El motivo tiene un valor por defecto porque la mayoria de las pruebas no hablan de el: lo que
+ * comprueban —que verbo sale, a que ruta, en que orden— no cambia porque el texto sea uno u otro. Las
+ * que si hablan de el lo pasan, y las que comprueban que la vista no lo confunde con el del
+ * desplazamiento se apoyan en que los dos textos son distintos.
+ */
+function guardar(agreedDate: string, agreedBy: string, agreedReason = MOTIVO_ACORDADO) {
   escribir('Nueva fecha acordada', agreedDate)
   escribir('Quién acuerda', agreedBy)
+  escribir('Por qué se acuerda esta fecha', agreedReason)
   fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 }
 
@@ -348,11 +364,17 @@ describe('Renegotiations', () => {
     guardar('2026-10-12', 'ana')
     await esperarAcuerdo(container, PENDIENTE_ID, '2026-10-12')
 
-    // El identificador viaja en el cuerpo del `POST`, no en el camino.
+    // El identificador viaja en el cuerpo del `POST`, no en el camino. Y el motivo viaja con el: el
+    // contrato no admite un acuerdo sin el, asi que un cuerpo sin motivo es un 400 garantizado.
     expect(writes('POST')).toEqual([
       {
         url: CREATE_URL,
-        body: { workItemId: PENDIENTE_ID, agreedDate: '2026-10-12', agreedBy: 'ana' },
+        body: {
+          workItemId: PENDIENTE_ID,
+          agreedDate: '2026-10-12',
+          agreedBy: 'ana',
+          agreedReason: MOTIVO_ACORDADO,
+        },
       },
     ])
     expect(writes('PUT')).toHaveLength(0)
@@ -387,7 +409,14 @@ describe('Renegotiations', () => {
 
     // El identificador va en el camino y no se repite en el cuerpo.
     expect(writes('PUT')).toEqual([
-      { url: detail(ACORDADO_ID), body: { agreedDate: '2026-10-15', agreedBy: 'carlos' } },
+      {
+        url: detail(ACORDADO_ID),
+        body: {
+          agreedDate: '2026-10-15',
+          agreedBy: 'carlos',
+          agreedReason: MOTIVO_ACORDADO,
+        },
+      },
     ])
     expect(writes('POST')).toHaveLength(0)
   })
@@ -400,6 +429,7 @@ describe('Renegotiations', () => {
         workItemId: ACORDADO_ID,
         agreedDate: '2026-10-09',
         agreedBy: 'ana',
+        agreedReason: MOTIVO_REMOVIDO,
         agreedAt: '2026-10-06T09:30:00Z',
         source: 'HTTP',
       }),
@@ -412,6 +442,10 @@ describe('Renegotiations', () => {
 
     // La fecha que se va a reemplazar es la de la lectura fresca, y se enseña antes de escribirla.
     expect(screen.getByLabelText('Nueva fecha acordada')).toHaveValue('2026-10-09')
+
+    // Y el motivo tambien, por lo mismo: es contenido del acuerdo que el `PUT` reemplaza, y no verlo
+    // antes de escribir es exactamente como se borra sin querer.
+    expect(screen.getByLabelText('Por qué se acuerda esta fecha')).toHaveValue(MOTIVO_REMOVIDO)
     expect(screen.getByText('Fecha anterior')).toBeInTheDocument()
     expect(
       container.querySelector('[data-slot="previous-date"]')?.textContent,
@@ -440,6 +474,104 @@ describe('Renegotiations', () => {
       within(cambios(container)[0] as HTMLElement).getByText(/primer acuerdo/),
     ).toBeInTheDocument()
     expect(within(cambios(container)[1] as HTMLElement).getByText(/por carlos/)).toBeInTheDocument()
+
+    // Y cada entrada trae su propio motivo: el que se dio entonces, no el vigente. Si solo viviera en
+    // el acuerdo actual, corregirlo reescribiria el pasado y esta lista afirmaria que siempre se dijo
+    // lo que se dice hoy.
+    expect(cambios(container).map((change) => change.getAttribute('data-reason'))).toEqual([
+      MOTIVO_ACORDADO,
+      MOTIVO_REMOVIDO,
+    ])
+    expect(
+      within(cambios(container)[1] as HTMLElement).getByText(MOTIVO_REMOVIDO),
+    ).toBeInTheDocument()
+  })
+
+  it('no confunde el motivo del acuerdo con el del desplazamiento', async () => {
+    serve({})
+
+    const { container } = await cargar()
+
+    // El del acuerdo, en la fila: es el unico campo que ningun dato puede deducir.
+    expect(rowOf(container, ACORDADO_ID).getAttribute('data-agreed-reason')).toBe(MOTIVO_ACORDADO)
+
+    await abrir(container, ACORDADO_ID)
+
+    // El que firma, en su campo y precargado con el vigente.
+    expect(screen.getByLabelText('Por qué se acuerda esta fecha')).toHaveValue(MOTIVO_ACORDADO)
+
+    // El del plan, de solo lectura, con el texto que redacto el motor. Los dos estan a la vista a la
+    // vez y ninguno ocupa el sitio del otro: uno explica por que se movio el requerimiento y el otro
+    // por que se llego a esa fecha.
+    const desplazamiento = container.querySelector('[data-slot="renegotiation-reason"]')
+    expect(desplazamiento?.textContent).toContain(
+      'Incidente de severidad alta sobre la misma jornada',
+    )
+    expect(desplazamiento?.textContent).not.toContain(MOTIVO_ACORDADO)
+  })
+
+  it('lee un cambio de motivo como tal, y no como un cambio de fecha', async () => {
+    // El backend publica las dos fechas iguales cuando lo unico que cambio fue la explicacion. La
+    // vista lo dice; pintarlo como «6 oct → 6 oct» lo haria pasar por un error del plan.
+    serve({
+      history: okResponse(
+        renegotiationHistoryFixture({
+          changes: [
+            {
+              previousDate: null,
+              newDate: '2026-10-06',
+              agreedReason: MOTIVO_ACORDADO,
+              changedBy: 'ana',
+              changedAt: '2026-10-05T09:00:00Z',
+            },
+            {
+              previousDate: '2026-10-06',
+              newDate: '2026-10-06',
+              agreedReason: MOTIVO_REMOVIDO,
+              changedBy: 'carlos',
+              changedAt: '2026-10-06T09:30:00Z',
+            },
+          ],
+        }),
+      ),
+    })
+
+    const { container } = await cargar()
+    await abrir(container, ACORDADO_ID)
+    await waitFor(() => expect(cambios(container)).toHaveLength(2))
+
+    const segundo = cambios(container)[1] as HTMLElement
+    expect(within(segundo).getByText(/motivo corregido/)).toBeInTheDocument()
+    expect(within(segundo).getByText(MOTIVO_REMOVIDO)).toBeInTheDocument()
+  })
+
+  it('dice que una entrada es anterior al motivo, en vez de dejar el hueco', async () => {
+    // Nulo no significa «sin motivo»: significa que el acuerdo se registro antes de que el campo
+    // existiera. Un hueco se leeria como lo primero, que es lo contrario.
+    serve({
+      history: okResponse(
+        renegotiationHistoryFixture({
+          changes: [
+            {
+              previousDate: null,
+              newDate: '2026-10-06',
+              agreedReason: null,
+              changedBy: 'ana',
+              changedAt: '2026-10-05T09:00:00Z',
+            },
+          ],
+        }),
+      ),
+    })
+
+    const { container } = await cargar()
+    await abrir(container, ACORDADO_ID)
+    await waitFor(() => expect(cambios(container)).toHaveLength(1))
+
+    expect(cambios(container)[0]?.getAttribute('data-reason')).toBe('')
+    expect(
+      within(cambios(container)[0] as HTMLElement).getByText(/anterior al campo/),
+    ).toBeInTheDocument()
   })
 
   it('no pide el historial de un requerimiento que no tiene acuerdo', async () => {
@@ -561,7 +693,14 @@ describe('Renegotiations', () => {
 
     // Si el verbo saliera del estado visual, esto seria un `POST` contra un recurso que ya existe.
     expect(writes('PUT')).toEqual([
-      { url: detail(REMOVIDO_ID), body: { agreedDate: '2026-10-20', agreedBy: 'ana' } },
+      {
+        url: detail(REMOVIDO_ID),
+        body: {
+          agreedDate: '2026-10-20',
+          agreedBy: 'ana',
+          agreedReason: MOTIVO_ACORDADO,
+        },
+      },
     ])
     expect(writes('POST')).toHaveLength(0)
   })

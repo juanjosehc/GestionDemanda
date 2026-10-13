@@ -23,10 +23,10 @@ import type {
 /**
  * Los requerimientos desplazados del plan vigente de cada desarrollador, con su acuerdo si lo hay.
  *
- * **Una sola lectura contesta las seis preguntas de la trazabilidad**: que requerimiento se movio,
- * que incidente lo movio, de que fecha a que fecha, cual es la fecha acordada y quien la registro y
- * cuando. No hay una peticion por fila ni por pregunta: pedir el plan de cada desarrollador por
- * separado seria el N+1 que la lectura consolidada existe para evitar.
+ * **Una sola lectura contesta las siete preguntas de la trazabilidad**: que requerimiento se movio,
+ * que incidente lo movio, de que fecha a que fecha, cual es la fecha acordada, quien la registro,
+ * cuando y por que. No hay una peticion por fila ni por pregunta: pedir el plan de cada desarrollador
+ * por separado seria el N+1 que la lectura consolidada existe para evitar.
  */
 export function fetchRenegotiations(signal?: AbortSignal): Promise<RenegotiationsResponse> {
   return apiGet<RenegotiationsResponse>('/api/renegotiations', signal)

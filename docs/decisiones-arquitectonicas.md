@@ -4012,6 +4012,8 @@ El brief pedía revisar el frontend entero y documentarlo antes de tocar un arch
 
 #### 164.4 El motivo se enseña, no se captura: un campo que el backend descarta es peor que su ausencia
 
+> **Superada por la decisión 165.2, en la Fase 27.** Se conserva como registro de por qué la Fase 26 no capturó el motivo. El razonamiento era correcto para un brief que prohibía tocar los contratos, y dejó de serlo en cuanto la Fase 27 los cambió: hoy el formulario **sí** pide el motivo, y el campo que la Fase 26 se negó a pintar es el que la Fase 27 añadió al contrato. Lo que sobrevive intacto es la mitad que no dependía del contrato —enseñar el `reason` del plan en solo lectura y rotulado como lo que es—, que sigue en pie y es lo que impide confundir los dos motivos.
+
 **Decisión.** El formulario **no pide un motivo**. En su lugar enseña, en solo lectura, el `reason` que el plan publica para cada desplazamiento de la fila, rotulado como lo que es —por qué se desplazó— y no como lo que no es.
 
 **Motivo.** El brief pedía un campo de motivo y **el contrato de la Fase 25 no lo tiene**: `RenegotiationRequest` y `RenegotiationUpdateRequest` no traen ese campo, y el brief prohíbe modificar los contratos. Un `<input>` de texto que Jackson descarta al deserializar no captura un dato: lo pierde con la apariencia de haberlo guardado, y el operador que lo escribió no tiene forma de saber que se perdió. Entre una pérdida silenciosa y una ausencia declarada, la ausencia.
@@ -4062,6 +4064,199 @@ Se listan los que esta fase toca. Los demás siguen como estaban en la Fase 25.
 
 | # | Riesgo | Impacto | Mitigación |
 |---|---|---|---|
-| 114 | **El motivo de la renegociación no se persiste** — el contrato no tiene el campo y el brief prohíbe cambiarlo, así que la decisión de por qué se acordó esa fecha no queda registrada | **Medio**: lo que se conserva es el motivo del **desplazamiento**, que el motor audita, y no el de la **decisión**, que es lo que una persona sabría explicar | La pantalla enseña el `reason` publicado y **no captura un campo que el backend descartaría** (164.4): una pérdida silenciosa es peor que una ausencia declarada. Añadirlo exige un campo en `RenegotiationRequest`, otro en `RenegotiationUpdateRequest`, una columna en `renegotiation`, su reflejo en el historial y la regeneración del contrato —fuera del alcance de una fase de frontend |
+| 114 | **El motivo de la renegociación no se persiste** — el contrato no tenía el campo y el brief de la Fase 26 prohibía cambiarlo, así que la decisión de por qué se acordó esa fecha no quedaba registrada | **Atendido en la Fase 27**: `agreedReason` viaja en el acuerdo vigente y en cada fila de su historial, y la pantalla lo captura | Se aceptó a conciencia —164.4 documenta por qué la Fase 26 no capturó un campo que el backend habría descartado— y se cerró cuando llegó la fase que sí podía tocar los contratos: un campo en `RenegotiationRequest`, otro en `RenegotiationUpdateRequest`, la columna `agreed_reason` en las dos tablas y su reflejo en los dos DTO de salida |
 | 115 | **La pantalla no filtra por desarrollador ni pagina** — un plan con muchos desplazados pinta todas sus filas | **Bajo**: la lista consolidada ya trae `developerId` por fila, así que el dato está; falta el control | El filtro por estado ya es local y demuestra el patrón. El filtro por técnico y la paginación son el mismo cambio, y se añaden cuando la agenda real lo pida |
 | 116 | **Guardar relee la lista consolidada entera** — el estado derivado solo se ve actualizándolo, y la lectura recorre los planes vigentes de todos los desarrolladores | **Bajo**: el backend la resuelve con una consulta por lote, no una por elemento | Es el precio de que el estado se derive en el backend y no se guarde (162.1): recalcularlo en el cliente sería la segunda copia de la regla. Si el coste se nota, la lectura ya declara su `source` y su `scope`, y la pantalla no tendría que cambiar |
+
+---
+
+# Fase 27 — El motivo del acuerdo
+
+## Qué se hizo, en una frase
+
+La Fase 25 dejó el acuerdo respondiendo **quién** lo registró, **cuándo** y **a qué fecha** se llegó, y la Fase 26 lo puso en una pantalla; lo que ninguna de las dos podía contestar era **por qué** se llegó a esa fecha, porque el contrato no tenía dónde guardarlo y la Fase 26 lo dejó escrito como riesgo 114 en vez de inventarlo. Esta fase **cierra esa pregunta**: añade el motivo explícito del acuerdo al modelo de renegociación y a sus contratos, lo persiste en el acuerdo vigente **y** en cada fila de su historial, y lo captura en la pantalla. El diff toca el modelo de renegociación, sus cuatro contratos, sus dos tablas y su pantalla. **No toca el motor**: ni una línea de `PlanningEngine`, de las reglas, de los desplazamientos, del Timeline, de las métricas ni de las alertas.
+
+## El análisis obligatorio: qué registra hoy una renegociación
+
+El brief pedía documentar cuatro cosas antes de escribir una línea. Las cuatro, con lo que había:
+
+**1. Qué información registra hoy una renegociación.** Una fila de `renegotiation` por `workItemId`, con cuatro valores: `agreed_date` (la fecha nueva), `agreed_by` (quién la acordó), `agreed_at` (cuándo se registró, del `Clock`) y `source` (de dónde vino). El agregado de dominio `Renegotiation` tiene exactamente esos campos más el `workItemId`. Es decir: **el acuerdo sabe qué se decidió y quién lo firmó, y no sabe por qué**.
+
+**2. Qué registra hoy el historial.** Una fila de `renegotiation_history` por cambio, con cinco valores: `previous_date`, `new_date`, `changed_by`, `changed_at` y el `workItemId`. La primera fila de un acuerdo lleva `previous_date` nula, que es el dato que dice que el acuerdo nació ahí y quién lo trajo. Cada fila contesta **cuándo cambió, quién lo cambió y de qué fecha a qué fecha** — y nada más.
+
+**3. Qué trazabilidad existe.** La consolidada: `GET /api/renegotiations` devuelve, en una sola fila, qué requerimiento se movió, qué incidente lo movió, de qué fecha a qué fecha (la auditoría que el plan ya guardaba) y el acuerdo entero. **Seis preguntas**, y las seis están cubiertas por campos que no se re-derivan: el incidente y las fechas son los que el motor auditó, y el acuerdo es el que alguien registró. Más el historial, que añade el *cuándo* y el *quién* de cada cambio.
+
+**4. Qué pregunta de negocio no puede responderse.** **«¿Por qué se renegoció esta fecha?»** — y no puede responderse por una razón que no es un olvido, sino una confusión latente. El sistema **sí** sabe por qué se *movió* el requerimiento: lo audita el motor en el `RescheduleEvent`, en su campo `reason`, redactado desde la regla aplicada sobre la capacidad comprometida. Eso es un hecho **deducible**: dada la regla y el estado de la agenda, el motivo del movimiento se sigue de los datos. El motivo del **acuerdo** no se deduce de nada. Que el cliente aplazara la instalación, que el analista entrara en vacaciones o que se acordara esperar al cierre de mes son hechos del mundo que solo existen si alguien los escribe. Antes de esta fase, el sistema guardaba la fecha a la que se llegó y no la explicación de por qué, y las dos cosas viajaban en la misma fila con nombres que invitaban a confundirlas.
+
+## La regla crítica: dos motivos, dos hechos, dos campos
+
+El brief la pone en mayúsculas y es la decisión que gobierna toda la fase: **no confundir el motivo del desplazamiento con el motivo del acuerdo**. La distinción no es de matiz, es de productor y de naturaleza:
+
+| | Motivo del **desplazamiento** | Motivo del **acuerdo** |
+|---|---|---|
+| **Quién lo produce** | El motor, al planificar | Una persona, al acordar |
+| **Dónde vive** | `reschedule_event.reason`, dentro del evento | `renegotiation.agreed_reason`, y `renegotiation_history.agreed_reason` |
+| **De qué habla** | Por qué el requerimiento perdió su franja | Por qué se llegó a esa fecha nueva |
+| **¿Se deduce?** | Sí: de la regla aplicada y la capacidad comprometida | **No**: es lo único del acuerdo que ningún dato puede reconstruir |
+| **Cuándo se escribe** | Una vez, al auditar el movimiento | En cada cambio del acuerdo, y no se reescribe |
+| **¿Se puede editar?** | No: es auditoría del motor | Sí: corregirlo es un cambio legítimo, y queda registrado como tal |
+
+Los dos viajan juntos en la misma fila de la lectura consolidada —uno dentro de `events[]`, el otro dentro de `renegotiation`— y **no comparten campo, ni nombre, ni sitio**. Esa separación es la que hace que la respuesta a las dos preguntas no se pueda confundir ni por accidente.
+
+## Dónde tiene que vivir el motivo, y por qué en los dos sitios
+
+El brief pedía decidir si el motivo pertenece a `renegotiation`, a `renegotiation_history` o a ambos, y justificarlo. La respuesta es **a ambos**, y el argumento no es de simetría sino de qué pregunta contesta cada tabla:
+
+- **`renegotiation` contesta «cómo está hoy el acuerdo».** Es la fila vigente, la que lee el `PUT` antes de reemplazar (decisión 161) y la que se pinta en la lista consolidada. Si el motivo no estuviera aquí, la fila que dice «se acordó el 30 de octubre» no podría decir por qué, y la pregunta del brief seguiría sin respuesta en la lectura que existe para responderla.
+- **`renegotiation_history` contesta «qué pasó y por qué pasó entonces».** Es la tabla de solo inserción, y cada fila es un hecho ocurrido. Si el motivo viviera **solo** en la fila vigente, corregirlo **reescribiría el pasado**: la primera fila del historial afirmaría que entonces se dijo lo que se dice hoy, y la auditoría mentiría sobre el pasado sin dejar rastro de que lo hizo. Ese es exactamente el fallo que el historial existe para impedir.
+- **La asimetría no es un capricho: es la que ya tenían `agreed_date`, `agreed_by` y `agreed_at`.** Los tres viven en las dos tablas, como `new_date`, `changed_by` y `changed_at` en el historial. El motivo se añade **en el mismo sitio y con la misma forma** que los otros tres, porque es el cuarto dato del mismo hecho. Inventarle otra colocación habría sido la excepción sin motivo.
+
+## Los tres modelos, comparados
+
+| | A · Solo en el acuerdo vigente | B · Solo en el historial | C · En los dos |
+|---|---|---|---|
+| **Cómo** | Una columna en `renegotiation` | Una columna en `renegotiation_history`, y el vigente se lee de la última fila | Una columna en cada tabla, como los otros tres datos del acuerdo |
+| **A favor** | Una columna nueva; el vigente se lee directo | El pasado nunca se reescribe | Cada tabla contesta su pregunta; el motivo vigente se lee sin recorrer el historial; la corrección deja rastro |
+| **En contra** | **Corregir el motivo reescribe el pasado**: el historial no tendría dónde guardar el anterior, y la lista afirmaría que siempre se dijo lo que se dice hoy | El vigente hay que deducirlo de la última fila en cada lectura —y la lista consolidada ya resuelve el acuerdo con una consulta por lote, así que esto la obligaría a traer también el historial de cada elemento—; y una fila vigente sin motivo no podría declararlo | Dos columnas que hay que mantener sincronizadas al escribir |
+| **Veredicto** | Descartado | Descartado | **Elegido** |
+
+**El argumento que decide es el mismo que en la Fase 25: la pregunta que cada tabla existe para contestar.** A falla por la operación que el historial protege —la corrección—, y B falla por la lectura que la fase anterior construyó a propósito para no recorrer nada por elemento. C no añade un dato nuevo a ninguna de las dos: añade **el cuarto dato del mismo hecho**, en el mismo sitio donde ya están los otros tres. La sincronización que hay que mantener no es un coste añadido, porque la escritura ya los escribe juntos: el motivo viaja en el mismo `INSERT` que la fecha y el autor, en la misma transacción.
+
+## Las decisiones
+
+### 165. El motivo del acuerdo vive en el acuerdo y en cada fila de su historial, y se llama `agreedReason`
+
+**Decisión.** Se añade `agreed_reason` (`varchar(500)`) a `renegotiation` y a `renegotiation_history`, y `agreedReason` a los cuatro contratos que tocan el acuerdo. El agregado `Renegotiation` y el hecho `RenegotiationChange` lo llevan como cuarto y cuarto campo, en el mismo orden relativo que la fecha y el autor.
+
+**Motivo.** Es la decisión C de la tabla de arriba. El acuerdo vigente tiene que poder decir su propio motivo —es lo que la pregunta del brief exige de la fila que existe para contestarla— y el historial tiene que poder decir el motivo **de entonces**, porque si solo viviera en el vigente, corregirlo reescribiría el pasado. Y el motivo es, de los cuatro datos del acuerdo, **el único que no se deduce de nada**: la fecha, el autor y el sello son hechos que se registran; el motivo es una explicación que solo existe si alguien la escribe.
+
+**Alternativas descartadas.** Las dos de la tabla, con su motivo. Y una tercera que se consideró y no se probó: guardar el motivo como una fila más del historial sin columna en el acuerdo vigente, dejando que la lectura lo resolviera por la última entrada. Se descarta por lo mismo que B: convertiría cada lectura del acuerdo en un recorrido de su historial.
+
+**Consecuencia.** Una columna nueva en dos tablas, y un campo nuevo en el agregado y en el hecho. La fila vigente y su última entrada de historial dicen lo mismo cuando nadie ha corregido nada, y **discrepan a propósito** cuando alguien corrigió el motivo: la vigente dice el actual y la entrada dice el que se dio entonces. Esa discrepancia es la trazabilidad, no un desajuste.
+
+**Verificación.** Una prueba crea un acuerdo con un motivo y afirma que está en las **dos** representaciones —la respuesta y las dos filas persistidas—; otra lo corrige y afirma que la fila vieja conserva el suyo y la vigente tiene el nuevo.
+
+#### 165.1 El campo se llama `agreedReason` y no `reason`, porque el `reason` de al lado es otro
+
+**Decisión.** El motivo del acuerdo se llama `agreedReason` en el dominio, en los DTO y en la API, y `agreed_reason` en las tablas. **No se llama `reason`**, y no es una preferencia de estilo.
+
+**Motivo.** En la misma fila de `GET /api/renegotiations` conviven los dos motivos: `events[].reason` es el del desplazamiento y `renegotiation.agreedReason` es el del acuerdo. Si el segundo se llamara `reason`, la fila tendría dos campos con el mismo nombre en dos niveles distintos, y la regla crítica del brief —no confundirlos— quedaría encomendada a que quien lea el JSON mire bien de qué nivel está hablando. El nombre es lo único que impide esa confusión **sin depender de la atención de nadie**: `agreedReason` no se puede confundir con `reason` ni por descuido. Es el mismo criterio que llevó a llamar `PENDIENTE_DE_ACUERDO` y no `PENDIENTE_RENEGOCIACION` a los estados (decisión 162.2): dos hechos distintos no comparten nombre aunque se parezcan.
+
+**Alternativas descartadas.** `reason`, que colisiona con el del evento. `agreementReason`, que dice lo mismo con una sílaba más. `motive`, que introduce un término que el resto del código no usa en ningún sitio.
+
+**Consecuencia.** El nombre es más largo y más explícito. A cambio, la distinción del brief está en el contrato y no en la documentación.
+
+**Verificación.** Una prueba de la pantalla afirma que el motivo del acuerdo y el del desplazamiento son **textos distintos** en la misma fila, y que el `data-slot="renegotiation-reason"` —el del plan— no contiene el del acuerdo.
+
+#### 165.2 El motivo es obligatorio al escribir y anulable solo al leer
+
+**Decisión.** `RenegotiationRequest` y `RenegotiationUpdateRequest` llevan `agreedReason` con `@NotBlank` y `@Size(max = 500)`: **no hay forma de escribir un acuerdo sin motivo**. El dominio, las entidades y los DTO de salida lo admiten nulo, y nulo significa **siempre** «acuerdo registrado antes de que este campo existiera» — nunca «sin motivo».
+
+**Motivo.** La obligatoriedad es lo que hace que la pregunta del brief se pueda contestar **siempre** y no solo cuando alguien tuvo la amabilidad de rellenar un campo opcional: un motivo que se puede omitir es un motivo que se omite, y el criterio de aceptación era que la pregunta se pudiera responder, no que se pudiera responder a veces. Y el nulo en la lectura es lo que permite que las filas escritas antes de esta fase sobrevivan sin que nadie las toque: la alternativa —rellenarlas con un texto— sería **inventar una explicación que nadie dio**, y una auditoría que afirma algo falso es peor que una auditoría con un hueco declarado. Un hueco se ve; una invención no.
+
+**Alternativas descartadas.** Un motivo opcional: dejaría la pregunta sin respuesta en la mitad de los acuerdos, y la mitad de una trazabilidad no es una trazabilidad. Un valor por defecto tipo `"no registrado"` para las filas viejas: es una cadena que parece un motivo y no lo es, y quien la lea en un informe no tendrá forma de saber que no lo es. `@NotNull` sin `@NotBlank`: admitiría `"   "`, que es la forma más común de saltarse un campo obligatorio sin escribir nada.
+
+**Consecuencia.** Es un **cambio incompatible** en los dos contratos de escritura: un cliente que llamara a `POST` o `PUT` sin el campo recibe ahora un `400` (riesgo 118). Se acepta porque el único consumidor conocido es la propia pantalla, que se actualizó en esta misma fase. Y las filas anteriores a la fase se leen con el motivo nulo, que es la verdad de lo que pasó. Esto es lo que **supersede la decisión 164.4**: la Fase 26 se negó a pintar el campo porque el backend lo habría descartado, y en cuanto el backend dejó de descartarlo la razón desapareció.
+
+**Verificación.** Una prueba somete un motivo en blanco —`"   "` y `""`— a los dos contratos y afirma que el único campo rechazado es `agreedReason`; otra siembra un acuerdo sin motivo —como lo dejaría una fila anterior— y afirma que se lee nulo, que el historial lo conserva nulo y que al volver a acordarlo se completa sin perder lo anterior.
+
+#### 165.3 El motivo cuenta como cambio: la invariante del cambio se muda de `RenegotiationChange` a `Renegotiation.changesFrom`
+
+**Decisión.** `Renegotiation.agreedWith` compara **el par completo** —fecha y motivo— para decidir si hubo cambio, y `Renegotiation.changesFrom` compara el par anterior y el nuevo. La invariante que vivía en `RenegotiationChange` —«un cambio tiene que cambiar algo», que exigía que las dos fechas difirieran— **se retira de ahí**, y una fila del historial con `previous_date` igual a `new_date` pasa a ser legítima: significa que lo que cambió fue el motivo.
+
+**Motivo.** La invariante vieja era **de fecha sola**, y con el motivo en el modelo se convierte en un borrado silencioso: corregir el motivo de un acuerdo sin tocar la fecha no habría dejado ninguna fila —la fecha anterior y la nueva serían la misma, y la comprobación habría lanzado— y la auditoría habría afirmado que el motivo vigente es el que siempre estuvo. Es exactamente el modo de fallo que el riesgo 114 describía, reapareciendo un nivel más abajo. La comparación no se pierde, **se muda**: `RenegotiationChange` solo conoce el motivo *nuevo* y no tiene con qué compararlo, mientras que `changesFrom` es el único sitio donde están los dos motivos y donde se puede decidir si de verdad cambió algo. Una regla que no se puede comprobar donde estaba no se deja ahí para que parezca que se comprueba.
+
+**Alternativas descartadas.** Mantener la invariante y prohibir los cambios de solo motivo: dejaría la corrección de una explicación sin camino —habría que borrar y recrear el acuerdo, que es peor auditoría— y obligaría a inventar un cambio de fecha para poder registrar una corrección. Dejar la invariante donde estaba y no comparar el motivo: el borrado silencioso de arriba.
+
+**Consecuencia.** `RenegotiationChange` pierde una comprobación y gana una responsabilidad menos; `Renegotiation` gana la comprobación del par. El historial admite filas con las dos fechas iguales, y la pantalla las lee por lo que son: un motivo corregido. Ninguna prueba existente afirmaba esa excepción, así que ninguna se debilitó al retirarla.
+
+**Verificación.** Una prueba corrige solo el motivo —misma fecha, motivo nuevo— y afirma que hay una fila nueva, que sus dos fechas son iguales y que el motivo nuevo es el suyo; otra reenvía la misma fecha **y** el mismo motivo y afirma que no se escribe ninguna fila y que el autor y el sello se conservan.
+
+#### 165.4 La migración añade la columna y no rellena ninguna fila
+
+**Decisión.** `agreed_reason varchar(500)` se añade a `renegotiation` y a `renegotiation_history` por el `ddl-auto=update` que el proyecto ya usa, sin `ALTER` escrito a mano y **sin backfill**: las filas existentes quedan con nulo, y nulo es exactamente lo que se lee.
+
+**Motivo.** El proyecto no tiene Flyway ni Liquibase —nunca los ha tenido— y la columna nueva es anulable, que es el caso que `ddl-auto=update` resuelve sin ceremonia. Lo que sí exigía una decisión es el **valor para los acuerdos históricos**, y la respuesta es que no hay ninguno que poner: cualquier texto que se escribiera ahí sería una explicación fabricada por una migración, y a partir de ese momento la base afirmaría que alguien dijo algo que nadie dijo. El sistema prefiere una pregunta sin contestar, declarada como tal, a una contestada en falso.
+
+**Alternativas descartadas.** Un backfill con `"no registrado"`: convierte el hueco en un dato falso y hace indistinguible «no se registró» de «se registró esto». Un backfill copiando el `reason` del desplazamiento: **es la confusión que el brief prohíbe**, y además afirmaría que el motivo del acuerdo es el del motor, que son hechos de productores distintos. Una migración versionada: sería introducir Flyway en una fase cuyo alcance es el modelo de renegociación.
+
+**Consecuencia.** Tras desplegar, los acuerdos anteriores se leen con `agreedReason: null` y el historial con `agreedReason: null` en sus filas viejas. La pantalla lo dice en vez de dejar el hueco: «sin motivo registrado: la entrada es anterior al campo». Y el primer `PUT` sobre un acuerdo viejo lo completa, porque el contrato exige el motivo.
+
+**Verificación.** Una prueba siembra una fila como la dejaría la migración —acuerdo e historial sin motivo— y afirma que la lectura devuelve nulo, que el historial lo conserva nulo y que un `PUT` posterior escribe el nuevo **sin tocar la fila vieja**.
+
+## Los contratos, uno por uno
+
+| Contrato | Antes | Ahora | Por qué |
+|---|---|---|---|
+| `RenegotiationRequest` | `workItemId`, `agreedDate`, `agreedBy` | **+ `agreedReason`** (`@NotBlank @Size(500)`) | El alta tiene que registrar el motivo, o no hay motivo que contestar |
+| `RenegotiationUpdateRequest` | `agreedDate`, `agreedBy` | **+ `agreedReason`** (`@NotBlank @Size(500)`) | El `PUT` reemplaza el acuerdo entero: si el motivo no viajara en cada reemplazo, cambiarlo solo sería imposible y no enviarlo lo borraría |
+| `RenegotiationResponse` | `workItemId`, `agreedDate`, `agreedBy`, `agreedAt`, `source` | **+ `agreedReason`** (anulable) | Es el cuarto dato del acuerdo, y el que contesta la pregunta del brief |
+| `RenegotiationHistoryResponse.ChangeView` | `previousDate`, `newDate`, `changedBy`, `changedAt` | **+ `agreedReason`** (anulable) | Cada entrada tiene que traer **el motivo de entonces**, no el vigente |
+
+**El motivo viaja en cada reemplazo, aunque la fecha no cambie.** No es un dato opcional que se pueda omitir para «conservar el anterior»: lo que se envía es el acuerdo completo, y corregir solo la explicación es un cambio legítimo que queda en el historial como tal. Enviar el mismo motivo y la misma fecha no escribe nada, porque entonces no cambió nada.
+
+**Ningún contrato de entrada admitió nunca medio cuerpo, y este tampoco.** La decisión 161 ya había fijado que los dos valores del `PUT` son obligatorios para que no haya información que se pueda perder por omisión; el motivo entra en la misma regla en vez de abrir una excepción.
+
+## La persistencia
+
+`renegotiation.agreed_reason` y `renegotiation_history.agreed_reason`, las dos `varchar(500)` y las dos anulables. **La única razón por la que una de las dos admite nulo es la antigüedad de la fila**, y está escrita en la entidad: `agreed_reason` es «la excepción, y es una excepción con fecha». Ninguna otra columna del acuerdo admite nulo, y sigue sin admitirlo.
+
+La escritura no cambia de forma: el motivo entra en el mismo `INSERT` que la fecha y el autor, en la misma transacción, y el `changesFrom` lo escribe en la misma fila de historial que ya escribía el cambio. **No hay una escritura nueva ni una transacción nueva** — solo un valor más en las que había.
+
+## La pantalla
+
+La Fase 26 había decidido **no** capturar el motivo (164.4) y esa decisión queda superada, porque la razón que la sostenía —que el backend descartaría el campo— dejó de ser cierta. Lo que cambia en `/renegociaciones`:
+
+- **El formulario gana el campo.** «Por qué se acuerda esta fecha», un área de texto obligatoria de hasta 500 caracteres, **precargada con el motivo vigente** cuando el acuerdo ya existe. Se precarga por la misma razón que la fecha: es contenido del acuerdo que el `PUT` reemplaza, y no verlo antes de escribir es exactamente como se borra sin querer. El nombre del autor sigue sin precargarse, porque precargarlo afirmaría que es la misma persona la que vuelve a firmar.
+- **La lista gana la columna.** «Por qué se acordó», entre el sello de registro y el botón. Es el único campo de la fila que ningún dato puede deducir, y con él la fila contesta las siete preguntas sin abrir nada.
+- **El historial gana el motivo de cada entrada.** El de esa entrada y no el vigente. Y una entrada con las dos fechas iguales se lee como **«motivo corregido»** en vez de como «6 oct → 6 oct», que parecería un error del plan.
+- **Lo que no cambia es la mitad que no dependía del contrato.** El `reason` del plan se sigue enseñando en solo lectura y rotulado como lo que es —«Por qué se desplazó (lo publica el plan)»—, y ahora las dos etiquetas dicen **quién redacta cada uno**. Esa es la regla crítica del brief puesta en la pantalla: los dos motivos están a la vista a la vez y ninguno ocupa el sitio del otro.
+
+## Las pruebas
+
+**Siete nuevas en `RenegotiationServiceTest`** (20 → 27), una por caso que el brief pedía: la creación con motivo, que afirma que queda en las **dos** representaciones; la actualización con motivo, que reemplaza el vigente y deja el nuevo en el historial; el historial que conserva el motivo de cada cambio **y no el vigente**; la trazabilidad completa, con una fila del historial contestando sus cinco preguntas; el acuerdo anterior al motivo, que se lee nulo y se completa al volver a acordarlo sin perder lo anterior; el motivo en blanco, rechazado por los dos contratos; y el reemplazo del acuerdo, con la misma fecha y el mismo motivo que no escriben nada y la misma fecha con otro motivo que sí.
+
+**La prueba de trazabilidad pasó de seis preguntas a siete, y no se debilitó.** Es la misma prueba —una sola fila contestando todo— con una aserción más: el motivo del acuerdo. Y añade una que la fase necesitaba: que el `reason` del **desplazamiento** siga siendo el suyo y no se sustituya por el del acuerdo. Es la regla crítica convertida en aserción.
+
+**Tres nuevas en `Renegotiations.test.tsx`** (16 → 19): que la vista no confunde los dos motivos —el del acuerdo en su campo y en su columna, el del plan en su lista de solo lectura, con textos distintos a propósito—; que un cambio de solo motivo se lee como «motivo corregido»; y que una entrada anterior al campo lo declara en vez de dejar el hueco.
+
+**Las pruebas encontraron un defecto real durante la implementación.** La primera ejecución falló con siete pruebas en rojo, y no por las aserciones nuevas: `Renegotiation.agreedWith` construía el acuerdo con el motivo y el autor **intercambiados** respecto al orden del `record`, de modo que el motivo acababa en `agreedBy` y el autor en `agreedReason`. El compilador no podía verlo —los dos son `String`— y ninguna prueba anterior podía verlo tampoco, porque hasta esta fase no había dos campos de texto seguidos en el mismo `record`. Es el argumento entero de la fase a favor de haber escrito las pruebas: un intercambio de dos `String` es invisible para el tipo y solo lo ve quien mira el valor.
+
+**Ninguna prueba existente se debilitó.** Las 20 de `RenegotiationServiceTest` y las 16 de `Renegotiations.test.tsx` siguen pasando. En el backend se sostienen sobre un motivo constante —`MOTIVO`— que hace que reenviar la misma fecha siga siendo un no-op, que es lo que esas pruebas afirman; en la pantalla, sobre un motivo por defecto en el ayudante que rellena el formulario, porque lo que esas pruebas comprueban —qué verbo sale, a qué ruta y en qué orden— no cambia porque el texto sea uno u otro. **Los cuerpos de `POST` y `PUT` que la pantalla afirma sí se actualizaron**: el contrato cambió, y una prueba que afirmara el cuerpo viejo estaría afirmando un `400`.
+
+**Resultado de la ejecución.** Backend: **336 pruebas, 0 fallos, 3 omitidas**. Frontend: **105 pruebas, 0 fallos**, con `typecheck` y `lint` limpios.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 117 | **El motivo es texto libre y no hay catálogo** — cada persona lo redacta como quiere, así que no se puede agrupar ni contar por causa | **Bajo**: la pregunta del brief es «por qué se renegoció **esta** fecha», y para eso el texto libre es exactamente lo que hace falta; lo que no se puede es hacer un informe de «cuántas renegociaciones por aplazamiento del cliente» | Es deliberado: un catálogo cerrado obligaría a clasificar cada acuerdo en una lista que nadie ha definido, y el motivo que no cupiera en ninguna categoría se perdería. Si aparece la necesidad de agregar, el camino es un campo de categoría **al lado** del texto libre y no en su lugar, para no perder la explicación al ganar la etiqueta |
+| 118 | **El contrato de escritura gana un campo obligatorio** — cualquier cliente que llamara a `POST` o `PUT` sin `agreedReason` recibe ahora un `400` | **Bajo**: el único consumidor conocido es la propia pantalla, que se actualizó en la misma fase; no hay integradores externos documentados | La obligatoriedad es deliberada (165.2): un motivo opcional es un motivo que se omite, y la mitad de una trazabilidad no es una trazabilidad. Si apareciera un consumidor externo, el cambio se anuncia con el `400` que ya devuelve —el mensaje nombra el campo— en vez de con un valor por defecto que guardaría un acuerdo sin motivo |
+
+## Limitaciones
+
+**El motivo no se puede consultar.** No hay un endpoint que busque acuerdos por su motivo, ni un filtro por texto en la lista consolidada. La pregunta del brief es «por qué se renegoció **esta** fecha», y se contesta leyendo el acuerdo; buscar «todas las renegociaciones por vacaciones del analista» es otra pregunta, y no la pidió el brief.
+
+**El motivo no se versiona aparte de la fecha.** Un cambio que toca las dos cosas —fecha nueva y motivo nuevo— es **una** fila de historial, no dos. Es coherente con que el acuerdo se reemplace entero, pero significa que el historial no distingue «cambió la fecha y el motivo» de «cambió la fecha»: para eso hay que mirar los valores, no la forma de la fila.
+
+**El motivo no viaja al plan.** No se copia a `reschedule_event` ni al timeline, y no debe: el evento es auditoría del motor y esta fase no lo toca. Quien quiera el motivo del acuerdo lo lee de `renegotiation`, que es donde vive.
+
+**Un acuerdo sin motivo sigue siendo representable en la lectura.** Es la consecuencia de no rellenar las filas viejas (165.4): `agreedReason` nulo es un estado válido y permanente para todo acuerdo anterior a esta fase, y la API no puede impedir que un cliente lo reciba. Lo que sí impide es que se **escriba** uno nuevo así.
+
+## La verificación explícita: «¿por qué se renegoció esta fecha?»
+
+**La pregunta se contesta hoy, y se contesta en una sola lectura.** `GET /api/renegotiations` devuelve, por cada requerimiento desplazado, la fila con las **siete** respuestas —una más que antes de esta fase:
+
+| Pregunta | De dónde sale | ¿Estaba antes? |
+|---|---|---|
+| Qué requerimiento fue afectado | `workItemId` | Sí |
+| Qué incidente causó el desplazamiento | `events[].incidentId` | Sí |
+| Cuál era la fecha original | `events[].originalDate` | Sí |
+| Cuál es la nueva fecha acordada | `renegotiation.agreedDate` | Sí |
+| Quién registró el acuerdo | `renegotiation.agreedBy` | Sí |
+| Cuándo se registró | `renegotiation.agreedAt` | Sí |
+| **Por qué se acordó esa fecha** | **`renegotiation.agreedReason`** | **No: es lo que añade esta fase** |
+
+Y para el caso completo —«qué cambió, quién lo cambió, cuándo y por qué»—, `GET /api/renegotiations/{workItemId}/history` devuelve cada cambio con sus **cinco** respuestas: `previousDate`, `newDate`, `changedBy`, `changedAt` y `agreedReason`. Cada fila del historial contesta las cinco por sí sola, con el motivo **que se dio entonces** y no el vigente.
+
+**La pregunta concreta —«¿por qué se renegoció esta fecha?»— se responde con el valor de `renegotiation.agreedReason`, y solo con él.** No se deduce de la regla aplicada, ni del incidente, ni de las fechas: se lee. Es el único campo de la fila que ningún dato puede reconstruir, y por eso es el que cierra la trazabilidad. Y la respuesta no se puede confundir con la de la pregunta vecina —«¿por qué se desplazó?»— porque el motivo del movimiento sigue en `events[].reason`, en su propio campo y con su propio nombre, sin que ninguno de los dos haya ocupado el sitio del otro.

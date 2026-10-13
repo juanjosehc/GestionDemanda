@@ -64,6 +64,9 @@ export function RenegotiationTable({ items, selected, onSelect }: RenegotiationT
             <th scope="col" className="py-2 pr-4 text-left font-medium">
               Registrado el
             </th>
+            <th scope="col" className="py-2 pr-4 text-left font-medium">
+              Por qué se acordó
+            </th>
             <th scope="col" className="py-2 text-left font-medium">
               Acuerdo
             </th>
@@ -88,6 +91,7 @@ export function RenegotiationTable({ items, selected, onSelect }: RenegotiationT
                 // vista enseña la del contrato y no una que haya derivado por su cuenta.
                 data-agreed-date={agreement?.agreedDate ?? ''}
                 data-agreed-by={agreement?.agreedBy ?? ''}
+                data-agreed-reason={agreement?.agreedReason ?? ''}
                 data-selected={isSelected ? 'true' : 'false'}
                 className="border-b border-border/60 align-top last:border-0"
               >
@@ -151,6 +155,16 @@ export function RenegotiationTable({ items, selected, onSelect }: RenegotiationT
                   ) : (
                     MISSING
                   )}
+                </td>
+
+                {/*
+                  El motivo del acuerdo, y no el del desplazamiento: el de arriba —dentro del evento—
+                  explica por que el motor movio el requerimiento, y este explica por que la persona
+                  llego a esa fecha. Es el unico campo de la fila que ningun dato puede deducir, y por
+                  eso la fila contesta las siete preguntas sin abrir nada.
+                */}
+                <td className="py-3 pr-4 text-xs">
+                  {agreement?.agreedReason ?? MISSING}
                 </td>
 
                 <td className="py-3">

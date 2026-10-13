@@ -13,7 +13,12 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
+import jakarta.validation.Validation;
+import jakarta.validation.ValidatorFactory;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +28,7 @@ import co.com.coltefinanciera.gestiondemanda.domain.enums.AppliedRule;
 import co.com.coltefinanciera.gestiondemanda.domain.enums.IncidentSeverity;
 import co.com.coltefinanciera.gestiondemanda.domain.enums.InputSource;
 import co.com.coltefinanciera.gestiondemanda.domain.enums.RenegotiationStatus;
+import co.com.coltefinanciera.gestiondemanda.domain.model.Renegotiation;
 import co.com.coltefinanciera.gestiondemanda.domain.model.RenegotiationChange;
 import co.com.coltefinanciera.gestiondemanda.domain.repository.InMemoryRenegotiationRepository;
 import co.com.coltefinanciera.gestiondemanda.dto.DisplacedRequirementsResponse;
@@ -64,6 +70,16 @@ class RenegotiationServiceTest {
     private static final Instant AHORA = Instant.parse("2026-10-06T15:00:00Z");
     private static final Instant DESPLAZAMIENTO = Instant.parse("2026-10-05T09:00:00Z");
     private static final Instant OTRO_DESPLAZAMIENTO = Instant.parse("2026-10-04T09:00:00Z");
+
+    /**
+     * El motivo que llevan las pruebas que no hablan del motivo.
+     *
+     * <p>Existe para que las veinte pruebas anteriores a este campo sigan diciendo lo mismo: al
+     * reenviar la misma fecha con el mismo motivo no cambia nada, que es justo lo que afirman. Si cada
+     * prueba inventara un motivo distinto, el reenvio dejaria de ser un no-op y lo que probarian seria
+     * otra cosa.
+     */
+    private static final String MOTIVO = "el cliente aplazo la instalacion";
 
     private InMemoryRenegotiationRepository repository;
     private PlanningMetricsService metrics;
@@ -244,8 +260,8 @@ class RenegotiationServiceTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("Una sola fila contesta las seis preguntas de la trazabilidad")
-    void unaFilaContestaLasSeisPreguntasDeLaTrazabilidad() {
+    @DisplayName("Una sola fila contesta las siete preguntas de la trazabilidad")
+    void unaFilaContestaLasSietePreguntasDeLaTrazabilidad() {
         service.create(alta(ITEM, "2026-10-30", "gestor-luis"));
         desplazados(elemento(ITEM, desplazamiento(DESPLAZAMIENTO, "INC-7", ITEM, "2026-10-20", "2026-10-27")));
 
@@ -263,6 +279,12 @@ class RenegotiationServiceTest {
         assertThat(fila.renegotiation().agreedBy()).isEqualTo("gestor-luis");
         // Cuando se registro.
         assertThat(fila.renegotiation().agreedAt()).isEqualTo(AHORA);
+        // Y por que se acordó esa fecha: el motivo del acuerdo, que es el que nadie puede deducir.
+        assertThat(fila.renegotiation().agreedReason()).isEqualTo(MOTIVO);
+        // El motivo del desplazamiento sigue siendo el suyo y no se sustituye por este: son dos
+        // hechos distintos, el motor audita uno y la persona firma el otro.
+        assertThat(fila.events().get(0).reason())
+                .isEqualTo("el incidente comprometio la capacidad de la jornada");
     }
 
     // ------------------------------------------------------------------
@@ -411,6 +433,158 @@ class RenegotiationServiceTest {
     }
 
     // ------------------------------------------------------------------
+    // 8. El motivo del acuerdo
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("El motivo se guarda con el acuerdo y con su primera fila de historial")
+    void elMotivoSeGuardaConElAcuerdoYConSuPrimeraFilaDeHistorial() {
+        RenegotiationResponse respuesta = service.create(
+                alta(ITEM, "2026-10-30", "gestor-luis", "el cliente aplazo la instalacion"));
+
+        assertThat(respuesta.agreedReason()).isEqualTo("el cliente aplazo la instalacion");
+
+        // Queda en las dos representaciones: la fila vigente dice como esta hoy y la de historial dice
+        // que paso. Guardarlo en una sola obligaria a deducir la otra, y lo deducido no es auditoria.
+        assertThat(repository.findByWorkItemId(ITEM)).get()
+                .extracting(Renegotiation::agreedReason)
+                .isEqualTo("el cliente aplazo la instalacion");
+        assertThat(repository.findHistory(ITEM))
+                .extracting(RenegotiationChange::agreedReason)
+                .containsExactly("el cliente aplazo la instalacion");
+    }
+
+    @Test
+    @DisplayName("Volver a acordar reemplaza el motivo y deja el nuevo en el historial")
+    void volverAAcordarReemplazaElMotivo() {
+        service.create(alta(ITEM, "2026-10-30", "gestor-luis", "el cliente aplazo la instalacion"));
+        reloj.avanzarA(AHORA.plus(Duration.ofDays(2)));
+
+        RenegotiationResponse respuesta = service.update(
+                ITEM, cambio("2026-11-15", "gestor-marta", "el analista entro en vacaciones"));
+
+        assertThat(respuesta.agreedDate()).isEqualTo(LocalDate.of(2026, 11, 15));
+        assertThat(respuesta.agreedReason()).isEqualTo("el analista entro en vacaciones");
+
+        assertThat(repository.findHistory(ITEM)).hasSize(2);
+        assertThat(repository.findHistory(ITEM).get(1))
+                .extracting(RenegotiationChange::agreedReason)
+                .isEqualTo("el analista entro en vacaciones");
+    }
+
+    @Test
+    @DisplayName("Cada cambio conserva el motivo que se dio entonces, y no el vigente")
+    void cadaCambioConservaElMotivoQueSeDioEntonces() {
+        service.create(alta(ITEM, "2026-10-30", "gestor-luis", "el cliente aplazo la instalacion"));
+        reloj.avanzarA(AHORA.plus(Duration.ofDays(2)));
+        service.update(ITEM, cambio("2026-11-15", "gestor-marta", "el analista entro en vacaciones"));
+
+        assertThat(service.history(ITEM).changes())
+                .extracting(RenegotiationHistoryResponse.ChangeView::agreedReason)
+                .containsExactly("el cliente aplazo la instalacion", "el analista entro en vacaciones");
+
+        // El vigente es el ultimo. Corregir un motivo no reescribe el pasado: si el historial guardara
+        // solo el actual, la primera fila afirmaria que entonces se dijo lo que se dice hoy.
+        assertThat(service.find(ITEM).agreedReason()).isEqualTo("el analista entro en vacaciones");
+    }
+
+    @Test
+    @DisplayName("Una fila del historial contesta las cinco preguntas del cambio")
+    void unaFilaDelHistorialContestaLasCincoPreguntasDelCambio() {
+        service.create(alta(ITEM, "2026-10-30", "gestor-luis"));
+        reloj.avanzarA(AHORA.plus(Duration.ofDays(2)));
+        service.update(ITEM, cambio("2026-11-15", "gestor-marta", "el analista entro en vacaciones"));
+
+        RenegotiationHistoryResponse.ChangeView segundo = service.history(ITEM).changes().get(1);
+
+        // Que fecha habia.
+        assertThat(segundo.previousDate()).isEqualTo(LocalDate.of(2026, 10, 30));
+        // Que fecha se acuerdo.
+        assertThat(segundo.newDate()).isEqualTo(LocalDate.of(2026, 11, 15));
+        // Quien cambio.
+        assertThat(segundo.changedBy()).isEqualTo("gestor-marta");
+        // Cuando cambio.
+        assertThat(segundo.changedAt()).isEqualTo(AHORA.plus(Duration.ofDays(2)));
+        // Y por que cambio: la pregunta que no se podia contestar antes de este campo.
+        assertThat(segundo.agreedReason()).isEqualTo("el analista entro en vacaciones");
+    }
+
+    @Test
+    @DisplayName("Un acuerdo anterior al motivo se lee con nulo, y se completa al volver a acordarlo")
+    void unAcuerdoAnteriorAlMotivoSeLeeConNulo() {
+        // Una fila escrita antes de que este campo existiera: no tiene motivo, y nulo es exactamente lo
+        // que se lee. Rellenarlo con un texto cualquiera —«no registrado», una cadena vacia— seria
+        // inventar una explicacion que nadie dio, y la auditoria afirmaria algo falso.
+        repository.create(
+                new Renegotiation(
+                        ITEM, LocalDate.of(2026, 10, 30), "gestor-luis", null, AHORA, InputSource.HTTP),
+                List.of(new RenegotiationChange(
+                        ITEM, null, LocalDate.of(2026, 10, 30), null, "gestor-luis", AHORA)));
+
+        assertThat(service.find(ITEM).agreedReason()).isNull();
+        assertThat(service.history(ITEM).changes()).hasSize(1);
+        assertThat(service.history(ITEM).changes().get(0).agreedReason()).isNull();
+
+        // Y al volver a acordarla se le pone uno sin perder lo anterior: la fila vieja sigue sin motivo,
+        // que es la verdad de lo que paso entonces.
+        reloj.avanzarA(AHORA.plus(Duration.ofDays(1)));
+        service.update(
+                ITEM, cambio("2026-10-30", "gestor-marta", "el cliente confirmo la fecha por correo"));
+
+        assertThat(service.find(ITEM).agreedReason())
+                .isEqualTo("el cliente confirmo la fecha por correo");
+        assertThat(repository.findHistory(ITEM))
+                .extracting(RenegotiationChange::agreedReason)
+                .containsExactly(null, "el cliente confirmo la fecha por correo");
+    }
+
+    @Test
+    @DisplayName("Un motivo en blanco no pasa el contrato, ni al registrar ni al reemplazar")
+    void unMotivoEnBlancoNoPasaElContrato() {
+        assertThat(camposRechazados(new RenegotiationRequest(
+                ITEM, LocalDate.of(2026, 10, 30), "gestor-luis", "   ")))
+                .containsExactly("agreedReason");
+
+        assertThat(camposRechazados(new RenegotiationUpdateRequest(
+                LocalDate.of(2026, 10, 30), "gestor-luis", "")))
+                .containsExactly("agreedReason");
+    }
+
+    @Test
+    @DisplayName("Reemplazar el acuerdo reemplaza el motivo, y corregirlo solo es un cambio")
+    void reemplazarElAcuerdoReemplazaElMotivo() {
+        service.create(alta(ITEM, "2026-10-30", "gestor-luis", "el cliente aplazo la instalacion"));
+        reloj.avanzarA(AHORA.plus(Duration.ofDays(2)));
+
+        // Misma fecha y mismo motivo: no cambio nada, asi que no hay fila nueva ni sello nuevo.
+        RenegotiationResponse igual = service.update(ITEM, cambio("2026-10-30", "gestor-marta"));
+        assertThat(igual.agreedBy()).isEqualTo("gestor-luis");
+        assertThat(igual.agreedAt()).isEqualTo(AHORA);
+        assertThat(repository.findHistory(ITEM)).hasSize(1);
+
+        // Motivo nuevo con la misma fecha: si es un cambio. Antes de este campo la correccion se perdia
+        // en silencio —no habia fecha que cambiar— y la auditoria afirmaba que el motivo vigente era el
+        // que siempre estuvo.
+        RenegotiationResponse corregido = service.update(
+                ITEM,
+                cambio("2026-10-30", "gestor-marta", "el cliente aplazo la instalacion por vacaciones"));
+
+        assertThat(corregido.agreedReason())
+                .isEqualTo("el cliente aplazo la instalacion por vacaciones");
+        assertThat(corregido.agreedBy()).isEqualTo("gestor-marta");
+        assertThat(corregido.agreedAt()).isEqualTo(AHORA.plus(Duration.ofDays(2)));
+
+        assertThat(repository.findHistory(ITEM)).hasSize(2);
+        // La fila del cambio de motivo lleva las dos fechas iguales: lo que cambio fue el motivo, y eso
+        // es lo que la fila dice.
+        RenegotiationChange soloElMotivo = repository.findHistory(ITEM).get(1);
+        assertThat(soloElMotivo.previousDate()).isEqualTo(LocalDate.of(2026, 10, 30));
+        assertThat(soloElMotivo.newDate()).isEqualTo(LocalDate.of(2026, 10, 30));
+        assertThat(soloElMotivo.agreedReason())
+                .isEqualTo("el cliente aplazo la instalacion por vacaciones");
+    }
+
+    // ------------------------------------------------------------------
     // Apoyo
     // ------------------------------------------------------------------
 
@@ -443,11 +617,37 @@ class RenegotiationServiceTest {
     }
 
     private static RenegotiationRequest alta(String workItemId, String fecha, String agreedBy) {
-        return new RenegotiationRequest(workItemId, LocalDate.parse(fecha), agreedBy);
+        return alta(workItemId, fecha, agreedBy, MOTIVO);
+    }
+
+    private static RenegotiationRequest alta(
+            String workItemId, String fecha, String agreedBy, String motivo) {
+
+        return new RenegotiationRequest(workItemId, LocalDate.parse(fecha), agreedBy, motivo);
     }
 
     private static RenegotiationUpdateRequest cambio(String fecha, String agreedBy) {
-        return new RenegotiationUpdateRequest(LocalDate.parse(fecha), agreedBy);
+        return cambio(fecha, agreedBy, MOTIVO);
+    }
+
+    private static RenegotiationUpdateRequest cambio(String fecha, String agreedBy, String motivo) {
+        return new RenegotiationUpdateRequest(LocalDate.parse(fecha), agreedBy, motivo);
+    }
+
+    /**
+     * Los campos que el contrato rechaza en un cuerpo.
+     *
+     * <p><strong>La validacion de los DTOs corre en el borde HTTP y aqui no la ejecuta nadie.</strong>
+     * Se le pide prestada al proveedor para poder afirmar la regla —un motivo en blanco no es un
+     * motivo— sin levantar el contexto entero: lo que se comprueba es la anotacion del contrato, que es
+     * donde vive la regla, y no el recorrido de una peticion, que no cambia por esto.
+     */
+    private static Set<String> camposRechazados(Object cuerpo) {
+        try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+            return factory.getValidator().validate(cuerpo).stream()
+                    .map(violacion -> violacion.getPropertyPath().toString())
+                    .collect(Collectors.toSet());
+        }
     }
 
     /**

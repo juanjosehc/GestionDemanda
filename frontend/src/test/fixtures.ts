@@ -539,6 +539,17 @@ export const PENDIENTE_ID = 'REQ-2'
 export const REMOVIDO_ID = 'REQ-3'
 
 /**
+ * El motivo del acuerdo, que es lo que firma quien acuerda.
+ *
+ * **No es el motivo del desplazamiento.** Los de abajo —`alto`, `sinCapacidad`— los redacta el motor
+ * desde la regla que aplico y viajan dentro del evento; estos los escribe una persona y viajan en el
+ * acuerdo. Las pruebas que comprueban que la vista no los confunde se apoyan en que son textos
+ * distintos, asi que no pueden compartir valor.
+ */
+export const MOTIVO_ACORDADO = 'el cliente aplazo la instalacion'
+export const MOTIVO_REMOVIDO = 'se acordo con el usuario mover la entrega'
+
+/**
  * Los tres desenlaces de la renegociacion, en una sola respuesta.
  *
  * `REQ-1` esta acordado y su acuerdo cubre su unico desplazamiento. `REQ-2` no tiene acuerdo ninguno.
@@ -584,6 +595,7 @@ export function renegotiationsFixture(
           workItemId: ACORDADO_ID,
           agreedDate: '2026-10-08',
           agreedBy: 'ana',
+          agreedReason: MOTIVO_ACORDADO,
           agreedAt: '2026-10-06T09:30:00Z',
           source: 'HTTP',
         },
@@ -642,6 +654,7 @@ export function renegotiationsFixture(
           workItemId: REMOVIDO_ID,
           agreedDate: '2026-10-07',
           agreedBy: 'carlos',
+          agreedReason: MOTIVO_REMOVIDO,
           agreedAt: '2026-10-05T08:00:00Z',
           source: 'HTTP',
         },
@@ -667,12 +680,14 @@ export function renegotiationHistoryFixture(
       {
         previousDate: null,
         newDate: '2026-10-06',
+        agreedReason: MOTIVO_ACORDADO,
         changedBy: 'ana',
         changedAt: '2026-10-05T09:00:00Z',
       },
       {
         previousDate: '2026-10-06',
         newDate: '2026-10-08',
+        agreedReason: MOTIVO_REMOVIDO,
         changedBy: 'carlos',
         changedAt: '2026-10-06T09:30:00Z',
       },

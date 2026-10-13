@@ -28,9 +28,17 @@ import lombok.NoArgsConstructor;
  * lo impide la base de datos, no una comprobacion previa. Es la misma decision que tomo
  * {@code PlanningMetadataEntity}, y por el mismo motivo.
  *
- * <p><strong>Ninguna columna admite nulo</strong>, a diferencia de la declaracion. Aqui no hay
- * estado vacio que guardar: un acuerdo sin fecha no es un acuerdo, y mientras no haya fecha no hay
+ * <p><strong>Ninguna columna del acuerdo admite nulo</strong>, a diferencia de la declaracion. Aqui no
+ * hay estado vacio que guardar: un acuerdo sin fecha no es un acuerdo, y mientras no haya fecha no hay
  * fila. Es lo que hace que «no hay acuerdo» y «no hay fila» sean la misma cosa.
+ *
+ * <p><strong>{@code agreed_reason} es la excepcion, y es una excepcion con fecha.</strong> Los
+ * acuerdos registrados antes de que el motivo existiera no tienen uno, y esta columna tiene que poder
+ * representar esa ausencia en vez de inventar un texto: rellenarla con «no registrado» o con cualquier
+ * otra cadena guardaria una explicacion que nadie dio, y la auditoria afirmaria algo falso. La columna
+ * nace anulable por eso, y nulo significa exactamente «este acuerdo es anterior al motivo». La
+ * escritura no puede producir ese nulo —los dos contratos de entrada declaran el motivo obligatorio—,
+ * asi que la unica via por la que entra es una fila que ya estaba.
  *
  * <p><strong>Implementa {@link Persistable} por una razon que no se ve leyendo el codigo.</strong>
  * Spring Data decide entre insertar y actualizar mirando si el identificador es nulo, y aqui nunca lo
@@ -55,6 +63,10 @@ public class RenegotiationEntity implements Persistable<String> {
     @Column(name = "agreed_by", nullable = false, length = 64)
     private String agreedBy;
 
+    /** El motivo del acuerdo. Anulable por las filas anteriores al campo, y por ninguna otra razon. */
+    @Column(name = "agreed_reason", length = 500)
+    private String agreedReason;
+
     @Column(name = "agreed_at", nullable = false)
     private Instant agreedAt;
 
@@ -76,6 +88,7 @@ public class RenegotiationEntity implements Persistable<String> {
         this.workItemId = renegotiation.workItemId();
         this.agreedDate = renegotiation.agreedDate();
         this.agreedBy = renegotiation.agreedBy();
+        this.agreedReason = renegotiation.agreedReason();
         this.agreedAt = renegotiation.agreedAt();
         this.source = renegotiation.source();
         this.nueva = nueva;
@@ -102,6 +115,6 @@ public class RenegotiationEntity implements Persistable<String> {
     }
 
     Renegotiation toDomain() {
-        return new Renegotiation(workItemId, agreedDate, agreedBy, agreedAt, source);
+        return new Renegotiation(workItemId, agreedDate, agreedBy, agreedReason, agreedAt, source);
     }
 }

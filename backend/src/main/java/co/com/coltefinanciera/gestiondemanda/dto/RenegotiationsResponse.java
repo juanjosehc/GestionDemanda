@@ -10,12 +10,13 @@ import co.com.coltefinanciera.gestiondemanda.domain.enums.RenegotiationStatus;
  * Salida de {@code GET /api/renegotiations}: los requerimientos desplazados del plan vigente de cada
  * desarrollador, con lo que hay que saber para renegociarlos.
  *
- * <p><strong>Una sola lectura contesta las seis preguntas de la trazabilidad.</strong> Que
+ * <p><strong>Una sola lectura contesta las siete preguntas de la trazabilidad.</strong> Que
  * requerimiento fue afectado —{@code workItemId}—; que incidente causo el desplazamiento, cual era la
  * fecha original y a cual se movio —{@code events}, que es la auditoria que el plan ya guardaba—; cual
- * es la fecha nueva acordada y quien la registro y cuando —{@code renegotiation}—. Las seis salen de
- * aqui sin pedir el plan ni el timeline por separado, y sin que ninguna se re-derive: el incidente y
- * las fechas son los que el motor audito, y el acuerdo es el que alguien registro.
+ * es la fecha nueva acordada, quien la registro, cuando y por que —{@code renegotiation}—. Las siete
+ * salen de aqui sin pedir el plan ni el timeline por separado, y sin que ninguna se re-derive: el
+ * incidente, las fechas y su motivo son los que el motor audito, y el acuerdo con el suyo —que es otro
+ * motivo, el que dio la persona— es el que alguien registro.
  *
  * <p><strong>Las filas salen del mismo sitio que la tarjeta de desplazamientos.</strong> Se listan los
  * elementos que el timeline del plan vigente marca como desplazados, reutilizando la lectura que ya

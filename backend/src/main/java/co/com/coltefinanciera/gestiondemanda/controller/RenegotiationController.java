@@ -52,9 +52,9 @@ public class RenegotiationController {
     /**
      * Lo que hay que renegociar y lo que ya se renegocio.
      *
-     * <p>Una sola lectura contesta las seis preguntas de la trazabilidad —que requerimiento, que
-     * incidente, que fecha original, que fecha nueva, quien y cuando— sin pedir el plan ni el
-     * timeline por separado.
+     * <p>Una sola lectura contesta las siete preguntas de la trazabilidad —que requerimiento, que
+     * incidente, que fecha original, que fecha nueva, quien, cuando y por que— sin pedir el plan ni
+     * el timeline por separado.
      */
     @GetMapping
     public RenegotiationsResponse renegotiations() {

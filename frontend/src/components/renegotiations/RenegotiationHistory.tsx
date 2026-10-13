@@ -45,7 +45,9 @@ export function RenegotiationHistory({ item }: RenegotiationHistoryProps) {
         </CardTitle>
         <CardDescription>
           Una entrada por cambio registrado, en el orden en que las publica el backend. Un cambio sin
-          fecha anterior es el primer acuerdo: el momento en que no había fecha y alguien la trajo.
+          fecha anterior es el primer acuerdo: el momento en que no había fecha y alguien la trajo. Y
+          uno con las dos fechas iguales es un motivo corregido: el acuerdo no cambió, su explicación
+          sí.
         </CardDescription>
       </CardHeader>
 
@@ -85,14 +87,32 @@ export function RenegotiationHistory({ item }: RenegotiationHistoryProps) {
                 data-slot="history-change"
                 data-previous={change.previousDate ?? ''}
                 data-new={change.newDate}
+                data-reason={change.agreedReason ?? ''}
                 className="border-l-2 border-border pl-3 text-xs"
               >
                 <p className="flex flex-wrap items-center gap-2">
                   <span className="tabular-nums font-medium">
                     {change.previousDate === null
                       ? `primer acuerdo: ${formatDay(change.newDate)}`
-                      : `${formatDay(change.previousDate)} → ${formatDay(change.newDate)}`}
+                      : change.previousDate === change.newDate
+                        ? // Las dos fechas iguales ya no son un cambio que no cambio nada: lo que
+                          // cambio fue el motivo, y decirlo es lo que evita leer «8 oct → 8 oct».
+                          `motivo corregido: ${formatDay(change.newDate)}`
+                        : `${formatDay(change.previousDate)} → ${formatDay(change.newDate)}`}
                   </span>
+                </p>
+
+                {/*
+                  El motivo de esta entrada, no el vigente. Nulo es una entrada anterior a que el
+                  motivo se registrara, y se dice en vez de dejar el hueco: un hueco se lee como «no
+                  hubo motivo», que es lo contrario de lo que significa.
+                */}
+                <p className="mt-0.5">
+                  {change.agreedReason ?? (
+                    <span className="text-muted-foreground italic">
+                      sin motivo registrado: la entrada es anterior al campo
+                    </span>
+                  )}
                 </p>
 
                 <p className="mt-0.5 text-muted-foreground">

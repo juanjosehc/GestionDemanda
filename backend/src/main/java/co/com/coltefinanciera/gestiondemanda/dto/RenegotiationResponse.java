@@ -18,16 +18,21 @@ import co.com.coltefinanciera.gestiondemanda.domain.model.Renegotiation;
  * —lo registra una persona por la API—, y la columna existe porque la procedencia es parte de la
  * auditoria y no porque haya un segundo origen previsto.
  *
- * @param workItemId el requerimiento, el identificador del ticket en GLPI como texto.
- * @param agreedDate la fecha nueva que se acordó con quien pidio el requerimiento.
- * @param agreedBy   quien registro el acuerdo.
- * @param agreedAt   cuando se registro. Sale del bean {@code Clock}, nunca del cuerpo de la peticion.
- * @param source     de donde vino el acuerdo.
+ * @param workItemId   el requerimiento, el identificador del ticket en GLPI como texto.
+ * @param agreedDate   la fecha nueva que se acordó con quien pidio el requerimiento.
+ * @param agreedBy     quien registro el acuerdo.
+ * @param agreedReason por que se acordó esa fecha. Es el motivo del <strong>acuerdo</strong> y no el
+ *                     del desplazamiento: el del movimiento lo publica el evento que viaja al lado de
+ *                     esto. Nulo significa «acuerdo anterior a que el motivo se registrara», y no
+ *                     «sin motivo»: la escritura no admite uno vacio.
+ * @param agreedAt     cuando se registro. Sale del bean {@code Clock}, nunca del cuerpo de la peticion.
+ * @param source       de donde vino el acuerdo.
  */
 public record RenegotiationResponse(
         String workItemId,
         LocalDate agreedDate,
         String agreedBy,
+        String agreedReason,
         Instant agreedAt,
         InputSource source) {
 
@@ -36,6 +41,7 @@ public record RenegotiationResponse(
                 renegotiation.workItemId(),
                 renegotiation.agreedDate(),
                 renegotiation.agreedBy(),
+                renegotiation.agreedReason(),
                 renegotiation.agreedAt(),
                 renegotiation.source());
     }

@@ -18,17 +18,25 @@ const FIELD_CLASS =
   'h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
 /**
- * El cuerpo de la escritura, armado con lo que hay en los dos campos.
+ * El cuerpo de la escritura, armado con lo que hay en los tres campos.
  *
- * Los dos valores son obligatorios en el contrato, asi que no hay campo que pueda ir nulo ni medio
- * cuerpo que enviar. Lo unico que se recorta es el espacio de los extremos del nombre.
+ * Los tres valores son obligatorios en el contrato, asi que no hay campo que pueda ir nulo ni medio
+ * cuerpo que enviar. Lo unico que se recorta es el espacio de los extremos.
  *
  * No se valida nada mas aqui: que la fecha sea futura, pasada o cualquiera no lo decide la vista.
  * El backend acepta hoy una fecha ya vencida a proposito —es una decision de negocio que todavia no
  * se ha tomado— y escribir esa regla en el formulario la inventaria.
  */
-function valuesOf(agreedDate: string, agreedBy: string): RenegotiationUpdateRequest {
-  return { agreedDate: agreedDate.trim(), agreedBy: agreedBy.trim() }
+function valuesOf(
+  agreedDate: string,
+  agreedBy: string,
+  agreedReason: string,
+): RenegotiationUpdateRequest {
+  return {
+    agreedDate: agreedDate.trim(),
+    agreedBy: agreedBy.trim(),
+    agreedReason: agreedReason.trim(),
+  }
 }
 
 interface FieldsProps {
@@ -39,19 +47,22 @@ interface FieldsProps {
 }
 
 /**
- * Los dos campos, ya con su valor inicial, y la trazabilidad de lo que se esta renegociando.
+ * Los tres campos, ya con su valor inicial, y la trazabilidad de lo que se esta renegociando.
  *
  * Se monta **despues** de que la lectura haya llegado, y por eso puede tomar el valor inicial en el
  * propio `useState`. Cambiar de requerimiento lo remonta —el padre lo identifica con `key`—, que es
  * lo que devuelve los campos a su sitio sin arrastrar lo que se hubiera escrito para otro.
  *
- * **La fecha se precarga y el nombre no.** La fecha acordada es el valor que el `PUT` reemplaza, y
- * verla antes de escribirla es lo que evita cambiarla sin querer; el nombre es quien acuerda ahora,
- * y precargarlo con el anterior afirmaria que es la misma persona la que vuelve a firmar.
+ * **La fecha y el motivo se precargan y el nombre no.** Los dos primeros son el contenido del acuerdo
+ * que el `PUT` reemplaza, y verlos antes de escribir es lo que evita cambiarlos sin querer —o
+ * borrarlos por omision, que es lo que pasaria si el motivo no se precargara—; el nombre es quien
+ * acuerda ahora, y precargarlo con el anterior afirmaria que es la misma persona la que vuelve a
+ * firmar.
  */
 function Fields({ item, agreement, onClose }: FieldsProps) {
   const [agreedDate, setAgreedDate] = useState(() => agreement?.agreedDate ?? '')
   const [agreedBy, setAgreedBy] = useState('')
+  const [agreedReason, setAgreedReason] = useState(() => agreement?.agreedReason ?? '')
 
   const save = useSaveRenegotiation()
   const create = agreement === null
@@ -59,7 +70,7 @@ function Fields({ item, agreement, onClose }: FieldsProps) {
   function submit(event: FormEvent) {
     event.preventDefault()
     save.mutate(
-      { workItemId: item.workItemId, create, values: valuesOf(agreedDate, agreedBy) },
+      { workItemId: item.workItemId, create, values: valuesOf(agreedDate, agreedBy, agreedReason) },
       // Se cierra al guardar: lo que el usuario tiene que ver despues es la fila ya refrescada y el
       // historial con el cambio recien registrado.
       { onSuccess: onClose },
@@ -124,13 +135,27 @@ function Fields({ item, agreement, onClose }: FieldsProps) {
       </div>
 
       {/*
-        La trazabilidad de lo que se esta renegociando: que incidente movio el requerimiento, de que
-        fecha a que fecha y por que. Es lo que el backend publica, y es lo unico que se puede enseñar
-        como motivo: **el contrato del acuerdo no tiene un campo de motivo propio** —el acuerdo aporta
-        la fecha nueva y quien la firma, y nada mas—, asi que no hay aqui ningun campo donde
-        escribirlo. Un campo de texto que el backend descartara seria peor que su ausencia: guardaria
-        la apariencia de un motivo que nadie registro.
+        El motivo del acuerdo. Va a lo ancho y en un area de texto porque no es una etiqueta: es una
+        explicacion, y el contrato admite hasta 500 caracteres.
+
+        **No se confunde con el motivo de abajo, y por eso las dos etiquetas dicen quien lo redacta.**
+        Este lo escribe quien firma —es la unica pieza del acuerdo que ningun dato puede deducir—; el
+        de la lista lo publica el plan desde la regla que aplico, y es de solo lectura. Son dos hechos
+        distintos: uno explica por que se movio el requerimiento, este explica por que se llego a esa
+        fecha.
       */}
+      <label className="block space-y-1">
+        <span className="text-xs text-muted-foreground">Por qué se acuerda esta fecha</span>
+        <textarea
+          required
+          rows={2}
+          maxLength={500}
+          value={agreedReason}
+          onChange={(event) => setAgreedReason(event.target.value)}
+          className={`${FIELD_CLASS} h-auto py-2`}
+        />
+      </label>
+
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">Por qué se desplazó (lo publica el plan)</p>
         <ul className="space-y-1">
@@ -156,8 +181,8 @@ function Fields({ item, agreement, onClose }: FieldsProps) {
 
       <p className="text-xs text-muted-foreground">
         {create
-          ? 'El acuerdo aporta lo que nadie más puede saber: a qué fecha se llegó y quién lo acordó. El incidente y la fecha original no se envían: el plan ya los auditó.'
-          : 'El reemplazo es total: lo que venga es la fecha vigente. El sello de registro lo pone el servidor, así que no viaja en el cuerpo.'}
+          ? 'El acuerdo aporta lo que nadie más puede saber: a qué fecha se llegó, quién lo acordó y por qué. El incidente y la fecha original no se envían: el plan ya los auditó.'
+          : 'El reemplazo es total: lo que venga es la fecha vigente y el motivo vigente. El sello de registro lo pone el servidor, así que no viaja en el cuerpo.'}
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -186,7 +211,7 @@ interface RenegotiationFormProps {
 }
 
 /**
- * El formulario del acuerdo: la fecha nueva y quien la firma.
+ * El formulario del acuerdo: la fecha nueva, quien la firma y por que.
  *
  * **Lee antes de escribir.** Cuando el requerimiento ya tiene acuerdo, el formulario no se rellena
  * con lo que traia la lista sino con una lectura fresca del recurso. El `PUT` reemplaza lo que no

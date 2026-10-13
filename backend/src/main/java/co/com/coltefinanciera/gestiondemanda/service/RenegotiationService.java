@@ -38,9 +38,9 @@ import lombok.RequiredArgsConstructor;
  * entrada del calculo.
  *
  * <p><strong>El sello de tiempo sale del bean {@code Clock}, nunca del cuerpo de la peticion.</strong>
- * Quien registra un acuerdo dice a que fecha se llego y quien lo acordó; cuando quedo registrado lo
- * dice el servidor, porque una fecha de registro que elige quien llama no es un sello, es una
- * afirmacion.
+ * Quien registra un acuerdo dice a que fecha se llego, quien lo acordó y por que; cuando quedo
+ * registrado lo dice el servidor, porque una fecha de registro que elige quien llama no es un sello,
+ * es una afirmacion.
  *
  * <p><strong>La lectura consolidada reutiliza la de desplazamientos.</strong> Llama a
  * {@link PlanningMetricsService#displaced()} en lugar de recorrer los planes por su cuenta. Es
@@ -70,7 +70,12 @@ public class RenegotiationService {
     public RenegotiationResponse create(RenegotiationRequest request) {
         Instant now = clock.instant();
         Renegotiation renegotiation = new Renegotiation(
-                request.workItemId(), request.agreedDate(), request.agreedBy(), now, InputSource.HTTP);
+                request.workItemId(),
+                request.agreedDate(),
+                request.agreedBy(),
+                request.agreedReason(),
+                now,
+                InputSource.HTTP);
 
         try {
             repository.create(renegotiation, renegotiation.changesFrom(null, request.agreedBy(), now));
@@ -88,9 +93,10 @@ public class RenegotiationService {
      * peticiones simultaneas que lean la misma fecha y escriban cada una la suya dejarian un historial
      * que afirma dos cambios partiendo del mismo punto.
      *
-     * <p>Reenviar la misma fecha no es un error y no ensucia la auditoria: el estado se reemplaza por
-     * uno igual, y {@code changesFrom} devuelve la lista vacia, de modo que no se escribe ninguna fila
-     * de historial por un cambio que no ocurrio.
+     * <p>Reenviar la misma fecha y el mismo motivo no es un error y no ensucia la auditoria: el estado
+     * se reemplaza por uno igual, y {@code changesFrom} devuelve la lista vacia, de modo que no se
+     * escribe ninguna fila de historial por un cambio que no ocurrio. Corregir solo el motivo, en
+     * cambio, si es un cambio, y queda registrado como tal.
      */
     @Transactional
     public RenegotiationResponse update(String workItemId, RenegotiationUpdateRequest request) {
@@ -98,7 +104,8 @@ public class RenegotiationService {
         Renegotiation before = repository.findByWorkItemIdForUpdate(workItemId)
                 .orElseThrow(() -> new RenegotiationNotFoundException(workItemId));
 
-        Renegotiation after = before.agreedWith(request.agreedDate(), request.agreedBy(), now);
+        Renegotiation after = before.agreedWith(
+                request.agreedDate(), request.agreedReason(), request.agreedBy(), now);
         repository.update(after, after.changesFrom(before, request.agreedBy(), now));
 
         return RenegotiationResponse.of(after);

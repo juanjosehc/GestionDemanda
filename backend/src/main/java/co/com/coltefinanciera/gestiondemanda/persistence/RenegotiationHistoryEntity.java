@@ -32,6 +32,16 @@ import lombok.NoArgsConstructor;
  * declaracion usa texto porque tiene que servir a una fecha y a un decimal con un solo par de
  * columnas; aqui solo hay fechas, y una columna {@code date} dice lo que hay sin que nadie tenga que
  * consultar otro campo para interpretarla.
+ *
+ * <p><strong>{@code agreed_reason} guarda el motivo que se dio en ese cambio, no el vigente.</strong>
+ * Es lo que hace que la historia se pueda leer sola: cada fila dice a que fecha se llego, quien lo
+ * decidio, cuando y por que, sin tener que mirar la fila del acuerdo para saber que se pensaba
+ * entonces. Si el motivo viviera solo en el acuerdo vigente, corregirlo reescribiria el pasado y la
+ * historia afirmaria que siempre se dijo lo que se dice hoy.
+ *
+ * <p><strong>Admite nulo por las filas anteriores al campo.</strong> Es la misma excepcion que en
+ * {@code renegotiation} y por la misma razon: un cambio registrado antes de que el motivo existiera no
+ * tiene uno, y rellenarlo inventaria una explicacion.
  */
 @Entity
 @Table(name = "renegotiation_history",
@@ -53,6 +63,10 @@ public class RenegotiationHistoryEntity {
     @Column(name = "new_date", nullable = false)
     private LocalDate newDate;
 
+    /** El motivo de ese cambio. Anulable por las filas anteriores al campo, y por ninguna otra razon. */
+    @Column(name = "agreed_reason", length = 500)
+    private String agreedReason;
+
     @Column(name = "changed_by", nullable = false, length = 64)
     private String changedBy;
 
@@ -63,6 +77,7 @@ public class RenegotiationHistoryEntity {
         this.workItemId = change.workItemId();
         this.previousDate = change.previousDate();
         this.newDate = change.newDate();
+        this.agreedReason = change.agreedReason();
         this.changedBy = change.changedBy();
         this.changedAt = change.changedAt();
     }
@@ -73,6 +88,6 @@ public class RenegotiationHistoryEntity {
 
     RenegotiationChange toDomain() {
         return new RenegotiationChange(
-                workItemId, previousDate, newDate, changedBy, changedAt);
+                workItemId, previousDate, newDate, agreedReason, changedBy, changedAt);
     }
 }
