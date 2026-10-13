@@ -45,7 +45,7 @@ class GlpiTicketMapperTest {
             Long actiontime, String date, String timeToResolve) {
 
         return new GlpiTicket(id, "Ticket " + id, status, type, priority, null, null,
-                actiontime, timeToResolve, date, 7);
+                actiontime, timeToResolve, date);
     }
 
     private static GlpiTicket incident(int id, Integer status, Long actiontime, String date) {

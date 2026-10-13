@@ -62,12 +62,12 @@ class GlpiPlanningRequestFactoryTest {
 
     private static GlpiTicket incident(int id, Integer status, long actiontime) {
         return new GlpiTicket(id, "Incidencia " + id, status, GlpiTicket.TYPE_INCIDENT, 5, null, null,
-                actiontime, null, "2026-10-05 09:00:00", 7);
+                actiontime, null, "2026-10-05 09:00:00");
     }
 
     private static GlpiTicket request(int id, Integer status, long actiontime, String deadline) {
         return new GlpiTicket(id, "Peticion " + id, status, GlpiTicket.TYPE_REQUEST, 3, null, null,
-                actiontime, deadline, "2026-10-01 08:00:00", 7);
+                actiontime, deadline, "2026-10-01 08:00:00");
     }
 
     /**
@@ -163,7 +163,7 @@ class GlpiPlanningRequestFactoryTest {
     void unTicketSinDeclaracionSeDescarta() {
         declararTodo(1);
         GlpiTicket sinDeclaracion = new GlpiTicket(99, "Sin declaracion", 1,
-                GlpiTicket.TYPE_INCIDENT, 3, null, null, 3600L, null, "2026-10-05 09:00:00", 7);
+                GlpiTicket.TYPE_INCIDENT, 3, null, null, 3600L, null, "2026-10-05 09:00:00");
 
         GlpiPlanningRequestFactory.Result result = factory.build("jdoe", USER,
                 List.of(incident(1, 1, 21600L), sinDeclaracion), rules());
@@ -365,7 +365,7 @@ class GlpiPlanningRequestFactoryTest {
 
             GlpiPlanningRequestFactory.Result result = factory.build("jdoe", USER,
                     List.of(new GlpiTicket(1, "Sin actiontime", 1, GlpiTicket.TYPE_INCIDENT, 5, null,
-                            null, null, null, "2026-10-05 09:00:00", 7)),
+                            null, null, null, "2026-10-05 09:00:00")),
                     rules());
 
             assertThat(result.discarded()).isEmpty();

@@ -12,10 +12,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import co.com.coltefinanciera.gestiondemanda.dto.DeveloperDeclarationsResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningMetadataHistoryResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningMetadataRequest;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningMetadataResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningMetadataUpdateRequest;
+import co.com.coltefinanciera.gestiondemanda.service.PlanningDeclarationService;
 import co.com.coltefinanciera.gestiondemanda.service.PlanningMetadataService;
 
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ import lombok.RequiredArgsConstructor;
 public class PlanningMetadataController {
 
     private final PlanningMetadataService service;
+    private final PlanningDeclarationService declarationService;
 
     /**
      * Declara la planificacion de un elemento de trabajo.
@@ -75,5 +78,22 @@ public class PlanningMetadataController {
     @GetMapping("/{workItemId}/history")
     public PlanningMetadataHistoryResponse history(@PathVariable String workItemId) {
         return service.history(workItemId);
+    }
+
+    /**
+     * Lo que tiene asignado un tecnico, con lo que le falta a cada ticket para poder planificarse.
+     *
+     * <p><strong>Es de solo lectura y no planifica.</strong> No es una forma de crear un plan: quien
+     * quiera uno sigue llamando a {@code POST /api/planning/from-glpi}, que es el unico endpoint que
+     * escribe. Esta ruta existe para que la pantalla de declaracion tenga que leer, y no para darle
+     * una segunda via de escritura que ademas seria invisible: pedir el listado crearia un plan
+     * guardado por cada vez que alguien abre la pantalla.
+     *
+     * <p>{@code 404} si el tecnico no esta en GLPI, igual que el flujo que planifica: un
+     * identificador equivocado no es «no tiene trabajo».
+     */
+    @GetMapping("/declarations/{developerId}")
+    public DeveloperDeclarationsResponse declarations(@PathVariable String developerId) {
+        return declarationService.declarationsFor(developerId);
     }
 }

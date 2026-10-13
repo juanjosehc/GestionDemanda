@@ -1,0 +1,2 @@
+"plan_id","calculated_at","calendar_end","calendar_start","engine_version","holidays","incident_threshold_hours","planning_horizon_days","severities","weekend","zone_id"
+"fd820088-d1aa-4a72-a3f1-a5e7736613a8","2026-10-05 15:33:40.483471-05","17:00:00","09:00:00","1.0","","4.0000","10","ALTO","SATURDAY,SUNDAY","Z"

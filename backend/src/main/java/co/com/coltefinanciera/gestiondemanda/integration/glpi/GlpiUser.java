@@ -28,8 +28,13 @@ public record GlpiUser(
      * que es donde se decide como se ve un usuario de GLPI desde fuera— y se cae al {@code name}, que
      * es el login y siempre existe. Devolver cadena vacia no sirve: {@code Developer} exige texto, y
      * un nombre en blanco seria un dato invalido disfrazado de valido.
+     *
+     * <p>Puede devolver nulo, y quien lo llama decide que hacer con eso: la construccion de la peticion
+     * del plan lo rechaza, porque el dominio exige un nombre para calcular; la lectura de las
+     * declaraciones de un tecnico lo deja en nulo, porque lo que esta leyendo son sus tickets y no va a
+     * negarse a listarlos por como se llama quien los tiene.
      */
-    String displayName() {
+    public String displayName() {
         String composed = ((firstname == null ? "" : firstname.trim()) + " "
                 + (realname == null ? "" : realname.trim())).trim();
         if (!composed.isEmpty()) {

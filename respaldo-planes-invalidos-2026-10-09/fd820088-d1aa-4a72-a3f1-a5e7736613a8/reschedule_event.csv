@@ -1,0 +1,2 @@
+"id","applied_rule","incident_id","original_date","plan_id","requirement_id","rescheduled_date","severity","occurred_at"
+"2","REPLANIFICACION_INMEDIATA","INC-E2E-1","2026-10-05","fd820088-d1aa-4a72-a3f1-a5e7736613a8","REQ-E2E-1","2026-10-06","ALTO","2026-10-05 15:33:40.483471-05"

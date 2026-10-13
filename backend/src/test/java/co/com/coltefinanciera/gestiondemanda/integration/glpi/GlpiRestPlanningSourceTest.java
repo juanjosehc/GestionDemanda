@@ -5,15 +5,24 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.RecordComponent;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.stubbing.OngoingStubbing;
 import org.springframework.core.codec.DecodingException;
 
 import reactor.core.publisher.Mono;
@@ -30,8 +39,9 @@ import co.com.coltefinanciera.gestiondemanda.exception.GlpiUnreachableException;
  * El adaptador HTTP: clasificacion de fallos y forma de lo que devuelve.
  *
  * <p>El cliente se sustituye por un doble, asi que no hay ninguna instancia de GLPI detras. Lo que se
- * prueba no es la red —eso es de WebClient— sino que cada fallo salga por la puerta que le toca y que
- * la sesion se cierre pase lo que pase.
+ * prueba no es la red —eso es de WebClient— sino que cada fallo salga por la puerta que le toca, que la
+ * sesion se cierre pase lo que pase y que los tickets se pidan por donde se tienen que pedir: la
+ * recuperacion de tickets asignados es lo que la decision 159 corrige, y estas pruebas son su red.
  */
 class GlpiRestPlanningSourceTest {
 
@@ -39,24 +49,64 @@ class GlpiRestPlanningSourceTest {
     private static final String SESSION = "sess-1";
 
     private GlpiClient glpiClient;
+    private GlpiProperties properties;
     private GlpiRestPlanningSource source;
 
     @BeforeEach
     void setUp() {
         glpiClient = mock(GlpiClient.class);
+        properties = new GlpiProperties(URL, "app-token", "user-token", Duration.ofSeconds(2));
         // Un doble devuelve null para Mono<Void>; el cierre de sesion tiene que emitir vacio.
         when(glpiClient.killSession(anyString())).thenReturn(Mono.empty());
-        source = new GlpiRestPlanningSource(glpiClient,
-                new GlpiProperties(URL, "app-token", "user-token", Duration.ofSeconds(2)));
+        source = new GlpiRestPlanningSource(glpiClient, properties);
     }
 
-    private static GlpiTicket ticket(int id, int assignedUserId) {
-        return new GlpiTicket(id, "Ticket " + id, 1, GlpiTicket.TYPE_INCIDENT, 3, null, null,
-                3600L, null, "2026-10-05 09:00:00", assignedUserId);
+    /**
+     * Una fila de {@code /search/Ticket} con la forma real.
+     *
+     * <p>Las claves son numeros de opcion de busqueda y no nombres de campo, porque eso es lo que GLPI
+     * devuelve al proyectar una busqueda. La columna {@code "5"} viene puesta a proposito: es el tecnico
+     * y el adaptador ya no la lee —quien filtra es el servidor—, asi que una fila que la traiga distinta
+     * de nada no puede cambiar el resultado.
+     */
+    private static Map<String, Object> row(int id, String name, int status, int type, String date) {
+        Map<String, Object> row = new HashMap<>();
+        row.put("1", name);
+        row.put("2", id);
+        row.put("3", 3);
+        row.put("10", 3);
+        row.put("11", 3);
+        row.put("12", status);
+        row.put("14", type);
+        row.put("15", date);
+        row.put("18", "2026-10-06 17:00:00");
+        row.put("45", 3600);
+        row.put("5", "13");
+        return row;
+    }
+
+    private static Map<String, Object> row(int id) {
+        return row(id, "Ticket " + id, 1, GlpiTicket.TYPE_INCIDENT, "2026-10-05 09:00:00");
     }
 
     private void sessionOpens() {
         when(glpiClient.initSession()).thenReturn(Mono.just(SESSION));
+    }
+
+    /** Encadena las paginas que la busqueda va a devolver, en orden. */
+    private void searchReturns(GlpiTicketSearchPage... pages) {
+        OngoingStubbing<Mono<GlpiTicketSearchPage>> stubbing =
+                when(glpiClient.get(anyString(), eq(SESSION), eq(GlpiTicketSearchPage.class)));
+        for (GlpiTicketSearchPage page : pages) {
+            stubbing = stubbing.thenReturn(Mono.just(page));
+        }
+    }
+
+    /** La unica ruta de busqueda que se pidio. */
+    private String searchedPath() {
+        ArgumentCaptor<String> paths = ArgumentCaptor.forClass(String.class);
+        verify(glpiClient).get(paths.capture(), eq(SESSION), eq(GlpiTicketSearchPage.class));
+        return paths.getValue();
     }
 
     @Test
@@ -79,6 +129,106 @@ class GlpiRestPlanningSourceTest {
         when(glpiClient.get("/User/jdoe", SESSION, GlpiUser.class)).thenReturn(Mono.just(user));
 
         assertThat(source.findUser("jdoe")).contains(user);
+    }
+
+    @Test
+    @DisplayName("Los tickets asignados son los que la busqueda devuelve, traducidos campo a campo")
+    void traeLosTicketsAsignadosAlTecnico() {
+        sessionOpens();
+        searchReturns(new GlpiTicketSearchPage(2, List.of(
+                row(5602, "Eliminación de usuario PSE", 6, GlpiTicket.TYPE_REQUEST, "2026-10-05 09:00:00"),
+                row(4666, "Error en ciclo de pagos", 6, GlpiTicket.TYPE_INCIDENT, "2026-10-04 08:30:00"))));
+
+        List<GlpiTicket> tickets = source.ticketsOf("13");
+
+        assertThat(tickets).extracting(GlpiTicket::id).containsExactly(5602, 4666);
+        assertThat(tickets.get(0)).isEqualTo(new GlpiTicket(5602, "Eliminación de usuario PSE", 6,
+                GlpiTicket.TYPE_REQUEST, 3, 3, 3, 3600L, "2026-10-06 17:00:00", "2026-10-05 09:00:00"));
+        assertThat(tickets.get(1).type()).isEqualTo(GlpiTicket.TYPE_INCIDENT);
+        verify(glpiClient).killSession(SESSION);
+    }
+
+    @Test
+    @DisplayName("El filtro por tecnico viaja a GLPI como criterio, no se hace en memoria")
+    void buscaPorElCriterioDeTecnico() {
+        sessionOpens();
+        searchReturns(new GlpiTicketSearchPage(0, List.of()));
+
+        source.ticketsOf("13");
+
+        String path = searchedPath();
+        assertThat(path)
+                .startsWith("/search/Ticket")
+                .contains("criteria[0][field]=5", "criteria[0][searchtype]=equals", "criteria[0][value]=13");
+        // La ruta anterior: traia la instancia entera y filtraba despues, con un techo de mil tickets.
+        assertThat(path).doesNotStartWith("/Ticket");
+    }
+
+    @Test
+    @DisplayName("La recuperacion no depende de users_id_assign: ni en la ruta, ni en el contrato, ni en el DTO")
+    void noDependeDeUsersIdAssign() {
+        sessionOpens();
+        searchReturns(new GlpiTicketSearchPage(1, List.of(row(7))));
+
+        source.ticketsOf("13");
+
+        assertThat(searchedPath()).doesNotContain("users_id_assign");
+        assertThat(GlpiContract.REST_V1.ticketFields()).doesNotContainKey("users_id_assign");
+        assertThat(Stream.of(GlpiTicket.class.getRecordComponents()).map(RecordComponent::getName))
+                .as("el campo se retiro del DTO porque nunca llego desde GLPI")
+                .doesNotContain("assignedUserId");
+    }
+
+    @Test
+    @DisplayName("Una busqueda de mas de una pagina se recorre entera")
+    void recorreMasDeUnaPagina() {
+        sessionOpens();
+        searchReturns(
+                new GlpiTicketSearchPage(4, List.of(row(1), row(2))),
+                new GlpiTicketSearchPage(4, List.of(row(3), row(4))));
+
+        assertThat(source.ticketsOf("13")).extracting(GlpiTicket::id).containsExactly(1, 2, 3, 4);
+
+        ArgumentCaptor<String> paths = ArgumentCaptor.forClass(String.class);
+        verify(glpiClient, times(2)).get(paths.capture(), eq(SESSION), eq(GlpiTicketSearchPage.class));
+        assertThat(paths.getAllValues().get(0)).contains("range=0-999");
+        assertThat(paths.getAllValues().get(1)).contains("range=1000-1999");
+    }
+
+    @Test
+    @DisplayName("Una busqueda sin resultados es una lista vacia, no un fallo")
+    void unaBusquedaVaciaEsUnaListaVacia() {
+        sessionOpens();
+        // La instancia real omite "data" cuando no hay tickets: {"totalcount":0,"count":0,...}
+        searchReturns(new GlpiTicketSearchPage(0, null));
+
+        assertThat(source.ticketsOf("13")).isEmpty();
+        verify(glpiClient).killSession(SESSION);
+    }
+
+    @Test
+    @DisplayName("Sin tickets, error de GLPI y respuesta parcial son tres desenlaces distintos")
+    void distingueSinTicketsDeErrorYDeRespuestaParcial() {
+        sessionOpens();
+
+        // Uno: no tiene trabajo. Lista vacia, y el plan vacio que salga de aqui es la respuesta correcta.
+        searchReturns(new GlpiTicketSearchPage(0, List.of()));
+        assertThat(source.ticketsOf("13")).isEmpty();
+
+        // Dos: GLPI fallo. Sale como fallo, para que nadie lo lea como "este desarrollador no tiene nada".
+        when(glpiClient.get(anyString(), eq(SESSION), eq(GlpiTicketSearchPage.class)))
+                .thenReturn(Mono.error(new GlpiConnectionException("GLPI respondio HTTP 500")));
+        assertThatThrownBy(() -> source.ticketsOf("13"))
+                .isInstanceOf(GlpiConnectionException.class)
+                .hasMessageContaining("500");
+
+        // Tres: GLPI declaro mas tickets de los que entrego. Leer medio trabajo y planificarlo como si
+        // fuera todo es el fallo que esta fase corrige, asi que se denuncia en lugar de devolverse.
+        searchReturns(new GlpiTicketSearchPage(5, List.of(row(1))), new GlpiTicketSearchPage(5, List.of()));
+        assertThatThrownBy(() -> source.ticketsOf("13"))
+                .isInstanceOf(GlpiInvalidDataException.class)
+                .hasMessageContaining("5")
+                .hasMessageContaining("incompleta");
     }
 
     @Test
@@ -110,7 +260,7 @@ class GlpiRestPlanningSourceTest {
         when(glpiClient.initSession()).thenReturn(Mono.error(
                 new GlpiUnreachableException("Response timeout after 2000ms", null)));
 
-        assertThatThrownBy(() -> source.ticketsOf("7"))
+        assertThatThrownBy(() -> source.ticketsOf("13"))
                 .isInstanceOf(GlpiUnreachableException.class)
                 .hasMessageContaining("timeout");
     }
@@ -119,34 +269,24 @@ class GlpiRestPlanningSourceTest {
     @DisplayName("Un cuerpo ilegible es un fallo de datos, no un error interno")
     void unCuerpoIlegibleEsUnFalloDeDatos() {
         sessionOpens();
-        when(glpiClient.getList(anyString(), eq(SESSION), eq(GlpiTicket.class)))
-                .thenReturn(Mono.error(new DecodingException("no es un arreglo")));
+        when(glpiClient.get(anyString(), eq(SESSION), eq(GlpiTicketSearchPage.class)))
+                .thenReturn(Mono.error(new DecodingException("no es un sobre de busqueda")));
 
-        assertThatThrownBy(() -> source.ticketsOf("7"))
+        assertThatThrownBy(() -> source.ticketsOf("13"))
                 .isInstanceOf(GlpiInvalidDataException.class)
                 .hasMessageContaining("no se puede leer");
         verify(glpiClient).killSession(SESSION);
     }
 
     @Test
-    @DisplayName("Los tickets se filtran por asignado y se conserva el orden")
-    void filtraPorAsignado() {
-        sessionOpens();
-        when(glpiClient.getList(anyString(), eq(SESSION), eq(GlpiTicket.class)))
-                .thenReturn(Mono.just(List.of(ticket(1, 7), ticket(2, 9), ticket(3, 7))));
-
-        assertThat(source.ticketsOf("7")).extracting(GlpiTicket::id).containsExactly(1, 3);
-    }
-
-    @Test
-    @DisplayName("Un identificador no numerico no puede filtrar y no inventa tickets")
+    @DisplayName("Un identificador no numerico no busca y no inventa tickets")
     void unIdentificadorNoNumericoNoDevuelveTickets() {
-        sessionOpens();
-        when(glpiClient.getList(anyString(), eq(SESSION), eq(GlpiTicket.class)))
-                .thenReturn(Mono.just(List.of(ticket(1, 7))));
-
+        // Con un login, la busqueda no falla: GLPI castea el valor a cero y devuelve los tickets del
+        // usuario cero. Por eso no se pregunta: no hay nada que preguntar y preguntarlo daria un dato
+        // falso, no un dato vacio.
         assertThat(source.ticketsOf("jdoe")).isEmpty();
-        verify(glpiClient).killSession(SESSION);
+
+        verifyNoInteractions(glpiClient);
     }
 
     @Test
@@ -159,5 +299,16 @@ class GlpiRestPlanningSourceTest {
                 Mono.error(new GlpiConnectionException("no se pudo cerrar")));
 
         assertThat(source.findUser("jdoe")).isPresent();
+    }
+
+    @Test
+    @DisplayName("Una sesion que no se puede abrir no llega a buscar")
+    void sinSesionNoSeBusca() {
+        when(glpiClient.initSession()).thenReturn(Mono.error(
+                new GlpiAuthenticationException("GLPI respondio HTTP 401 en initSession")));
+
+        assertThatThrownBy(() -> source.ticketsOf("13"))
+                .isInstanceOf(GlpiAuthenticationException.class);
+        verify(glpiClient, never()).get(anyString(), anyString(), eq(GlpiTicketSearchPage.class));
     }
 }

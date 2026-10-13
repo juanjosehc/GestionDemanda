@@ -25,14 +25,27 @@ package co.com.coltefinanciera.gestiondemanda.integration.glpi;
 public record GlpiDiscardedItem(String ticketId, GlpiDiscardReason code, String reason) {
 
     /**
-     * El descarte de un ticket, con su identificador tal como lo devolvio GLPI.
+     * Como se escribe un ticket que GLPI devolvio sin identificador.
+     *
+     * <p>Es una constante y no un texto suelto porque la usan dos respuestas —la del plan y la de la
+     * lectura de declaraciones— y dos sitios escribiendo el mismo hueco de la misma forma es como
+     * empiezan a escribirlo distinto.
+     */
+    public static final String SIN_IDENTIFICADOR = "(sin id)";
+
+    /**
+     * El identificador del ticket tal como viaja en una respuesta.
      *
      * <p>Un ticket sin {@code id} no tiene como nombrarse, y ese hueco se escribe en vez de dejarlo
      * nulo: es el mismo caso que el propio descarte {@code SIN_IDENTIFICADOR_TICKET} denuncia, y una
      * respuesta con el campo vacio se leeria como un fallo de la respuesta.
      */
+    public static String ticketIdOf(GlpiTicket ticket) {
+        return ticket.id() == null ? SIN_IDENTIFICADOR : String.valueOf(ticket.id());
+    }
+
+    /** El descarte de un ticket, con su identificador tal como lo devolvio GLPI. */
     static GlpiDiscardedItem of(GlpiTicket ticket, GlpiDiscardReason code, String reason) {
-        return new GlpiDiscardedItem(
-                ticket.id() == null ? "(sin id)" : String.valueOf(ticket.id()), code, reason);
+        return new GlpiDiscardedItem(ticketIdOf(ticket), code, reason);
     }
 }

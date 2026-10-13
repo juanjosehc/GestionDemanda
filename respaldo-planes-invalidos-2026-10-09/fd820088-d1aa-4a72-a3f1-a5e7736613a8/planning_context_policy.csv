@@ -1,0 +1,4 @@
+"id","displacement_policy","plan_id","severity","target_ownership_minutes","target_resolution_hours"
+"4","INMEDIATA","fd820088-d1aa-4a72-a3f1-a5e7736613a8","ALTO","15","4.0000"
+"5","POR_CAPACIDAD","fd820088-d1aa-4a72-a3f1-a5e7736613a8","MEDIO","15","8.0000"
+"6","POR_SATURACION","fd820088-d1aa-4a72-a3f1-a5e7736613a8","BAJO","15","12.0000"

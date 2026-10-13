@@ -1,0 +1,3 @@
+"id","allocated_date","developer_id","hours","plan_id","work_item_id","work_item_type"
+"5","2026-10-05","dev-1","6.0000","a93520bb-0dc9-41a5-b33f-2c725e68c480","INC-1","INCIDENTE"
+"6","2026-10-05","dev-1","4.0000","a93520bb-0dc9-41a5-b33f-2c725e68c480","REQ-1","REQUERIMIENTO"

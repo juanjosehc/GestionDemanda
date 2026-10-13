@@ -104,7 +104,7 @@ public record GlpiContract(
     }
 
     /**
-     * El contrato del API REST de GLPI tal como lo usa hoy el adaptador {@code glpi-rest-2}.
+     * El contrato del API REST de GLPI tal como lo usa hoy el adaptador {@code glpi-rest-3}.
      *
      * <p>Las tablas de estados son las mismas que estaban en {@link GlpiTicketMapper}, sin cambiar
      * ningun valor. {@code date} se declara opcional aunque el adaptador lo necesite para una
@@ -124,6 +124,15 @@ public record GlpiContract(
      * antes de esta integracion. {@code date_creation} no aparece en el mapa porque el adaptador no lo
      * lee; si la instancia real lo devuelve, el verificador lo reportara como campo no modelado, que
      * es exactamente la pregunta que hay que responder contra el GLPI de verdad.
+     *
+     * <p><strong>{@code users_id_assign} salio del mapa en la decision 159.</strong> Estaba declarado
+     * como opcional y no era un campo que GLPI tuviera: no llego nunca, y el filtro que se apoyaba en
+     * el devolvia siempre la lista vacia. Un campo inventado en el contrato es peor que uno ausente,
+     * porque este verificador no lo delata —opcional no obliga— y el fallo aparece lejos, como un plan
+     * vacio. Quien esta asignado a un ticket no se pregunta al ticket: se pregunta a
+     * {@code /search/Ticket} por la opcion de busqueda 5. Lo que el adaptador lee de un ticket esta
+     * declarado aqui; <em>como</em> se pregunta por quien lo tiene asignado no cabe en este mapa,
+     * porque no es un campo de la respuesta.
      */
     public static final GlpiContract REST_V1 = new GlpiContract(
             "glpi-contract-1",
@@ -156,6 +165,5 @@ public record GlpiContract(
                     Map.entry("urgency", Field.optional(Field.INTEGER)),
                     Map.entry("actiontime", Field.required(Field.INTEGER)),
                     Map.entry("date", Field.optional(Field.STRING)),
-                    Map.entry("time_to_resolve", Field.optional(Field.STRING)),
-                    Map.entry("users_id_assign", Field.optional(Field.INTEGER))));
+                    Map.entry("time_to_resolve", Field.optional(Field.STRING))));
 }

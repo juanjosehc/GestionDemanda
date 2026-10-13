@@ -51,7 +51,15 @@ import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiContractVerifi
 @EnabledIfEnvironmentVariable(named = "GLPI_VALIDACION", matches = "true")
 class GlpiContractValidationTest {
 
-    /** La misma ruta que usa el adaptador, para verificar el contrato que el adaptador lee. */
+    /**
+     * La ruta de tickets, que desde la decision 159 ya no es la que el adaptador usa para filtrar.
+     *
+     * <p>Se conserva porque responde una pregunta que la busqueda no responde igual: aqui los campos
+     * vienen con su nombre —{@code id}, {@code status}, {@code priority}— y en {@code /search/Ticket}
+     * vienen indexados por numero de opcion. Verificar aqui es comprobar que los campos que declara
+     * {@link GlpiContract#ticketFields()} existen y con que tipo; el filtro por tecnico es otra
+     * pregunta, y de esa se encarga el adaptador.
+     */
     private static final String PATH_TICKETS = "/Ticket?range=0-999";
 
     /** La misma ruta con un rango minimo: separa "el 206 es intolerable" de "el cuerpo no cabe". */
@@ -145,11 +153,12 @@ class GlpiContractValidationTest {
     /**
      * Que hace el cliente de la aplicacion con esa misma respuesta: es lo que el flujo vera.
      *
-     * <p>Tres sondas y no una, porque "falla" no es un hallazgo util. La primera es la llamada que
-     * hace el adaptador de verdad. La segunda lee el mismo cuerpo entero de una pieza, que es lo que
-     * rompe el limite de memoria del transporte. La tercera pide un rango minimo para separar dos
-     * causas que se parecen —que el codigo 206 sea intolerable, o que el cuerpo no quepa—. Sin la
-     * tercera, un fallo de tamano se leeria como un fallo de contrato.
+     * <p>Tres sondas y no una, porque "falla" no es un hallazgo util. La primera es la lectura por
+     * elementos, que es como el adaptador leia los tickets antes de la decision 159 y sigue siendo la
+     * forma de saber si un cuerpo grande se puede recorrer. La segunda lee el mismo cuerpo entero de una
+     * pieza, que es lo que rompe el limite de memoria del transporte. La tercera pide un rango minimo
+     * para separar dos causas que se parecen —que el codigo 206 sea intolerable, o que el cuerpo no
+     * quepa—. Sin la tercera, un fallo de tamano se leeria como un fallo de contrato.
      */
     private String readThroughClient(String sessionToken, Duration timeout) {
         return "getList(/Ticket?range=0-999) : " + probe(() ->

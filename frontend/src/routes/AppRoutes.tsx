@@ -1,11 +1,14 @@
 import { Route, Routes } from 'react-router-dom'
 
 import { MainLayout } from '@/layouts/MainLayout'
+import { Alerts } from '@/pages/Alerts'
 import { Calendar } from '@/pages/Calendar'
 import { Dashboard } from '@/pages/Dashboard'
+import { Declarations } from '@/pages/Declarations'
 import { Incidents } from '@/pages/Incidents'
 import { MetricDetail } from '@/pages/MetricDetail'
 import { NotFound } from '@/pages/NotFound'
+import { Renegotiations } from '@/pages/Renegotiations'
 import { Resources } from '@/pages/Resources'
 import { Settings } from '@/pages/Settings'
 import { ROUTES } from '@/routes/navigation'
@@ -16,10 +19,13 @@ export function AppRoutes() {
     <Routes>
       <Route element={<MainLayout />}>
         <Route index element={<Dashboard />} />
+        <Route path={ROUTES.alerts} element={<Alerts />} />
         <Route path={ROUTES.resources} element={<Resources />} />
         <Route path={ROUTES.calendar} element={<Calendar />} />
         <Route path={ROUTES.calendarPlan} element={<Calendar />} />
         <Route path={ROUTES.incidents} element={<Incidents />} />
+        <Route path={ROUTES.declarations} element={<Declarations />} />
+        <Route path={ROUTES.renegotiations} element={<Renegotiations />} />
         <Route path={ROUTES.metricDetail} element={<MetricDetail />} />
         <Route path={ROUTES.settings} element={<Settings />} />
         <Route path="*" element={<NotFound />} />

@@ -1,0 +1,65 @@
+Respaldo de planes invalidos (sin planning_context o sin planning_input)
+Generado: 2026-10-09T22:06:25.755939200Z
+Origen: jdbc:postgresql://localhost:5432/GestionDemandaDB
+Planes invalidos: 5
+
+== fd820088-d1aa-4a72-a3f1-a5e7736613a8 (dev-1 | 2026-10-05 15:33:40.483471-05)
+   plan_snapshot                     1 filas
+   planning_conflict                 0 filas
+   planning_context                  1 filas
+   planning_context_policy           3 filas
+   planning_input                    0 filas
+   planning_input_incident           0 filas
+   planning_input_requirement        0 filas
+   reschedule_event                  1 filas
+   work_allocation                   2 filas
+   work_block                        2 filas
+
+== 171d4d69-d27a-4e7e-ab1b-14214cf908e4 (dev-1 | 2026-10-05 15:33:21.926367-05)
+   plan_snapshot                     1 filas
+   planning_conflict                 0 filas
+   planning_context                  1 filas
+   planning_context_policy           3 filas
+   planning_input                    0 filas
+   planning_input_incident           0 filas
+   planning_input_requirement        0 filas
+   reschedule_event                  0 filas
+   work_allocation                   2 filas
+   work_block                        2 filas
+
+== a93520bb-0dc9-41a5-b33f-2c725e68c480 (dev-1 | 2026-10-05 15:08:11.401494-05)
+   plan_snapshot                     1 filas
+   planning_conflict                 0 filas
+   planning_context                  0 filas
+   planning_context_policy           0 filas
+   planning_input                    0 filas
+   planning_input_incident           0 filas
+   planning_input_requirement        0 filas
+   reschedule_event                  0 filas
+   work_allocation                   2 filas
+   work_block                        3 filas
+
+== 55c498de-16b7-48b5-ae3c-10760319feef (dev-1 | 2026-10-05 15:06:57.778661-05)
+   plan_snapshot                     1 filas
+   planning_conflict                 0 filas
+   planning_context                  0 filas
+   planning_context_policy           0 filas
+   planning_input                    0 filas
+   planning_input_incident           0 filas
+   planning_input_requirement        0 filas
+   reschedule_event                  0 filas
+   work_allocation                   2 filas
+   work_block                        3 filas
+
+== 7dcc0444-e4de-4a7e-ae03-a6d6456b8fc1 (dev-1 | 2026-10-05 15:06:56.593536-05)
+   plan_snapshot                     1 filas
+   planning_conflict                 0 filas
+   planning_context                  0 filas
+   planning_context_policy           0 filas
+   planning_input                    0 filas
+   planning_input_incident           0 filas
+   planning_input_requirement        0 filas
+   reschedule_event                  1 filas
+   work_allocation                   2 filas
+   work_block                        3 filas
+

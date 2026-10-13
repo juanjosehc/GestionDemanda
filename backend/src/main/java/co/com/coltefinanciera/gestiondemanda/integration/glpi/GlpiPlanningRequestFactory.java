@@ -1,5 +1,6 @@
 package co.com.coltefinanciera.gestiondemanda.integration.glpi;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import lombok.extern.slf4j.Slf4j;
 
+import co.com.coltefinanciera.gestiondemanda.domain.enums.WorkItemType;
 import co.com.coltefinanciera.gestiondemanda.domain.model.Developer;
 import co.com.coltefinanciera.gestiondemanda.domain.model.Incident;
 import co.com.coltefinanciera.gestiondemanda.domain.model.PlanningMetadata;
@@ -50,6 +52,13 @@ import co.com.coltefinanciera.gestiondemanda.exception.GlpiInvalidDataException;
  * agenda vacia y produce un plan vacio, que es la respuesta correcta a "este desarrollador no tiene
  * trabajo pendiente". Tratarlo como fallo obligaria a inventar una excepcion para el caso mas normal
  * de todos.
+ *
+ * <p><strong>La clasificacion de un ticket se hace una sola vez y la comparten los dos caminos.</strong>
+ * Esta clase no solo construye la peticion: expone {@link #verdicts} con lo que decidio de cada ticket,
+ * y es lo que lee la pantalla de declaracion. Podria haber sido un clasificador aparte, y habria sido
+ * el error: dos sitios decidiendo lo mismo acaban discrepando, y la discrepancia se ve como un ticket
+ * que la pantalla ofrece declarar y que el plan descarta igual. Aqui no hay dos decisiones que puedan
+ * separarse porque solo hay una.
  */
 @Slf4j
 @Component
@@ -88,43 +97,20 @@ public class GlpiPlanningRequestFactory {
     public Result build(String developerId, GlpiUser user, List<GlpiTicket> tickets,
             PlanningRules rules) {
         Developer developer = new Developer(developerId, displayName(developerId, user));
-        Map<String, PlanningMetadata> declared = declaredFor(tickets);
 
         List<Incident> incidents = new ArrayList<>();
         List<Requirement> requirements = new ArrayList<>();
         List<GlpiDiscardedItem> discarded = new ArrayList<>();
 
-        for (GlpiTicket ticket : tickets) {
-            // Primero GLPI: un ticket que no se puede ni nombrar no llega a preguntar por su
-            // declaracion, y tiene un solo motivo por el que esta fuera.
-            Optional<GlpiDiscardedItem> glpi = validator.rejection(ticket);
-            if (glpi.isPresent()) {
-                discarded.add(glpi.get());
-                continue;
-            }
-            PlanningMetadata metadata = declared.get(String.valueOf(ticket.id()));
-            List<GlpiDiscardedItem> faltantes = validator.missingDeclaration(ticket, metadata);
-            if (!faltantes.isEmpty()) {
-                discarded.addAll(faltantes);
-                continue;
-            }
-            if (mapper.isIncident(ticket)) {
-                Optional<Incident> incident = mapper.toIncident(ticket, metadata.estimatedHours());
-                if (incident.isPresent()) {
-                    incidents.add(incident.get());
-                } else {
-                    discarded.add(GlpiDiscardedItem.of(ticket, GlpiDiscardReason.TRADUCCION_FALLIDA,
-                            "no se pudo traducir la incidencia al dominio"));
-                }
+        // El recorrido lo decide verdicts(), que es el mismo que lee la pantalla de declaracion. Aqui
+        // solo se reparte lo que ya se decidio: lo traducido al motor, lo descartado a la respuesta.
+        for (Verdict verdict : verdicts(tickets)) {
+            if (verdict.incident() != null) {
+                incidents.add(verdict.incident());
+            } else if (verdict.requirement() != null) {
+                requirements.add(verdict.requirement());
             } else {
-                Optional<Requirement> requirement = mapper.toRequirement(ticket,
-                        metadata.estimatedHours(), metadata.committedDate());
-                if (requirement.isPresent()) {
-                    requirements.add(requirement.get());
-                } else {
-                    discarded.add(GlpiDiscardedItem.of(ticket, GlpiDiscardReason.TRADUCCION_FALLIDA,
-                            "no se pudo traducir la peticion al dominio"));
-                }
+                discarded.addAll(verdict.discards());
             }
         }
 
@@ -144,6 +130,174 @@ public class GlpiPlanningRequestFactory {
         }
 
         return new Result(new PlanningRequest(developer, incidents, requirements, rules), discarded);
+    }
+
+    /**
+     * Lo que la capa anticorrupcion decidio de un ticket, y con que lo decidio.
+     *
+     * <p>Es la unica clasificacion que existe. {@link #build} la usa para repartir los tickets entre el
+     * motor y los descartes, y la lectura de la pantalla de declaracion la lee tal cual. Las dos
+     * preguntas —«entra al plan?» y «que le falta a este ticket?»— son la misma, y por eso tienen una
+     * sola respuesta.
+     *
+     * @param ticket      el ticket tal como lo devolvio GLPI
+     * @param declaration su planificacion declarada, o {@code null} si nadie declaro nada
+     * @param reading     lo que el ticket dice de si mismo, ya traducido
+     * @param status      el estado de la clasificacion
+     * @param discards    por que no llego al motor; vacio si llego
+     * @param incident    la incidencia del dominio, o {@code null} si no lo es o no se pudo traducir
+     * @param requirement el requerimiento del dominio, o {@code null} si no lo es o no se pudo traducir
+     */
+    public record Verdict(
+            GlpiTicket ticket,
+            PlanningMetadata declaration,
+            Reading reading,
+            DeclarationStatus status,
+            List<GlpiDiscardedItem> discards,
+            Incident incident,
+            Requirement requirement) {
+
+        public Verdict {
+            discards = discards == null ? List.of() : List.copyOf(discards);
+        }
+    }
+
+    /**
+     * Lo que el ticket dice de si mismo, traducido, y que no depende de ninguna declaracion.
+     *
+     * <p>Se calcula en la misma pasada que la clasificacion porque sale del mismo mapeador y del mismo
+     * contrato. Hacerlo aparte obligaria a que quien lee supiera distinguir incidencia de peticion para
+     * saber que tabla de estados mirar, que es exactamente la regla que esta clase tiene en un solo
+     * sitio y que la capa anticorrupcion existe para no repartir.
+     *
+     * <p>Los tres campos son nulos cuando GLPI no permite saberlos —tipo desconocido, estado
+     * desconocido, fecha ilegible—, y el descarte que acompaña al veredicto dice cual falta y por que.
+     * Un nulo aqui no es un dato que se perdio: es un dato que GLPI no tiene.
+     *
+     * @param type      incidencia o peticion, {@code null} si el contrato no conoce el tipo
+     * @param status    el estado del dominio, {@code null} si no se puede traducir
+     * @param createdAt la fecha del ticket ya interpretada, {@code null} si no se puede leer
+     */
+    public record Reading(WorkItemType type, String status, Instant createdAt) {
+    }
+
+    /**
+     * La clasificacion de una agenda entera, con las declaraciones leidas en una sola consulta.
+     *
+     * <p>Es la puerta que usa la lectura de la pantalla de declaracion, y existe para que esa lectura
+     * no pueda tener su propia version de las reglas. El orden se conserva —es el de la lista que
+     * devolvio GLPI—: reordenar aqui seria introducir una politica de prioridad que no le toca a esta
+     * capa.
+     */
+    public List<Verdict> verdicts(List<GlpiTicket> tickets) {
+        Map<String, PlanningMetadata> declared = declaredFor(tickets);
+        return tickets.stream()
+                .map(ticket -> verdict(ticket, declared.get(workItemIdOf(ticket))))
+                .toList();
+    }
+
+    /**
+     * La clasificacion de un ticket.
+     *
+     * <p>El orden de las comprobaciones es el de siempre: primero GLPI —un ticket que no se puede ni
+     * nombrar no llega a preguntar por su declaracion y tiene un solo motivo por el que esta fuera—,
+     * despues la declaracion, y al final la traduccion. Quien decide cada paso son
+     * {@link GlpiTicketValidator} y {@link GlpiTicketMapper}; lo unico que se hace aqui es nombrar el
+     * resultado con {@link DeclarationStatus}.
+     *
+     * @param declaration la planificacion declarada del ticket, o {@code null} si no hay fila
+     */
+    public Verdict verdict(GlpiTicket ticket, PlanningMetadata declaration) {
+        Optional<GlpiDiscardedItem> glpi = validator.rejection(ticket);
+        if (glpi.isPresent()) {
+            return new Verdict(ticket, declaration, reading(ticket), DeclarationStatus.NO_TRADUCIBLE,
+                    List.of(glpi.get()), null, null);
+        }
+
+        List<GlpiDiscardedItem> missing = validator.missingDeclaration(ticket, declaration);
+        if (!missing.isEmpty()) {
+            return new Verdict(ticket, declaration, reading(ticket), statusOf(missing), missing,
+                    null, null);
+        }
+
+        if (mapper.isIncident(ticket)) {
+            Optional<Incident> incident = mapper.toIncident(ticket, declaration.estimatedHours());
+            return incident
+                    .map(found -> plannable(ticket, declaration, found, null))
+                    .orElseGet(() -> failed(ticket, declaration, "la incidencia"));
+        }
+        Optional<Requirement> requirement = mapper.toRequirement(ticket,
+                declaration.estimatedHours(), declaration.committedDate());
+        return requirement
+                .map(found -> plannable(ticket, declaration, null, found))
+                .orElseGet(() -> failed(ticket, declaration, "la peticion"));
+    }
+
+    /**
+     * El estado que nombran los codigos que el validador produjo.
+     *
+     * <p><strong>Se deriva de los codigos, no de los valores nulos.</strong> Volver a preguntar aqui si
+     * la estimacion es nula seria escribir por segunda vez la regla que ya decidio
+     * {@code missingDeclaration}, y el dia que esa regla cambie esta se quedaria atras sin que nada
+     * avisara. Los codigos son la unica fuente, y los dos que el validador puede devolver a la vez
+     * significan lo mismo que no tener declaracion: hay que declarar las dos cosas.
+     */
+    private static DeclarationStatus statusOf(List<GlpiDiscardedItem> missing) {
+        boolean estimacion = missing.stream()
+                .anyMatch(item -> item.code() == GlpiDiscardReason.SIN_ESTIMACION_DECLARADA);
+        boolean compromiso = missing.stream()
+                .anyMatch(item -> item.code() == GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
+
+        if (estimacion && compromiso) {
+            return DeclarationStatus.SIN_DECLARACION;
+        }
+        return estimacion ? DeclarationStatus.SIN_ESTIMACION : DeclarationStatus.SIN_COMPROMISO;
+    }
+
+    private Verdict plannable(GlpiTicket ticket, PlanningMetadata declaration,
+            Incident incident, Requirement requirement) {
+        return new Verdict(ticket, declaration, reading(ticket), DeclarationStatus.PLANIFICABLE,
+                List.of(), incident, requirement);
+    }
+
+    /**
+     * El veredicto de un ticket que paso la validacion y aun asi no se pudo traducir.
+     *
+     * <p>Es el descarte que {@link GlpiDiscardReason#TRADUCCION_FALLIDA} documenta como hoy
+     * inalcanzable, y se conserva por el mismo motivo que alli: el mapeador devuelve un {@code Optional}
+     * y el dia que sus condiciones y las del validador se separen, el ticket tiene que salir como
+     * descarte visible en lugar de desaparecer de las dos listas.
+     */
+    private Verdict failed(GlpiTicket ticket, PlanningMetadata declaration, String queEs) {
+        return new Verdict(ticket, declaration, reading(ticket), DeclarationStatus.NO_TRADUCIBLE,
+                List.of(GlpiDiscardedItem.of(ticket, GlpiDiscardReason.TRADUCCION_FALLIDA,
+                        "no se pudo traducir " + queEs + " al dominio")),
+                null, null);
+    }
+
+    /** Lo que el ticket dice de si mismo. El tipo decide que tabla de estados se consulta. */
+    private Reading reading(GlpiTicket ticket) {
+        if (mapper.isIncident(ticket)) {
+            return new Reading(WorkItemType.INCIDENTE, name(mapper.incidentStatus(ticket.status())),
+                    mapper.reportedAt(ticket).orElse(null));
+        }
+        if (mapper.isRequirement(ticket)) {
+            return new Reading(WorkItemType.REQUERIMIENTO,
+                    name(mapper.requirementStatus(ticket.status())),
+                    mapper.reportedAt(ticket).orElse(null));
+        }
+        // El tipo no esta en el contrato: no se sabe que es, asi que no se sabe su estado. Los dos
+        // nulos son la respuesta honesta, y el descarte TIPO_DESCONOCIDO dice por que.
+        return new Reading(null, null, mapper.reportedAt(ticket).orElse(null));
+    }
+
+    private static String name(Optional<? extends Enum<?>> value) {
+        return value.map(found -> found.name()).orElse(null);
+    }
+
+    /** El identificador del ticket como texto, o {@code null} si GLPI no lo dio. */
+    private static String workItemIdOf(GlpiTicket ticket) {
+        return ticket.id() == null ? null : String.valueOf(ticket.id());
     }
 
     /**

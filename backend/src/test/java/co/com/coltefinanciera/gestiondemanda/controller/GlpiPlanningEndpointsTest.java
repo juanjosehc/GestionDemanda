@@ -113,12 +113,12 @@ class GlpiPlanningEndpointsTest {
      */
     private static GlpiTicket incidencia(int id, Integer priority) {
         return new GlpiTicket(id, "Falla en produccion", 1, GlpiTicket.TYPE_INCIDENT, priority, null,
-                null, 21600L, null, "2026-10-05 09:00:00", 7);
+                null, 21600L, null, "2026-10-05 09:00:00");
     }
 
     private static GlpiTicket peticion(int id, Integer priority) {
         return new GlpiTicket(id, "Ajuste de reporte", 1, GlpiTicket.TYPE_REQUEST, priority, null,
-                null, 14400L, "2026-10-05 17:00:00", "2026-10-01 08:00:00", 7);
+                null, 14400L, "2026-10-05 17:00:00", "2026-10-01 08:00:00");
     }
 
     private void glpiResponde(GlpiTicket... tickets) {
@@ -184,9 +184,9 @@ class GlpiPlanningEndpointsTest {
         mockMvc.perform(get("/api/planning/{planId}/input", planId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.source").value("GLPI"))
-                // La version 2 es el corte: un plan con horas declaradas no se lee igual que uno con
-                // las horas de actiontime, y esta es la marca que los distingue.
-                .andExpect(jsonPath("$.adapterVersion").value("glpi-rest-2"))
+                // La version 3 es el ultimo corte: la 2 fue el cambio de donde salen las horas y la 3
+                // el cambio de ruta con el que se recuperan los tickets, que antes llegaba vacia.
+                .andExpect(jsonPath("$.adapterVersion").value("glpi-rest-3"))
                 .andExpect(jsonPath("$.extractedAt").isNotEmpty())
                 .andExpect(jsonPath("$.developerId").value(DEVELOPER))
                 .andExpect(jsonPath("$.incidents.length()").value(1))
@@ -232,7 +232,7 @@ class GlpiPlanningEndpointsTest {
     @DisplayName("Los tickets sin planificacion declarada se devuelven con sus motivos")
     void losTicketsSinDeclaracionSeDevuelven() throws Exception {
         GlpiTicket sinDeclaracion = new GlpiTicket(503, "Sin planificacion declarada", 1,
-                GlpiTicket.TYPE_INCIDENT, 3, null, null, 21600L, null, "2026-10-05 09:00:00", 7);
+                GlpiTicket.TYPE_INCIDENT, 3, null, null, 21600L, null, "2026-10-05 09:00:00");
         glpiResponde(incidencia(501, null), peticion(502, null), sinDeclaracion);
 
         mockMvc.perform(post("/api/planning/from-glpi")

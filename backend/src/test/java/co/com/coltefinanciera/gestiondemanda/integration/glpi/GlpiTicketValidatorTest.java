@@ -39,7 +39,7 @@ class GlpiTicketValidatorTest {
             String date, String timeToResolve) {
 
         return new GlpiTicket(id, "Ticket", status, type, 3, null, null, actiontime, timeToResolve,
-                date, 7);
+                date);
     }
 
     private static GlpiTicket validIncident() {
@@ -153,7 +153,7 @@ class GlpiTicketValidatorTest {
     @DisplayName("Sin prioridad el ticket se conserva: la severidad nula es un caso previsto")
     void sinPrioridadNoSeDescarta() {
         GlpiTicket sinPrioridad = new GlpiTicket(1, "Ticket", 1, GlpiTicket.TYPE_INCIDENT,
-                null, null, null, 3600L, null, "2026-10-05 09:00:00", 7);
+                null, null, null, 3600L, null, "2026-10-05 09:00:00");
 
         assertThat(validator.rejection(sinPrioridad)).isEmpty();
     }

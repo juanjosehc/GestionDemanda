@@ -2965,7 +2965,7 @@ La Fase 15 dejó el contrato expuesto y nadie lo consumía. El hueco estaba ya s
 2. **Perdería** `planningStatus`, `severity` y toda la capacidad, que es exactamente lo que el brief pide pintar.
 3. La convención de la casa para un DTO del backend ya existe y es otra: `types/glpi.ts` dice literalmente *«Espeja el DTO GlpiHealthResponse del backend»*. El timeline hace lo mismo.
 
-`types/resource.ts` **no se toca**. Sigue siendo el modelo de recursos previsto y `Resources.tsx` lo referencia en su texto; queda sin consumidores, y se declara aquí para que nadie lo lea como un olvido.
+`types/resource.ts` **no se toca**. Sigue siendo el modelo de recursos previsto y **queda sin consumidores**: entonces lo mencionaba el texto del marcador de `Resources.tsx`, y desde la Fase 21 —que convirtió esa página en la vista consolidada de equipo— ya no lo menciona nadie. Se deja en pie y se declara aquí para que nadie lo lea como un olvido: es el modelo de la gestión de recursos, que sigue pendiente, y borrarlo no adelantaría nada de ese trabajo.
 
 ### 135. CSS Grid propio, y por qué la librería puede esperar
 
@@ -3305,3 +3305,763 @@ Se listan los que esta fase toca. Los demás siguen como estaban en la Fase 18.
 | 85 | **`/alerts` cuesta una fotografía entera por petición** — recorre los planes vigentes igual que `/metrics` | **Bajo**: es el mismo O(planes) de los riesgos 71 y 75, **sin factor nuevo**, porque `/alerts` llama a `metrics()` una sola vez | Se acepta y se nombra. Cualquier caché sería un segundo camino hacia el dato, que es justo lo que la decisión 149 prohíbe: la fotografía dejaría de ser «de ahora» y la alerta podría hablar de un estado que ya no existe |
 | 86 | **Un plan vigente roto tumba las alertas enteras**, incluidas las tres declaradas, que no dependen de ningún plan | **Bajo**: hoy es inalcanzable, porque `save` escribe los tres en una transacción | Se acepta que propague, por el mismo motivo que la Fase 17 documentó en el riesgo 72: una lista de alertas sobre una fotografía incompleta diría que no hay problemas donde no se ha mirado. La alternativa —saltarse al desarrollador roto— daría un «todo bien» falso, que en una alerta es peor que un error |
 | 87 | **Siete `generatedAt` que deben ser el mismo instante** — el de la respuesta y el de cada una de las seis alertas | **Bajo**: hoy los siete se copian del mismo campo de la fotografía | No hay una segunda lectura del reloj: las siete fechas salen del `generatedAt` que la fotografía ya traía, así que no pueden diferir. Una prueba lo afirma comparando las seis contra la de la respuesta. El día que una alerta salga de otra fuente, su fecha ya está donde tiene que estar |
+
+---
+
+# Fase 20 — El centro de alertas operativas
+
+## Qué se hizo, en una frase
+
+La Fase 19 publicó las alertas y las dejó **sin consumidor**: la única forma de verlas era pedir el endpoint a mano. Esta fase las convierte en pantalla —`/alertas`, segunda entrada del menú lateral— y **no añade una sola regla**: consume exclusivamente `GET /api/planning/alerts`, pinta lo que recibe y filtra en memoria.
+
+La restricción del brief era literal —«no recalcular alertas, no generar alertas nuevas, no modificar contratos existentes»— y en vigor junto con las prohibiciones de la fase anterior: no tocar `PlanningEngine`, ni las reglas de negocio, ni la integración con GLPI, ni la Timeline, y no introducir correo, Teams, notificaciones push, schedulers ni jobs. Se cumplió sin excepciones: **el diff de la fase es enteramente del frontend** —ni una línea del backend, ni del motor, ni de la proyección de métricas— y **no se añadió ninguna dependencia**: todo lo que la pantalla usa ya estaba instalado.
+
+## Qué diferencia ver una alerta de recibirla
+
+Es la distinción que gobierna la fase, y conviene tenerla explícita porque el mismo dato cambia de oficio al cruzar la frontera.
+
+**Una alerta publicada es un dato; una alerta en pantalla es una decisión sobre qué mirar primero.** El endpoint ya contesta *qué urge*; lo que faltaba era poder mirarlo sin una terminal. De ahí salen las tres diferencias:
+
+| | El endpoint | La pantalla |
+|---|---|---|
+| **Qué ofrece** | Todas las condiciones que se cumplen, ordenadas | Las mismas, con la acción de abrir el desglose |
+| **Quién ordena** | El backend, por severidad y luego por catálogo | Nadie: la vista pinta en el orden recibido |
+| **Quién filtra** | Nadie: la proyección no acepta parámetros | La vista, en memoria, sobre la lista ya recibida |
+
+Y una consecuencia que hay que decir en voz alta: **la pantalla no puede ser más lista que el endpoint**. No cuenta, no prioriza y no consulta las métricas para comprobar nada. La única decisión que toma por su cuenta es **qué hacer con `detailUrl`**, y es de la que trata la decisión 151.
+
+## Las decisiones
+
+### 151. La traducción de `detailUrl` a una pantalla vive en el frontend, y se deriva en vez de escribirse
+
+La Fase 19 eligió publicar la ruta **de la API** y dejó escrito a quién le tocaba el viaje de vuelta: «traducirla a una pantalla, el día que haga falta, es del lado que ya sabe traducirla». Esta fase es ese día.
+
+La tentación era escribir la tabla a mano —cuatro pares de `detailUrl` a ruta de pantalla— y es exactamente lo que la decisión 148 descartó: el token `SIN_ESTIMACION` ya está escrito en `METRIC_GAPS` para el viaje de ida (token de la URL → constante de la API) y en la plantilla de `routes/navigation.ts`. Una tabla escrita a mano sería **la tercera copia de un hecho que ya tiene dos dueños**, y el síntoma de esas copias es conocido: una se actualiza y las otras no.
+
+**La vuelta se deriva de la tabla que ya existía.** `ALERT_DETAIL_TOKENS` se construye invirtiendo `METRIC_GAPS` y añadiendo el token de desplazados —el único que no sale de una carencia declarada—, de modo que una carencia nueva se traduce en los dos sentidos con una sola línea en el sitio de siempre. El coste de derivarla es una constante calculada al cargar el módulo; el beneficio es que no hay nada que mantener en sincronía.
+
+**Y una ruta que la aplicación no sabe abrir no se convierte en un destino.** `alertDetailPath()` devuelve nulo en dos casos distintos —la alerta no tiene desglose, o lo tiene y esta aplicación no sabe abrirlo— y la vista los distingue: el primero se dice con palabras, el segundo se enseña tal cual, en monoespaciada, como lo que es. La alternativa —un botón que lleva a una ruta inexistente, o una celda vacía— cambiaría un hueco mudo por una mentira. Es la misma regla que el brief pedía para el caso nulo —«no inventar destinos»— aplicada al caso que nadie había previsto.
+
+**El riesgo 81 queda atendido** por el lado que le tocaba: el backend sigue publicando rutas de su API, y el frontend las traduce en un solo sitio, con una prueba por destino.
+
+### 152. La vista no ordena: el orden de la pantalla es el de la respuesta
+
+El backend ya publica las alertas **de más grave a menos**, y el orden de declaración del catálogo es el desempate dentro de cada nivel. Un `sort` en el cliente sería una **segunda regla de prioridad**, invisible y encima de la primera: dos sitios decidiendo lo mismo, y el de la vista ganando sin que nadie lo haya pedido.
+
+Es la misma razón por la que la Fase 19 ordena en el servicio en vez de confiar en el orden de declaración del enum: **el orden es una decisión, y las decisiones se toman en un solo sitio**. La vista lo consume.
+
+**Que no ordene es difícil de demostrar mirando el código**, porque la ausencia de un `sort` se parece mucho a un olvido. Por eso la prueba le entrega la respuesta **al revés** y exige que la tabla salga al revés también: si alguien añadiera un orden —por severidad, por `count`, por lo que fuera— esa prueba cae, mientras que una prueba con la respuesta en orden pasaría igual con y sin `sort`.
+
+### 153. Los filtros son de la vista, y sus opciones salen de la respuesta
+
+Severidad y tipo, con `<select>` nativos que filtran **en memoria** el array ya recibido. No es una optimización: es que **no hay nada que consultar**. La proyección no acepta parámetros —es una fotografía, no una consulta—, así que filtrar en el servidor exigiría primero un contrato nuevo y después una fase que lo justificara; filtrar en la vista cuesta cero y no puede discrepar, porque opera sobre la misma lista que ya está en pantalla.
+
+**Las opciones salen de la respuesta, no de un catálogo escrito en la vista.** El backend dijo por escrito que el suyo vive en un solo sitio, y esta pantalla no lo necesita: los valores que ofrece son los que la lista ya trae, deduplicados en el orden en que llegaron —así que las severidades salen ya de más grave a menos—. La consecuencia práctica es la que se quiere: **un tipo nuevo aparece en el desplegable el día que el backend lo publica**, sin tocar el frontend.
+
+**Filtrar hasta vaciar la lista no es lo mismo que no tener alertas**, y la pantalla los escribe distinto: «Ninguna alerta coincide con los filtros» dice además cuántas se recibieron y que los filtros no vuelven a consultar nada; «Ninguna condición exige atención ahora» dice cuándo se evaluaron las condiciones. Confundirlos convertiría un filtro mal puesto en un «todo bien».
+
+## Riesgos identificados
+
+Se listan los que esta fase toca. Los demás siguen como estaban en la Fase 19.
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 88 | **Una ruta publicada que el frontend no sepa traducir** — un `detailUrl` nuevo se enseña en crudo en vez de como acción | **Bajo**: se dice en vez de fallar en silencio, y el caso nulo ya era parte del contrato | La celda distingue los dos nulos —no hay desglose / no sé abrirlo— y hay una prueba por cada uno. La mitad declarada de la tabla se deriva de `METRIC_GAPS`, así que solo un listado de forma nueva exigiría una línea |
+| 89 | **La identidad de una alerta es su `type`** — no hay identificador, y la `key` de la fila lo usa | **Bajo**: el catálogo es un enum y la proyección emite una alerta por constante, así que un `type` repetido es imposible por construcción | Las pruebas comparan la lista pintada con la recibida, y el fixture trae los seis tipos distintos: una fila perdida se nota en vez de pasar desapercibida |
+| 90 | **La pantalla no avisa** — hay que ir a mirarla; sin correo, sin Teams, sin push, sin scheduler | **Alto en su propósito, nulo como defecto**: es el alcance declarado de la fase, no una omisión | Se documenta como el centro de notificaciones en su forma mínima y se dice qué falta para notificar de verdad: el destinatario y la memoria de lo ya enviado. El contrato ya lleva la costura —`type`, `severity`, `detailUrl`, `generatedAt`— |
+| 91 | **El filtro sobrevive a la respuesta que lo justificaba** — si un `type` desapareciera de la lista con su filtro puesto, el desplegable no tendría con qué mostrarlo y la lista se vaciaría sin explicación | **Bajo hoy**: la aplicación no refresca al recuperar el foco (`refetchOnWindowFocus: false`) y el `staleTime` es de 30 segundos, así que la lista no cambia bajo un filtro vivo; el único camino sería reintentar tras un error, y en ese estado la tabla no está pintada | Se deja escrito en vez de guardarlo con código. Si algún día la pantalla se refrescara sola, la guarda es una línea: un filtro cuyo valor ya no viaja en la respuesta vuelve a «todos» |
+| 92 | **La tabla de alertas no cabe en un móvil** — cinco columnas con un ancho mínimo de 52rem | **Bajo**: es una pantalla de escritorio, como el resto del tablero | El contenedor hace scroll horizontal, que es el patrón que ya usan las tablas del tablero y del desglose |
+
+---
+
+# Fase 21 — La vista consolidada de equipo
+
+## Qué se hizo, en una frase
+
+El tablero ya enseñaba los cuellos de botella por desarrollador y la Timeline ya abría la agenda de **un** plan; lo que faltaba era **compararlos**. `/recursos` —la entrada **Recursos** del menú, cuya descripción ya decía «Equipo de desarrollo y su capacidad»— pone el plan vigente de cada uno al lado del otro, ordenable por cualquier columna, con la capacidad agregada y las alertas del conjunto.
+
+**No estrena backend, y eso es el resultado de un análisis, no una casualidad.** La restricción del brief era literal —«no modificar `PlanningEngine`, ni las reglas de negocio, ni la integración con GLPI, ni `PlanningMetadata`, ni los contratos existentes; no recalcular planificación»— y se cumplió sin excepciones: **el diff de la fase es enteramente del frontend**, no hay endpoint nuevo, ni entidad, ni tabla, ni columna, ni dependencia nueva.
+
+## Qué es esta vista, y qué no es
+
+El principio arquitectónico del brief gobierna todo lo demás, así que conviene tenerlo explícito: **la vista no crea un plan de equipo, no fusiona planes y no recalcula capacidad. Es una proyección de un plan vigente por desarrollador.**
+
+Eso descarta de entrada las tres cosas que una «vista de equipo» suele hacer y que aquí no se hacen:
+
+- **No suma personas.** No hay un «desarrollador» agregado ni un equipo ficticio: cada fila es una persona con su plan, y si una persona no tiene plan, no tiene fila.
+- **No fusiona planes.** Un desarrollador con tres snapshots guardados aporta **una** fila —la vigente, que el backend ya resolvió (decisión 139)—, y esa fila es **un** plan, no la unión de tres.
+- **No recalcula.** Las cifras de cada fila son las que el backend publicó para ese plan, y los tres agregados son los de `current.capacity`. La vista no resta, no recorta y no promedia.
+
+Lo único que la vista aporta es **comparación** —ordenar por una columna— y **navegación** hacia el detalle, que ya existía. Es deliberadamente poco, y es la razón por la que la fase cabe en el frontend.
+
+## Las decisiones
+
+### 154. No hay mini timeline por fila: la consolidación es una fila por plan, y el detalle se navega
+
+El brief pedía **evaluar** si debía existir una timeline consolidada, con mini timeline por fila o navegación a la individual, y **justificar la decisión**. La decisión es **navegar**, y el motivo es doble.
+
+**El coste.** Una mini timeline por fila no es un componente más: es **una petición por plan**, porque el timeline se sirve por `planId` y no hay una lectura del conjunto. Con diez desarrolladores, abrir la pantalla costaría once peticiones en vez de dos, y ese es exactamente el coste O(planes) que los riesgos 75 y 85 ya señalan. No hay endpoint agregado de agendas, y crearlo sería un contrato nuevo, que el brief prohíbe.
+
+**La corrección, que pesa más.** Una mini timeline **tendría que calcular capacidad día a día** —o leerla del timeline de cada plan— y ese cálculo puede discrepar de los totales que la fila muestra, que salen de otra respuesta. La vista pasaría a tener dos fuentes para la misma pregunta, y el día que discrepen no habrá forma de saber cuál manda. La decisión 149 escribió la regla para las alertas —una capa que no lee la base no puede discrepar de la métrica— y aquí vale igual: **una vista que no recalcula no puede contradecirse**.
+
+**Y no se pierde nada.** El día a día ya existe, completo y sin recortes, a un clic: el `planId` de cada fila enlaza a `/calendario/{planId}`, que es la agenda de la Fase 16 con sus tramos, sus días y su capacidad por jornada. La tabla sirve para decidir **a quién mirar**; el calendario, para ver **qué hace**. Meter el segundo dentro del primero sería duplicar una pantalla que ya está hecha para ahorrar un clic.
+
+### 155. La vista no estrena endpoint: es una proyección de `current.byDeveloper[]`
+
+El brief pedía, antes de crear endpoints, inspeccionar los existentes y **documentar la reutilización posible**, y solo añadir uno «si la información no puede obtenerse razonablemente a partir de lo ya existente».
+
+**La información ya viajaba publicada.** `current.byDeveloper[]` de `GET /api/planning/metrics` **ya era** «un plan vigente por desarrollador»: trae `developerId`, `planId`, `calculatedAt`, la ventana `from`/`to`, `capacity{availableHours, occupiedHours, remainingHours}` y `displacedRequirements`. Contrastado contra las columnas que el brief pedía —desarrollador, plan vigente, disponible, ocupada, restante, desplazados y alertas— **están todas**, y las alertas las sirve `GET /api/planning/alerts`, que el brief manda reutilizar explícitamente.
+
+**Añadir una ruta habría sido peor que redundante.** Un `GET /api/planning/team` habría sido **la tercera copia de un hecho que ya tiene dos dueños** —el tablero y las alertas—, con el síntoma conocido: una se actualiza y las otras no. Y, más grave, habría creado **un segundo sitio donde decidir qué plan manda** cuando un desarrollador tiene varios snapshots: hoy esa decisión vive en un solo lugar (decisión 139) y el contrato nuevo la habría duplicado en su propio servicio.
+
+**Lo que falta, falta en el contrato y no en la vista.** El único dato que la vista no puede mostrar es la **lista de personas del equipo**: no hay endpoint de recursos, y por eso un desarrollador sin plan vigente no aparece (riesgo 93). Eso no se resuelve con una ruta de consolidación —el dato no está en la base—, sino con el mantenimiento de recursos que sigue pendiente. La vista lo declara en vez de rellenarlo.
+
+### 156. Ordenar es del usuario, y el orden de partida sigue siendo el del backend
+
+La decisión 152 fijó que el centro de alertas **no ordena**, porque el backend ya manda las alertas de más grave a menos y un `sort` en el cliente sería una segunda regla de prioridad invisible. Esta fase pide lo contrario —«permitir ordenación visual»— y no hay contradicción: **son dos cosas distintas**.
+
+**Una alerta tiene un orden correcto y una tabla de equipo no.** Las alertas llegan priorizadas porque su orden *es* una decisión de negocio: qué urge más. Los planes de un equipo no tienen un orden correcto: «por restante» y «por desplazados» responden a preguntas distintas y ninguna es la verdadera. Cuando el orden es una decisión, se toma en un solo sitio y la vista lo respeta; cuando es una pregunta que hace quien mira, la vista la contesta.
+
+Así que la tabla arranca en el orden que entregó el backend —por `developerId`, con la vigencia ya resuelta— y **no impone ninguna prioridad propia**: mueve filas cuando alguien se lo pide. La cabecera es un `<button>` dentro del `<th>`, el primer clic ordena por esa columna y el segundo la invierte, y la dirección se declara en `aria-sort` para que un lector de pantalla sepa por dónde va la tabla —un `th` que solo cambia de color no dice nada a quien no lo ve.
+
+**Dos detalles que no son adorno.** Los números se comparan **como números**: una prueba fabrica un 9 y un 80, que ordenados como texto saldrían al revés, porque el fixture —cifras todas de dos dígitos— no puede poner esa propiedad a prueba por sí solo. Y los empates se rompen por `developerId`, para que el orden sea **estable**: sin desempate, dos filas con el mismo valor podrían intercambiarse entre renderizados y la tabla parecería moverse sola.
+
+**Ordenar no es consultar.** La prueba lo fija: después de ordenar dos veces, las peticiones siguen siendo las dos mismas.
+
+### 157. La correspondencia entre la tabla y las alertas se comprueba, no se programa
+
+El brief pedía «alertas activas por desarrollador», y ahí hay una tensión real que conviene no tapar: **las alertas no tienen dimensión de desarrollador** (riesgo 76). De las seis del catálogo, las cuatro declaradas son del conjunto —`planning_metadata` no guarda a quién se le asigna el trabajo— y solo las dos de capacidad hablan de personas, porque se calculan filtrando `byDeveloper[]`.
+
+La tentación era **repartir las alertas por fila**: pintar en cada desarrollador un badge si su restante es cero o negativo. Sería **la tercera copia de un predicado** que el backend ya aplica —la decisión 148 dejó escrito que el catálogo es el enum y que las condiciones no se reescriben en la vista— y, peor, crearía un segundo sitio donde decidir cuándo una fila «tiene alerta»: el día que el criterio cambie en el backend, la tabla seguiría coloreando con el viejo.
+
+**Lo que se hizo en su lugar fue no programar la correspondencia y sí comprobarla.** La fila muestra el estado de su capacidad —agotada o negativa, con los dos predicados que ya viven en `lib/capacity.ts` y que la tabla de cuellos de botella usa desde la Fase 18—, el panel muestra las alertas tal como el backend las publica, y una prueba afirma que **el número de filas en cada estado es exactamente el `count` de su alerta**. La correspondencia existe porque las dos cosas salen de la misma fotografía; la prueba es lo que impide que dejen de salir.
+
+**El panel de alertas falla por su cuenta.** Se lee en una consulta aparte, así que si su petición se cae, la tabla —que es la vista— sigue en pie y el fallo se declara en su tarjeta. Hay una prueba para eso, y es la razón por la que las dos consultas no se encadenan.
+
+### 158. Los duplicados se extrajeron a `lib/` en vez de copiarse por tercera vez
+
+La fase necesitaba tres cosas que ya existían en otro sitio, y las tres se movieron a un módulo compartido en vez de copiarse:
+
+| Qué | Dónde vivía | Dónde vive ahora |
+|---|---|---|
+| Los dos predicados de capacidad —restante agotado y negativo— y la ordenación de filas | `BottleneckTable` los guardaba en privado; `PlanningMetricsService` los aplica en el backend | `lib/capacity.ts` |
+| El formato del instante | Copiado en `Dashboard` y en `Alerts`, cada uno con su `Intl.DateTimeFormat` | `lib/format.ts` |
+| El color por severidad | Copiado en `Alerts` | `lib/alerts.ts` |
+
+**Es la misma regla que la decisión 151 aplicó a los tokens**, y por el mismo motivo: dos copias de un hecho acaban siendo dos hechos. El coste fue mover tres bloques pequeños y actualizar tres importaciones; el beneficio es que el día que el criterio de «agotado» cambie —o el formato de fecha— se cambia en un sitio, y que el mapa de severidad **es total sobre el enum**: añadir un nivel sin darle color no compila.
+
+**Y es la primera vez que esta aplicación puede hacerlo.** Las fases 18 y 20 dejaron escrito que copiaban `EmptyState` y el `<select>` de la Timeline porque **la Timeline era intocable** en aquellas fases. Aquí no había esa restricción: los tres duplicados estaban en archivos que esta fase sí puede tocar, así que no había excusa para una tercera copia.
+
+## Riesgos identificados
+
+Se listan los que esta fase toca. Los demás siguen como estaban en la Fase 20.
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 93 | **Un desarrollador sin plan vigente no aparece** — la vista consolida planes, no personas, y no hay endpoint de recursos que las liste | **Medio**: la tabla no es un censo del equipo, y quien la lea como tal creerá que faltan personas | Se declara por escrito en la propia tabla —«un desarrollador sin plan vigente no aparece»— y en el estado vacío. Resolverlo exige el mantenimiento de recursos, que sigue pendiente y no es de esta fase |
+| 94 | **La consolidación no garantiza ventanas iguales** — cada fila trae su `from`/`to`, y dos planes vigentes pueden cubrir periodos distintos si se calcularon en fechas diferentes | **Medio**: comparar «disponible» entre dos filas compara dos periodos, no dos personas | La ventana de cada plan viaja **visible en su fila**, junto al instante en que se calculó, así que la diferencia se ve en vez de suponerse. El agregado no se compara con nada: es el que publica el backend para el conjunto |
+| 95 | **La tabla no cabe en un móvil** — seis columnas con un ancho mínimo de 58rem | **Bajo**: es una pantalla de escritorio, como el resto del tablero | El contenedor hace scroll horizontal, el mismo patrón que las tablas del tablero, del desglose y del centro de alertas |
+| 96 | **La tabla y las alertas pueden venir de instantes distintos** — son dos consultas, y una puede refrescarse sin la otra | **Bajo**: la correspondencia que se prueba es entre dos respuestas de la misma fotografía, y las dos comparten `staleTime` de 30 s y no refrescan al recuperar el foco | El fallo de una no tumba la otra y se declara en su tarjeta. Si algún día las dos consultas se desacoplaran de verdad, la correspondencia pasaría a ser «aproximada» y habría que decirlo |
+| 97 | **El orden elegido no sobrevive a la navegación** — vive en el estado del componente, así que volver a la página lo devuelve al orden del backend | **Bajo**: es el comportamiento esperado de una acción de la vista, y perder el orden no pierde ningún dato | Se deja escrito en vez de guardarlo. Si se quisiera compartir un orden concreto, el sitio es la URL —el patrón de `/calendario/{planId}`—, y sería una decisión aparte |
+
+# Fase 22 — La recuperación de los tickets asignados
+
+## Qué se hizo, en una frase
+
+`POST /api/planning/from-glpi` devolvía cero tickets para cualquier desarrollador, y con ellos un plan vacío que parecía decir «esta persona no tiene trabajo». La causa no era el motor ni la planificación declarada: era que **el adaptador preguntaba por el técnico asignado en un sitio donde GLPI no lo publica**. Los tickets pasan a pedirse a `/search/Ticket` con la opción de búsqueda 5 —«Technician»— y el filtro lo hace el servidor. La ruta vieja, el campo `users_id_assign` y el filtro en memoria **se retiran**, no se dejan como respaldo.
+
+**Es la fase que desbloquea la declaración de planificación.** El brief lo dice y conviene repetirlo aquí: mientras la recuperación devolviera vacío, cualquier pantalla de declaración habría nacido mostrando una lista en blanco y su primer bug habría sido este.
+
+## La causa raíz, medida contra la instancia
+
+El adaptador anterior hacía dos cosas, y las dos están mal. Se midieron por separado, porque un fallo de transporte y un fallo de significado se arreglan en sitios distintos.
+
+**Uno: `users_id_assign` no existe.** `/Ticket?range=0-999` se trajo 1000 tickets y **ninguno** de los mil traía la clave. El contrato la declaraba como opcional, así que el verificador de contrato no protestaba —un campo opcional ausente no es un hallazgo— y el filtro en memoria, que comparaba `id.equals(ticket.assignedUserId())`, no encontraba nada y devolvía la lista vacía sin un solo aviso.
+
+| Ruta | HTTP | Content-Range | Bytes | Tickets | Con `users_id_assign` |
+|---|---|---|---|---|---|
+| `/Ticket?range=0-1` | 206 | 0-1/68097 | 11.425 | 2 | 0 |
+| `/Ticket?range=0-9` | 206 | 0-9/68097 | 37.070 | 10 | 0 |
+| `/Ticket?range=0-99` | 206 | 0-99/68097 | 309.874 | 100 | 0 |
+| `/Ticket?range=0-499` | 206 | 0-499/68097 | 2.894.183 | 500 | 0 |
+| `/Ticket?range=0-999` | 206 | 0-999/68097 | 8.198.977 | 1000 | 0 |
+
+**Dos: la ruta no servía ni para traerlos.** La misma llamada a través del cliente de la aplicación falla antes de llegar al filtro:
+
+```
+getList(/Ticket?range=0-999) : FALLO: GlpiConnectionException - GLPI respondio HTTP 206 en /Ticket?range=0-999: (cuerpo vacio)
+get(String) misma ruta       : FALLO: GlpiConnectionException - GLPI respondio HTTP 206 en /Ticket?range=0-999: (cuerpo vacio)
+getList(/Ticket?range=0-1)   : 2 tickets
+```
+
+La sonda pequeña es la que separa las dos explicaciones que se parecen. **No es el 206** —el rango mínimo también responde 206 y se lee entero—: es que **el cuerpo no cabe**. Ocho megabytes contra los 256 KB que el transporte guarda en memoria. La respuesta cruda se puede leer cuando se sube el búfer a 16 MB, que es lo que hace la captura del contrato: el servidor está bien y el que no llegaba era el cliente.
+
+El efecto observable era peor que un plan vacío: `POST /api/planning/from-glpi` con un desarrollador real respondía **`503 GLPI_UNAVAILABLE`**, sin plan y sin decir que el problema fuera de recuperación.
+
+## El contrato correcto
+
+**Quien tiene asignado un ticket no es un campo del ticket.** Es una fila de `Ticket_User` con `type = 2` (1 peticionario, 2 asignado, 3 observador), y `/Ticket` no proyecta esa relación. Por eso no hay ningún nombre de campo que buscar: no es que `users_id_assign` se llame de otra forma, es que **no hay campo**.
+
+GLPI publica la relación por la búsqueda. `/listSearchOptions/Ticket` declara que la **opción 5** se llama «Technician», apunta a `glpi_users.name` y cuelga de `Ticket.Ticket_User.User.name`, que es exactamente la pregunta. El criterio validado en la Fase 12 —`criteria[0][field]=5`, `searchtype=equals`— **sigue siendo correcto hoy**; lo que faltaba era una advertencia que entonces no se midió:
+
+**El valor del criterio tiene que ser el identificador numérico, no el login.** Con un nombre, la búsqueda no falla: GLPI castea el valor a cero y devuelve los tickets del usuario cero, que son tickets de nadie. Un dato falso es peor que un dato ausente, así que el adaptador **rechaza los identificadores no numéricos sin llegar a preguntar**: devuelve la lista vacía con un aviso y no hace ninguna llamada.
+
+| Usuario | Id | `/search/Ticket` opción 5 | Respuesta |
+|---|---|---|---|
+| JoseDiaz | 296 | `equals 296` | 1266 tickets |
+| JuanVill | 13 | `equals 13` | 1949 tickets |
+| LuisBran | 20 | `equals 20` | 0 tickets (de verdad no tiene ninguno) |
+
+La forma de la respuesta también cambia: la búsqueda **no devuelve un arreglo en la raíz**, devuelve un sobre con `totalcount`, `count` y `data`, y **omite `data` cuando no hay resultados**. Leerla con `getList` no habría funcionado ni con el búfer subido. Es la razón de que exista `GlpiTicketSearchPage`.
+
+## Las decisiones
+
+### 159. Los tickets asignados se preguntan a `/search/Ticket`, con la opción 5 y el identificador numérico
+
+#### 159.1 Se sustituye la estrategia, y la anterior se retira
+
+El brief pedía sustituir «la estrategia actual basada en `users_id_assign` por la estrategia documentada y validada: `/search/Ticket` + criterio Technician **si la inspección confirma las evidencias existentes**». La inspección las confirmó, y con un dato que refuerza la decisión: **el abandono de `users_id_assign` es definitivo, no un respaldo**.
+
+Se retiran las piezas, y por motivos distintos:
+
+- **`GlpiTicket.assignedUserId`** sale del DTO. Se retira en vez de dejarlo nulo porque un campo que nadie llena y nadie lee es una invitación a que alguien lo vuelva a usar. Una prueba comprueba que los componentes del registro ya no lo incluyen.
+- **`users_id_assign` sale de `GlpiContract`.** Y aquí hay una lección que va más allá de este campo: **un campo opcional inventado es peor que uno ausente**, porque este verificador no lo delata —`opcional` no obliga— y el fallo aparece lejos, como un plan vacío. La prueba nueva fija el mecanismo: si GLPI mandara `users_id_assign`, el veredicto seguiría siendo `COMPATIBLE` y el campo saldría en «no modelados». Eso es exactamente lo que hacía invisible el error.
+- **`PATH_TICKETS` (`/Ticket?range=0-999`) desaparece del adaptador.** Se conserva en la prueba de validación contra la instancia real, porque allí responde otra pregunta —los campos con nombre y su tipo— que la búsqueda no responde igual, porque devuelve las filas indexadas por número de opción.
+- **El filtro en memoria (`assignedTo`) se borra.** El filtro lo hace el servidor. No hay una segunda pasada que pueda quedarse corta.
+
+**La versión del adaptador sube a `glpi-rest-3`.** El javadoc de la constante dice que se sube «cuando cambia una traducción», y aquí lo que cambió fue la ruta. Importa porque un plan de la versión 2 con cero elementos puede significar «no tiene trabajo» o «la recuperación estaba rota», y son dos cosas que hay que poder separar al releerlo.
+
+#### 159.2 Se recorre la paginación entera, y una lectura corta no se devuelve
+
+`totalcount` es lo que hace verificable el recorrido: se sabe cuántos hay antes de terminar de leerlos. El adaptador pide páginas de mil hasta juntarlos todos y, si al final tiene menos de los que GLPI declaró, **lanza un fallo de datos en vez de devolver lo que alcanzó**. Devolver medio trabajo produce un plan que parece completo y no lo está, que es el fallo que esta fase deja atrás.
+
+Y son **tres desenlaces distintos**, que es lo que el brief pedía no confundir: sin tickets es una lista vacía —y el plan vacío que salga de ahí es la respuesta correcta—; un error de GLPI sale como error, para que nadie lo lea como «este desarrollador no tiene nada»; y una respuesta parcial es un fallo de datos con su cifra.
+
+#### 159.3 `forcedisplay` no es cosmética: es lo que hace que la página quepa
+
+El adaptador pide explícitamente los diez campos que sabe leer. La razón de contrato es que sin proyección GLPI devuelve las columnas que quiere y el DTO llega con nulos que parecen datos ausentes. Pero al medirlo apareció una segunda razón, y es la misma que hundía la ruta vieja:
+
+| Proyección | Página | Bytes | ¿Cabe en 256 KB? |
+|---|---|---|---|
+| Con `forcedisplay` (10 campos) | 1000 filas | 153.797 | Sí |
+| Con `forcedisplay` (10 campos) | 949 filas | 152.039 | Sí |
+| Sin `forcedisplay` | 1000 filas | 6.181.065 | No |
+| Sin `forcedisplay` | 949 filas | 3.215.493 | No |
+
+Sin la proyección, a un técnico GLPI le respondió directamente `HTTP 500`. No es una optimización: sin `forcedisplay` la ruta nueva fallaría igual que la vieja y por el mismo motivo.
+
+## La verificación funcional
+
+Mismo endpoint, mismo desarrollador, instancia real. El «antes» se capturó contra la aplicación en ejecución con el código anterior; el «después», contra el mismo proceso reconstruido.
+
+| | `developerId` | Resultado | Tickets recuperados |
+|---|---|---|---|
+| **Antes** | 296 | `503 GLPI_UNAVAILABLE` — `GLPI respondio HTTP 206 en /Ticket?range=0-999: (cuerpo vacio)` | **0** |
+| **Después** | 296 | `201`, plan `a6ef9b3d-…` | **1266** |
+| **Después** | 13 | `201`, plan `d862ca4f-…` | **1949** (dos páginas: 1000 + 949) |
+
+Los 1266 del primero coinciden exactamente con el `totalcount` que la instancia declara para ese técnico, y los 1949 del segundo con el suyo. Los dos aparecen en el registro del adaptador:
+
+```
+INFO  GlpiRestPlanningSource : GLPI devolvio 1266 tickets asignados al usuario 296
+INFO  GlpiRestPlanningSource : GLPI devolvio 1949 tickets asignados al usuario 13
+```
+
+**Los tickets recuperados se descartan todos, y eso es lo correcto.** Ninguno tiene `PlanningMetadata`, así que el criterio de la decisión 124.1 los descarta: 1266 tickets producen 2532 descartes —dos por ticket, `SIN_ESTIMACION_DECLARADA` y `SIN_COMPROMISO_DECLARADO`—, y el plan sale con cero elementos. Recuperar y planificar son dos preguntas distintas, y esta fase arregla la primera. El brief lo pedía así: «tickets recuperados > 0 **aunque después puedan ser descartados por falta de PlanningMetadata**».
+
+## Las pruebas
+
+Quince pruebas en `GlpiRestPlanningSourceTest`, reescritas alrededor de la búsqueda, y las seis preguntas del brief tienen su caso: la recuperación por técnico campo a campo; el criterio viajando a GLPI en vez de filtrarse en memoria; el recorrido de más de una página con la segunda petición en `range=1000-1999`; la búsqueda vacía como lista vacía; y los tres desenlaces —sin tickets, error, respuesta parcial— en una sola prueba que los distingue. **Ninguna prueba existente se debilitó**: las dos que afirmaban la versión del adaptador se actualizaron al corte nuevo, y las trece construcciones de `GlpiTicket` en otras pruebas de la suite perdieron el argumento que ya no existe.
+
+## Riesgos identificados
+
+Se listan los que esta fase toca. Los demás siguen como estaban en la Fase 21.
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 98 | **El volumen recuperado es real y grande** — un técnico puede tener 1949 tickets, y cada uno sin declaración produce dos descartes: la respuesta del endpoint pasa de kilobytes a 293 KB, y la lista de descartes deja de ser una lista corta que se lee de un vistazo | **Medio**: la respuesta es correcta pero deja de ser revisable a ojo, y el frontend no la pinta bien si crece más | Se mide y se deja escrito. Ordenar o limitar los descartes es una decisión de la vista de declaración, que es la fase siguiente. El filtro por estado del ticket sería la palanca natural, y hoy no se aplica |
+| 99 | **El identificador del desarrollador tiene que ser numérico** — `/User/{login}` devuelve un **arreglo** y el endpoint responde `502 GLPI_INVALID_DATA`, así que un login no sirve como `developerId` | **Medio**: quien llame al endpoint con el nombre del técnico recibe un error que no explica la causa | El adaptador ya rechaza los identificadores no numéricos sin preguntar y con un aviso claro. Convertir login a id —una lectura a `/User` que sepa leer el arreglo— no es de esta fase y no se hace a medias |
+| 100 | **La proyección es obligatoria para que la lectura quepa** — sin `forcedisplay` la página pesa 6,2 MB y la lectura falla con el búfer de 256 KB del transporte | **Medio**: quien añada una columna amplía el cuerpo, y quien quite `forcedisplay` rompe la recuperación entera | Está declarado en el javadoc de la constante con las cifras medidas, y la lista de campos es la misma que declara `GlpiContract`. Subir el búfer del cliente es la otra salida y no se tomó: son 8 MB por página en memoria para el mismo dato |
+| 101 | **Los tickets cerrados siguen llegando** — la búsqueda devuelve los tickets en cualquier estado, y ahora llegan en mayor número y visibles | **Bajo**: es paridad con la ruta anterior, que tampoco filtraba por estado, pero antes no se veía porque no llegaba ninguno | Se deja explícito. Filtrar por estado es una decisión de negocio —¿se planifica un ticket cerrado?— y le corresponde a la fase de declaración |
+
+---
+
+# Fase 23 — La lectura de las declaraciones de un técnico
+
+## Qué se hizo, en una frase
+
+La Fase 22 devolvió los tickets que faltaban, y con eso quedó a la vista la primera pregunta de la pantalla de declaración: **qué tiene asignado un técnico y qué le falta a cada cosa**. No la podía contestar `POST /api/planning/from-glpi`, que es un endpoint de escritura —pedirle el listado habría dejado un plan guardado por cada vez que alguien abre la pantalla—, así que aparece `GET /api/planning-metadata/declarations/{developerId}`: **una lectura, sin motor y sin escribir nada**. Lo único que hace es poner al lado las dos cosas que ya existían —los tickets de GLPI y la planificación declarada— y decir en qué estado está cada uno.
+
+**No estrena clasificación.** Esta es la fase en la que era fácil equivocarse: cinco estados nuevos son cinco reglas nuevas si se escriben en un servicio nuevo, y la pantalla acabaría ofreciendo declarar cosas que el plan descarta igual. El recorrido se extrajo al sitio donde ya vivía —`GlpiPlanningRequestFactory`— y las dos rutas lo comparten.
+
+## El análisis obligatorio: dónde vive hoy cada decisión
+
+El brief pedía documentar esto antes de tocar un archivo, y la respuesta es la que decide el diseño entero.
+
+**Qué método decide que un ticket entra al plan.** `GlpiPlanningService.plan` trae al usuario y sus tickets y llama a `GlpiPlanningRequestFactory.build`. Hasta esta fase, `build` decidía dentro del bucle: preguntaba al validador, mapeaba, y acumulaba lo que no pasaba. La decisión no estaba en un método con nombre —estaba en el orden de tres llamadas—, y eso es exactamente lo que hacía peligroso escribir una segunda versión: no había nada que reutilizar, solo algo que copiar.
+
+Las tres llamadas son las que deciden, y siguen siendo las mismas:
+
+| Quién | Qué decide |
+|---|---|
+| `GlpiTicketValidator.rejection` | Si el ticket es traducible. Es la política de la frontera |
+| `GlpiTicketValidator.missingDeclaration` | Si la planificación declarada alcanza. Es la decisión 124.1 |
+| `GlpiTicketMapper.toIncident` / `toRequirement` | Si el objeto del dominio se puede construir |
+
+**Qué condición produce cada código de descarte.** Los siete códigos del enum, con su condición real y su origen:
+
+| Código | Condición que lo produce | Origen |
+|---|---|---|
+| `SIN_IDENTIFICADOR_TICKET` | `ticket.id()` es nulo | GLPI |
+| `TIPO_DESCONOCIDO` | El `type` no es 1 ni 2, según el contrato | GLPI |
+| `ESTADO_DESCONOCIDO` | El `status` no está en la tabla de incidencias ni en la de peticiones | GLPI |
+| `FECHA_CREACION_ILEGIBLE` | La fecha del ticket no se puede interpretar. **Solo se exige en incidencias**: una petición sin fecha legible no se descarta por esto | GLPI |
+| `SIN_ESTIMACION_DECLARADA` | No hay fila, o la fila no tiene `estimatedHours` | Declaración |
+| `SIN_COMPROMISO_DECLARADO` | No hay fila, o la fila no tiene `committedDate` | Declaración |
+| `TRADUCCION_FALLIDA` | El mapeador devuelve vacío tras pasar el validador. **Hoy inalcanzable**, y se conserva como canario | Traducción |
+
+**Qué datos vienen de GLPI y qué datos de este sistema.** Es el corte de la decisión 124.2, y esta lectura lo hace visible campo a campo en el propio JSON, en `source`: de GLPI salen el identificador, el tipo, el estado, la prioridad, la fecha de creación y el título —que es lo único que el ticket dice de sí mismo—; de `planning_metadata` salen las horas, la fecha compromiso y sus autores. La respuesta **no calcula ninguno de los dos**: los publica.
+
+**Cómo se reutiliza sin escribir una segunda versión.** `build` se partió en dos: un recorrido —`verdicts(tickets)`, que lee las declaraciones en una consulta y clasifica cada ticket— y el reparto que `build` hace de ese recorrido entre el motor y los descartes. La lectura nueva consume el mismo `verdicts()` y no pregunta nada por su cuenta. Lo que sí se escribió es `statusOf`, que **nombra** el resultado: deriva de los códigos que el validador produjo y no vuelve a mirar los nulos, porque volver a preguntar «¿tiene estimación?» sería escribir la regla por segunda vez y dejarla desincronizarse el día que cambie.
+
+## Las decisiones
+
+### 160. La clasificación vive en la fábrica, y las dos rutas la consumen
+
+**Decisión.** `GlpiPlanningRequestFactory` expone `verdicts(List<GlpiTicket>)` y `verdict(GlpiTicket, PlanningMetadata)`, que devuelven un `Verdict` —el ticket, su declaración, lo que dice de sí mismo, su `DeclarationStatus`, sus descartes y el objeto del dominio si lo hay—. `build` los usa para repartir; `PlanningDeclarationService` los usa para responder. `DeclarationStatus` se deriva de los `GlpiDiscardedItem` que produjo el validador.
+
+**Motivo.** El brief lo prohíbe explícitamente —«la clasificación NO puede implementarse dos veces»— y la razón de fondo es peor que la duplicación: dos clasificaciones no fallan el mismo día, fallan cuando una cambia. Una pantalla que ofrece declarar un ticket que el plan descarta es un bug que no se ve hasta que alguien declara y el plan sigue vacío.
+
+**Alternativas descartadas.** Un `TicketClassifier` nuevo en `service/`, que habría sido la segunda copia con otro nombre. Un `DeclarationStatus` calculado en el DTO a partir de los nulos: habría vuelto a preguntar por lo que el validador ya decidió. Y derivar el estado del texto del descarte: el texto se reescribe, el código no.
+
+**Consecuencia.** La clasificación no se puede cambiar sin cambiar las dos rutas a la vez, que es justo lo que se quiere. El precio es que `GlpiPlanningRequestFactory` —que era una clase de traducción— ahora también es el dueño de una lectura, y su javadoc tiene que decir por qué. Se dice.
+
+**Verificación.** Una prueba afirma que lo que `build` mete al motor es exactamente lo que `verdicts` marca `PLANIFICABLE`, y que los descartes del plan son exactamente la unión de los de la lectura; y otra comprueba, ticket a ticket, que los códigos del veredicto son literalmente los que devuelven `rejection` y `missingDeclaration`.
+
+## La lectura, por dentro
+
+**`GET /api/planning-metadata/declarations/{developerId}`** convive con `GET /{workItemId}` sin ambigüedad de patrón: la ruta nueva tiene dos segmentos y la vieja uno.
+
+**Una consulta para toda la agenda.** `findByWorkItemIdIn` existía desde la decisión 124.2 para la capa anticorrupción, y esta lectura la reutiliza en vez de estrenar un camino. Preguntar la declaración dentro del bucle sería una consulta por ticket: con los 1949 de la Fase 22, esa es la diferencia entre una lectura y dos mil. Una prueba lo cuenta sobre un doble y exige que `findByWorkItemId` no se llame nunca.
+
+**Sin `@Transactional`, a propósito.** El método hace una llamada HTTP a GLPI y después una consulta. Abrir una transacción alrededor mantendría una conexión de base de datos retenida durante toda la espera de red —que en la instancia real son páginas de mil filas—, y no hay nada que atomicidad proteja aquí: es una lectura.
+
+**La declaración viaja con el contrato que ya existe.** Cada elemento lleva un `PlanningMetadataResponse`, no un resumen propio: quien vaya a modificarla desde la pantalla tiene delante lo que hay, con `commitmentOverdue` incluido, sin una segunda lectura ni una segunda traducción del mismo recurso que pudieran discrepar.
+
+**Los nulos son datos.** Un ticket de tipo desconocido no tiene `type` ni `status`; uno con fecha ilegible no tiene `createdAt`. Rellenarlos con algo «razonable» sería inventar el dato que el descarte denuncia. Y `declaration` es nulo cuando no hay fila —no un objeto vacío—, que es lo que permite distinguir «nadie declaró» de «hay fila con los dos valores retirados»: el código los junta en `SIN_DECLARACION` porque la acción es la misma, y el texto del descarte los separa para quien diagnostica.
+
+**Un técnico que no está en GLPI responde `404`**, igual que el flujo que planifica: un identificador equivocado no es «no tiene trabajo», y las dos cosas se parecerían demasiado.
+
+## Las pruebas
+
+Veinte nuevas, ninguna existente debilitada.
+
+**Nueve de la clasificación** (`GlpiPlanningRequestFactoryVerdictsTest`), sin Spring y con el repositorio sustituido por un doble: los cinco estados —planificable, sin estimación, sin compromiso, sin declaración, intraducible—; el ticket sin identificador, que no llega a preguntar por su declaración; la fila con los dos valores retirados, que cae en `SIN_DECLARACION` pero conserva el texto que la distingue; la consulta única sobre cuarenta tickets; y la consistencia entre las dos rutas.
+
+**Once del endpoint** (`PlanningDeclarationEndpointsTest`), con el puerto de GLPI sustituido: los cinco estados por HTTP, la mezcla de los cinco en una respuesta —con el orden de GLPI conservado—, el técnico sin tickets, una agenda de sesenta, el `404` del técnico inexistente, la procedencia declarada, y **que consultar no planifica**: se cuentan las filas de `planning_metadata`, su historia y los planes antes y después, y los tres números son los mismos.
+
+Las dos pruebas de consistencia son las que sostienen el diseño: si alguien escribiera una segunda versión de las reglas, son las que tienen que fallar.
+
+## Riesgos identificados
+
+Se listan los que esta fase toca. Los demás siguen como estaban en la Fase 22.
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 102 | **La respuesta crece con la agenda entera** — un técnico con 1949 tickets produce 1949 elementos con sus descartes: la respuesta deja de ser revisable a ojo y deja de ser barata de transportar | **Medio**: es correcta, pero la pantalla que la consuma tendrá que paginar o filtrar en el cliente, y el navegador carga con todo | Se mide y se deja escrito. No se pagina en esta fase porque el brief pedía una lectura consolidada y paginar antes de saber qué filtra la pantalla sería inventar la política. La palanca natural es el filtro por `declarationStatus`, y hoy no se aplica |
+| 103 | **Dos vocabularios de prioridad en la misma respuesta** — `priority` viaja cruda, en la escala 1..5 de GLPI, mientras el plan traduce a tres severidades | **Bajo**: quien lea el JSON puede creer que está viendo la severidad del dominio | El campo se llama `priority` y no `severity` a propósito, y el `source` dice que viene de GLPI. Exponer la severidad traducida sería publicar una decisión del mapeador sin el contexto que la explica |
+| 104 | **Los tickets cerrados aparecen en la lista** — la búsqueda no filtra por estado (riesgo 101), así que la pantalla de declaración enseñará trabajo que quizá ya no lo sea | **Bajo**: es paridad con lo que el plan recibe, pero aquí se ve | Se deja explícito. Filtrar por estado sigue siendo una decisión de negocio y no se toma a medias en la lectura |
+| 105 | **El identificador del técnico tiene que ser numérico**, igual que en el flujo que planifica (riesgo 99): un login responde `404` | **Bajo**: es coherente con el resto de la integración, y el mensaje dice que el usuario no está | No se convierte login a id aquí: sería una lectura a `/User` que sepa leer el arreglo, y no es de esta fase |
+
+
+---
+
+# Fase 24 — La pantalla de declaración
+
+## Qué se hizo, en una frase
+
+El backend ya sabía qué tiene asignado un técnico y qué le falta a cada ticket (Fase 23), y ya sabía guardar lo que el negocio declara sobre él (Fase 13). Lo que faltaba era el sitio donde una persona hace una cosa con la otra: **`/declaraciones`**, la pantalla que cierra el flujo `GLPI → tickets asignados → estimación → compromiso → PlanningMetadata`. **No estrena backend**: consume la lectura consolidada de la Fase 23, lee el recurso de un ticket antes de reemplazarlo y escribe con los dos endpoints que ya existían. La fase entera es frontend, y no se tocó una línea de `PlanningEngine`, de las reglas de negocio ni de `integration/glpi/`.
+
+**No estrena clasificación.** Es la obligación que la decisión 160 dejó escrita y que esta pantalla podría romper sin querer: pintar el estado de cada fila mirando si tiene horas y si tiene fecha es lo natural de escribir, y esa sería la segunda versión de la regla —la que no falla el día que se escribe, sino el día que cambia la del plan—. La tabla pinta `declarationStatus` y `discards[]` tal como llegan, y hay una prueba que se cae si alguien los deduce: un ticket con estimación y compromiso y estado `SIN_ESTIMACION` tiene que verse `SIN_ESTIMACION`.
+
+## El análisis obligatorio: qué había y qué no
+
+El brief pedía revisar el frontend entero y documentarlo antes de tocar un archivo. Lo que había:
+
+| Pieza | Qué se encontró |
+|---|---|
+| Convenciones visuales | `Card` con `CardHeader`/`CardContent`; tablas con `data-slot` y atributos `data-*` por fila, que son la costura de las pruebas; `Skeleton` que copia la forma de lo que está cargando; `EmptyState` con tono, icono, título, detalle y acción de reintento |
+| Estado | `useState` para lo que es de la vista —filtros, orden, selección—; TanStack Query para lo que es del servidor, con la clave exportada junto al hook que la usa |
+| Patrón de escritura | **No existía.** Ningún `useMutation`, ningún `useQueryClient` y ninguna `invalidateQueries` en todo `src/`: la aplicación era de solo lectura |
+| Decisiones que tocan el formulario | El `PUT` **reemplaza**: lo que no venga en el cuerpo queda nulo. El `POST` exige al menos uno de los dos valores. La fila existe aunque los dos valores estén retirados, así que el estado se pliega a `SIN_DECLARACION` con `declaration` no nulo |
+
+**Lo que no existía es la parte que decide el diseño.** Sin patrón de escritura previo, lo único que había era el de lectura, y la pregunta abierta era qué hacer después de escribir: recargar la página, refrescar todo o invalidar. La respuesta está en 161.2.
+
+**Tampoco había dónde elegir un técnico.** El backend no publica el padrón —la lista de personas del equipo sigue sin existir (riesgo 91)—, así que el selector es un campo de texto. Ofrecer un desplegable con nombres inventados sería afirmar que existen.
+
+## Las decisiones
+
+### 161. La escritura de la declaración lee antes de reemplazar
+
+**Decisión.** El formulario de un ticket que ya tiene declaración no se rellena con lo que traía el listado: abre una lectura fresca de `GET /api/planning-metadata/{workItemId}` y no enseña ningún campo hasta que llega. La escritura manda **siempre los dos valores**, con nulo para decir «retíralo». Para un ticket sin fila no hay nada que leer y el verbo es `POST`.
+
+**Motivo.** El `PUT` reemplaza. Rellenar con un dato de hace un minuto y guardar borra lo que alguien cambió en ese minuto, y no deja constancia de que se borró: el historial registra el cambio con su autor, que sería quien guardó sin saberlo. Enviar medio cuerpo tiene el mismo efecto: un formulario que mandara solo la fecha al guardarla borraría la estimación. La regla no es «leer por leer»: es que **el cuerpo que se manda tiene que describir el estado completo que se quiere dejar**, y para eso hay que conocer el estado actual.
+
+**Alternativas descartadas.** Rellenar con `item.declaration`, que ya viene en la lectura consolidada: es una foto del instante en que se consultó, y el listado puede llevar minutos en pantalla. Mandar solo los campos tocados: el `PUT` no sabe de campos tocados, y «no lo mandé» y «bórralo» son el mismo byte en el cuerpo. Un `PATCH`: sería un endpoint nuevo, y el brief prohíbe cambiar contratos.
+
+**Consecuencia.** Abrir el formulario de un ticket con declaración cuesta una petición. Es el precio de que guardar no destruya, y se paga al abrir, no al listar.
+
+**Verificación.** Una prueba abre el formulario de un ticket con declaración y afirma que la lectura del recurso va antes que la escritura; otra cambia solo la fecha y comprueba que el cuerpo lleva las horas igualmente.
+
+#### 161.1 El verbo lo decide la existencia de la fila, no el estado
+
+**Decisión.** `POST` cuando `declaration` es nulo, `PUT` cuando hay fila. La etiqueta del botón —«Declarar» o «Editar»— sale de lo mismo.
+
+**Motivo.** Un ticket con los dos valores retirados se clasifica `SIN_DECLARACION` —el código los junta porque la acción es la misma— pero **tiene fila**. Decidir por el estado mandaría un `POST` sobre algo que ya existe y el backend respondería `409`: la pantalla convertiría un caso normal en un error.
+
+**Alternativas descartadas.** Decidir por `declarationStatus`. Decidir por si los valores están presentes: es la misma trampa que 161.3, con el mismo desenlace.
+
+**Verificación.** Una prueba con la fila retirada —estado `SIN_DECLARACION` y `declaration` no nulo— afirma que se manda `PUT`.
+
+#### 161.2 La invalidación es selectiva: la lista se relee, el recurso solo se marca viejo
+
+**Decisión.** Tras una escritura se invalidan **dos claves y ninguna más**: la lista del técnico, que se relee en el acto —es lo que el usuario tiene que ver cambiar—, y el recurso del ticket, que solo se marca viejo (`refetchType: 'none'`). Nada se recarga: no hay `window.location`, ni un refresco de toda la pantalla.
+
+**Motivo.** La lista es el resultado visible de la escritura y no hay otra petición que lo traiga. El recurso del ticket, en cambio, se invalida cuando el formulario **todavía está montado** —se cierra justo después, en el `onSuccess` de la llamada—, así que releerlo en ese instante pediría exactamente los valores que se acaban de guardar. Marcarlo viejo consigue lo único que hace falta: que la próxima vez que se abra el formulario la lectura se rehaga y nadie escriba encima de un dato rancio.
+
+**Alternativas descartadas.** Recargar la página: tira lo que ya estaba bien y pierde el técnico consultado. Invalidar todo el árbol de `planning`: la fotografía operativa, las alertas y el timeline miden otras cosas, y sus consultas no cambiaron porque alguien declarara unas horas. No invalidar el recurso del ticket: el `staleTime` lo dejaría sirviendo valores viejos y el siguiente `PUT` los reenviaría como si fueran el estado actual —el fallo de 161, un minuto más tarde—.
+
+**Verificación.** Una prueba afirma la conversación entera, en orden: la lista, la lectura previa, la escritura y la relectura de la lista. Ni una petición más.
+
+#### 161.3 La pantalla no clasifica: consume el estado tal como llega
+
+**Decisión.** La columna de estado pinta `declarationStatus` y los `discards[]` —código y motivo— sin derivar nada. La prioridad se enseña cruda, en su escala 1..5, sin traducirla a severidad.
+
+**Motivo.** Es la obligación que la decisión 160 dejó del lado del backend, y el frontend es donde se rompe: basta un «si tiene horas, está estimado» para tener dos versiones de la misma regla. La segunda no falla el mismo día que la primera: falla cuando una cambia, y se manifiesta como una pantalla que ofrece declarar un ticket que el plan seguirá descartando.
+
+**Alternativas descartadas.** Deducir el estado de `declaration.estimatedHours` y `declaration.committedDate`. Traducir el código de descarte a un texto propio: el código es la regla aplicada y el motivo ya está en palabras; reescribirlo aquí sería la segunda copia otra vez, y la prueba que afirma que se enseña el motivo del backend no probaría nada.
+
+**Consecuencia.** La pantalla puede recibir una combinación que a ella le parezca imposible —valores completos con estado `SIN_ESTIMACION`— y la muestra, porque el backend es quien manda. La prueba que lo fija construye justo esa contradicción.
+
+**Verificación.** Esa prueba existe, y además afirma que consultar no produce ninguna escritura.
+
+## La pantalla, por dentro
+
+**Una ruta y una entrada de menú.** `/declaraciones`, con la etiqueta «Declaración» en el menú lateral. No hay subrutas: el formulario es un panel de la misma pantalla, no una página, así que abrir un ticket no pierde la lista ni el técnico consultado.
+
+**La pantalla no pregunta nada hasta que hay un técnico.** El estado inicial no consulta: no hay padrón que ofrecer, así que pedir por uno inventado sería afirmar que existe. El campo y el botón «Consultar» son el único camino a la primera petición.
+
+**Consultar cierra el formulario abierto.** Los tickets que van a llegar son otros, y dejar abierto el panel del técnico anterior con la lista del nuevo sería una pantalla que miente sobre a quién se le está declarando.
+
+**Tres desenlaces, y el vacío es uno de ellos.** Cargando, error con reintento y —la respuesta que importa— **un técnico sin tickets no es un error**: el `200` con la lista vacía se enseña como «este técnico no tiene tickets asignados» y no se inventa ninguna fila.
+
+**El formulario se monta después de la lectura.** Los tres campos toman su valor inicial en el propio `useState` porque el componente no existe hasta que el dato llegó: no hay efecto que sincronizar ni un instante en el que se pueda escribir encima de valores que todavía no se conocen. Cambiar de ticket lo remonta por `key`, que es lo que devuelve los campos a su sitio sin arrastrar lo escrito para otro.
+
+**Un solo botón de guardar.** La acción de la fila distingue «Declarar» de «Editar»; el botón del formulario dice «Guardar» siempre, porque dos etiquetas distintas pondrían dos botones llamados «Declarar» en la misma pantalla.
+
+**Los errores son del backend y se enseñan con sus palabras.** Un `400` de validación, un `404` y un `409` de conflicto dicen cosas distintas, y reescribirlos aquí sustituiría el diagnóstico por uno peor. El `409` es además un caso legítimo —alguien declaró primero— y no un fallo de la pantalla.
+
+**Ninguna lectura nueva, y ninguna por ticket.** La lista sale de la lectura consolidada de la Fase 23: una petición para toda la agenda. La declaración de cada ticket ya viaja dentro de su elemento, así que no hay una petición por fila —el N+1 que el brief prohíbe—.
+
+## Las pruebas
+
+Diez nuevas, en `src/pages/Declarations.test.tsx`, con `fetch` sustituido por un doble que sirve **por dirección y por método** y falla con el nombre de la petición si le llega una que no esperaba. Ese detalle es lo que convierte «la pantalla pidió otra cosa» en una prueba que se cae, y es lo que hace afirmables las dos que más importan: que la lectura va antes que la escritura y que no se pidió nada de más.
+
+**Las diez.** La carga correcta, con una sola petición y ninguna escritura. El técnico sin tickets, que declara el vacío sin tabla. Los cinco estados con su código y su motivo, tal como llegan. La creación, con el cuerpo del `POST` afirmado campo a campo. El reemplazo, con la lectura antes que la escritura. La invalidación selectiva, con la conversación entera en orden. El `400` y el `409`, con el mensaje del backend palabra por palabra. El formulario precargado, que cambia solo la fecha y comprueba que las horas viajan igualmente. Y la que sostiene 161.3: un ticket con valores completos y estado `SIN_ESTIMACION` se ve `SIN_ESTIMACION`.
+
+**Ninguna prueba existente se debilitó.** Las 76 que ya había siguen pasando sin cambiar una expectativa: la fase no tocó ningún componente que ya estuviera probado, y el `apiGet` que ya existía conserva su firma y su comportamiento —la extracción del cliente HTTP dejó el mismo contrato por delante—.
+
+## Riesgos identificados
+
+Se listan los que esta fase toca. Los demás siguen como estaban en la Fase 23.
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 106 | **La pantalla no pagina ni filtra** — el riesgo 102 se cumple aquí: un técnico con 1949 tickets pinta 1949 filas | **Medio**: el navegador carga con todas y la tabla deja de ser revisable a ojo | Se mide y se deja escrito. El filtro natural es `declarationStatus` y no se aplica en esta fase porque el brief pedía la pantalla de declaración, no la de consulta. La tabla se desplaza en horizontal, como la del centro de alertas (riesgo 92) |
+| 107 | **El técnico se escribe a mano** — no hay padrón que ofrecer, así que un login responde `404` y un identificador mal tecleado también | **Bajo**: el error se enseña con el mensaje del backend, que dice que el usuario no está | El campo es de texto porque el backend no publica la lista de personas (riesgo 91). Se convierte en desplegable el día que ese catálogo exista |
+| 108 | **`changedBy` lo teclea el operador** — no hay autenticación, así que la trazabilidad de quién declaró depende de que se escriba bien | **Medio**: el historial de `planning_metadata` es la auditoría de quién cambió qué, y su autor es un campo libre | Es la limitación que ya existía en el backend —la decisión 124 acepta el autor en el cuerpo—. La pantalla no la empeora ni la disimula: el campo es obligatorio y se ve |
+| 109 | **Los tickets cerrados aparecen** — el riesgo 104 se ve ahora en la pantalla y no solo en el JSON | **Bajo**: es paridad con lo que el plan recibe | Filtrar por estado sigue siendo una decisión de negocio, y la pantalla no la toma a medias |
+
+---
+
+# Fase 25 — El modelo de renegociación
+
+## Qué se hizo, en una frase
+
+El motor sabe desde la Fase 3 que un incidente le quita a un requerimiento su franja: lo mueve, deja un `RescheduleEvent` auditado, lo marca `DESPLAZADO` en el timeline y lo declara `PENDIENTE_DE_RENEGOCIACION`. Lo que no existía era **la operación con la que una persona confirma a qué fecha se llegó** —eso se habla por fuera del sistema, y el sistema no lo sabía—. Esta fase construye el modelo formal de esa renegociación y su lectura consolidada, `GET /api/renegotiations`, **sin tocar el motor**: no se recalcula capacidad, no se recalculan desplazamientos y no se altera la generación de ningún `RescheduleEvent`. La renegociación es una consecuencia humana de un desplazamiento ya detectado; el brief lo pedía como restricción y es además la única forma de que la fase no rompa nada de lo anterior.
+
+## El análisis obligatorio: cómo se detecta hoy un desplazamiento
+
+El brief pedía documentar cuatro cosas antes de escribir una línea. Las cuatro, con lo que hay:
+
+**1. Cómo se detecta hoy.** En `PlanningEngine.plan`, cada requerimiento se coloca en su `plannedDate` y fluye hacia delante hasta cerrarse (`capacity.claim`). Si el día en que cierra —`deliveredOn`, el último bloque— es el mismo que el pactado, no se movió nada y no se audita nada. Si es posterior, el motor resuelve **el incidente que causó la pérdida contra la fecha pactada** (`causingIncidentFor(plannedDate, ...)`: la franja que se perdió es esa, no la de destino), pide el par `(incidente, requerimiento)` al `RescheduleLedger` y, solo si el ledger se lo concede, emite el evento. La detección es, literalmente, **«el requerimiento cerró más tarde de lo que estaba pactado»**.
+
+**2. Qué representa exactamente un `RescheduleEvent`.** Una fila de auditoría con siete campos: `timestamp` (cuándo se auditó, del `Clock`), `incidentId`, `requirementId`, `originalDate` (la fecha pactada que se perdió), `rescheduledDate` (el día en que el requerimiento **cierra** tras el recálculo), `appliedRule` y `severity`. Tres propiedades que deciden el modelo: es **inmutable y de solo inserción**; es **uno por par `(incidente, requerimiento)`**, garantizado por el ledger —que es global y no por plan, así que el mismo par no se vuelve a emitir nunca y el sello del evento es estable entre recálculos—; y `incidentId` **puede ser nulo**, porque un requerimiento también se desplaza por falta de capacidad sin que haya ningún ticket que lo cause.
+
+**3. Qué información ya existe.** Todo lo que rodea al desplazamiento: qué requerimiento, qué incidente lo movió (o que no hubo ninguno), de qué fecha a qué fecha, con qué regla y con qué severidad, en qué plan, de qué desarrollador y cuándo se auditó. Y el estado derivado `RequirementStatus.PENDIENTE_DE_RENEGOCIACION`, que el motor produce al leer el timeline.
+
+**4. Qué falta.** **La fecha acordada, quién la acordó y cuándo se registró.** Y falta por una razón que no es un olvido: `rescheduledDate` es **dónde quedó el requerimiento**, no **qué se prometió**. El motor puede decir «lo moví del 20 al 27 de octubre» y no puede decir si a quien lo pidió se le comunicó el 30. Esa frase es la frontera entera de la fase: el sistema sabe lo que hizo y no sabe lo que se habló.
+
+## Los tres modelos, comparados
+
+| | A · Reutilizar `RescheduleEvent` | B · Agregado propio | C · Solo historial |
+|---|---|---|---|
+| **Cómo** | Añadir `agreedDate`/`agreedBy`/`agreedAt` a la tabla del evento | `renegotiation` + `renegotiation_history`, espejo de `PlanningMetadata` | Una tabla de cambios sin fila vigente |
+| **A favor** | Cero tablas nuevas; el acuerdo queda pegado a su causa | Separa lo que produce el motor de lo que produce una persona; el acuerdo abarca varios eventos; da fila que bloquear para el `PUT` | Menos tablas |
+| **En contra** | Mezcla dos productores en una tabla; **un acuerdo no cabe en un evento** —un requerimiento movido por dos incidentes tiene un acuerdo y dos eventos, y atarlo obligaría a elegir—; el motor escribiría en una tabla que ya no es solo suya | Dos tablas nuevas | El `PUT` lee antes de reemplazar y no tendría fila que bloquear; el estado vigente habría que deducirlo del último cambio en cada lectura |
+| **Veredicto** | Descartado | **Elegido** | Descartado |
+
+**El argumento que decide es la cardinalidad, no la elegancia.** A falla por un hecho del dominio: un acuerdo es sobre el requerimiento y un desplazamiento es sobre un par `(incidente, requerimiento)`, así que la relación es de uno a muchos y el acuerdo no cabe en la tabla del «muchos». C falla por una operación concreta: `PUT` lee el estado antes de reemplazarlo —igual que la declaración, decisión 161— y sin fila vigente no hay nada que leer ni que bloquear contra dos peticiones simultáneas.
+
+## Las decisiones
+
+### 162. La renegociación es un agregado propio con historial de solo inserción, y no una extensión del desplazamiento
+
+**Decisión.** `renegotiation` guarda el acuerdo vigente por `workItemId` —clave natural, sin clave foránea al desplazamiento ni al plan—, y `renegotiation_history` guarda cada cambio de fecha con su autor y su sello. Es la misma forma que `PlanningMetadata` y su historial, y por las mismas razones.
+
+**Motivo.** Son **dos hechos de dos productores distintos**: el desplazamiento lo produce el motor al planificar y el acuerdo lo produce una persona al hablar. Meterlos en la misma tabla haría que el motor escribiera en una tabla que ya no es solo suya, y que una consulta de auditoría del motor tuviera que filtrar filas humanas. Y el acuerdo **no cabe** en un evento: un requerimiento movido por dos incidentes tiene dos eventos y un solo acuerdo, así que atarlo a un evento obligaría a elegir cuál de los dos —una elección arbitraria que el modelo no debe permitir—.
+
+**Alternativas descartadas.** Las dos de la tabla de arriba, con su motivo.
+
+**Consecuencia.** Dos tablas y una entidad nuevas. A cambio, la auditoría del motor sigue siendo solo del motor, y el acuerdo tiene su propia historia.
+
+**Verificación.** Una prueba registra un acuerdo sobre un requerimiento movido por dos incidentes y afirma que hay **una** fila con **dos** eventos.
+
+#### 162.1 El estado se deriva del acuerdo y los desplazamientos, y no se guarda
+
+**Decisión.** `PENDIENTE_DE_ACUERDO` y `ACORDADA` **no son columnas**: se calculan en cada lectura comparando el acuerdo vigente con los desplazamientos del plan.
+
+**Motivo.** Es lo que impide que el estado y los hechos se separen. Guardarlo obligaría a acordarse de actualizarlo en cada recálculo del plan —un plan nuevo puede añadir un desplazamiento que reabre la renegociación—, y el día que alguien olvidara esa escritura el sistema afirmaría que un requerimiento está acordado mientras el timeline enseña un desplazamiento sin cubrir. Derivarlo cuesta una comparación y no puede mentir.
+
+**Alternativas descartadas.** Una columna `status` en `renegotiation`: es el mismo dato escrito dos veces, con dos sitios donde puede quedar viejo. Ponerlo en `RequirementStatus`: ese enum es del motor y de su salida.
+
+**Consecuencia.** El estado es una función de `(acuerdo vigente, desplazamientos del plan vigente)`, y por eso un recálculo del plan lo cambia sin que nadie escriba nada.
+
+**Verificación.** Una prueba registra un acuerdo, mete un desplazamiento posterior y afirma que la fila vuelve a `PENDIENTE_DE_ACUERDO` **sin que se haya tocado la tabla de acuerdos**.
+
+#### 162.2 Los estados se llaman `PENDIENTE_DE_ACUERDO` y `ACORDADA`
+
+**Decisión.** El enum `RenegotiationStatus` se cierra en esos dos valores. **No** se usa la pareja `PENDIENTE_RENEGOCIACION` / `RENEGOCIADO` que el brief proponía como ejemplo.
+
+**Motivo.** `RequirementStatus.PENDIENTE_DE_RENEGOCIACION` **ya existe** desde la Fase 3 y significa otra cosa: es el estado al que **el motor** lleva un requerimiento cuando un incidente le quita su franja —derivado, de salida, nunca persistido, nunca traducido de GLPI—. El brief prohíbe introducir estados redundantes, y dos nombres casi iguales para dos hechos distintos —«el requerimiento necesita renegociación» y «el acuerdo está hecho»— es exactamente eso: la clase de pareja que un lector confunde y que un `grep` no distingue. `PENDIENTE_DE_ACUERDO` / `ACORDADA` nombran el hecho que esta lectura sí deriva: si hay un acuerdo que cubre lo desplazado.
+
+**Alternativas descartadas.** La pareja del brief. Reutilizar `RequirementStatus` directamente: mezclaría un estado del motor con uno de la lectura y haría imposible tener los dos a la vez —un requerimiento puede estar `PENDIENTE_DE_RENEGOCIACION` para el motor y `ACORDADA` para el acuerdo—.
+
+**Consecuencia.** Hay dos vocabularios, y son distintos a propósito: `RequirementStatus` habla de lo que el motor hizo con el requerimiento, `RenegotiationStatus` de lo que las personas acordaron sobre él.
+
+**Verificación.** Una prueba afirma que un acuerdo que cubre los desplazamientos deja la fila `ACORDADA`, y que el `RequirementStatus` del motor no participa en esa decisión.
+
+#### 162.3 Un acuerdo cubre los desplazamientos anteriores a su sello
+
+**Decisión.** `covers(displacementAt)` es `!displacementAt.isAfter(agreedAt)`. La fila está `ACORDADA` cuando **todos** los desplazamientos vigentes del elemento están cubiertos, y `PENDIENTE_DE_ACUERDO` en cualquier otro caso —incluido el de un elemento sin acuerdo—.
+
+**Motivo.** Es la única comparación posible con lo que hay: lo que se sabe de un desplazamiento es **cuándo se auditó** y lo que se sabe de un acuerdo es **cuándo se registró**. La comparación funciona porque los sellos son estables: el ledger es global y por par `(incidente, requerimiento)`, así que recalcular el plan **no vuelve a emitir** un evento ya emitido y su `timestamp` no se mueve. Sin esa propiedad la comparación parpadearía entre recálculos. Y el `allMatch` es lo que hace que un incidente **posterior** reabra la renegociación: el acuerdo viejo cubre el desplazamiento viejo y no el nuevo, así que la fila vuelve a `PENDIENTE_DE_ACUERDO` **con el acuerdo anterior todavía visible** —esconderlo borraría la explicación de por qué la fecha acordada ya no sirve—.
+
+**Alternativas descartadas.** Cubrir «todo lo que haya hoy» sin comparar sellos: un incidente posterior sobre un requerimiento ya renegociado se vería `ACORDADA`, que es justo el caso que hay que poder distinguir. Cubrir «solo el último desplazamiento»: un requerimiento movido dos veces y acordado una se vería acordado con el primero sin cubrir.
+
+**Consecuencia.** Un desplazamiento en el **mismo instante** que el acuerdo queda cubierto (`isAfter` y no `isBefore`): el orden entre dos hechos del mismo sello no es deducible, y suponer que el incidente llegó después inventaría una renegociación pendiente que nadie pidió.
+
+**Verificación.** Tres pruebas: el acuerdo posterior cubre; el incidente posterior reabre y conserva el acuerdo visible; el mismo instante queda cubierto.
+
+#### 162.4 El desplazamiento no se toca: la renegociación se añade al lado
+
+**Decisión.** Registrar un acuerdo no escribe en `reschedule_event`, ni en `plan_snapshot`, ni en ninguna tabla del plan. El `RescheduleEvent` sigue ahí, el timeline histórico no cambia, y un requerimiento desplazado **no desaparece de la lectura al renegociarse**: pasa de `PENDIENTE_DE_ACUERDO` a `ACORDADA`.
+
+**Motivo.** Es la regla que el brief fija y es además la que hace útil la lista. La lectura consolidada es **la historia de lo que se movió**; si lo resuelto desapareciera, no habría forma de responder por qué la fecha de un requerimiento no es la que se le prometió al usuario. Y borrar el desplazamiento destruiría la única prueba de que hubo uno.
+
+**Alternativas descartadas.** Marcar el evento como «resuelto»: obligaría a escribir en la tabla del motor y a decidir qué pasa cuando el plan se recalcula. Quitar de la lista lo acordado: es la vista la que decide qué enseñar, y el contrato no debe impedírselo.
+
+**Consecuencia.** El consumidor recibe siempre los desplazamientos, y el estado es lo que le dice qué está resuelto. La pantalla futura puede filtrar sin que el contrato cambie.
+
+**Verificación.** Una prueba afirma que la fila acordada **sigue trayendo** su evento, con su incidente y sus dos fechas intactas.
+
+### 163. La lectura consolidada se apoya en la de desplazamientos, y no recorre los planes por su cuenta
+
+**Decisión.** `RenegotiationService.renegotiations()` llama a `PlanningMetricsService.displaced()` —la misma lectura de la que sale la tarjeta de desplazamientos del tablero— y le pega a cada elemento su acuerdo, buscado **para todos a la vez** con `findByWorkItemIdIn`.
+
+**Motivo.** Es la misma razón por la que las alertas son una proyección de las métricas (Fase 19): si esta lista se armara aparte, podría discrepar de la tarjeta de desplazamientos y no habría forma de saber cuál de las dos miente. Una sola fuente, dos presentaciones. Y la consulta por lote es lo que evita que la lectura cueste una consulta por desplazado, que con una agenda de verdad son decenas —el mismo N+1 que la declaración evita desde la Fase 23—.
+
+**Alternativas descartadas.** Recorrer los planes vigentes desde `PlanSnapshotRepository`: sería la tercera copia de la regla de vigencia —«el plan más reciente de cada desarrollador por `created_at`», decisión 139—, y el día que esa regla cambie habría tres sitios que actualizar. Preguntar el acuerdo de uno en uno: N+1.
+
+**Consecuencia.** Esta fase **no añade ni un método a `PlanSnapshotRepository`** y no toca `PlanningMetricsService`: la lectura que necesita ya existía entera.
+
+**Verificación.** Una prueba compara el número de filas de `/api/renegotiations` con el que publica `/api/planning/metrics/displaced`, leído en la misma prueba y no escrito a mano.
+
+## La lectura consolidada, por dentro
+
+**Una fila por elemento desplazado, no por evento.** Un requerimiento movido por dos incidentes es **una** fila con dos eventos: el acuerdo es uno, y repetir la fila por cada causa multiplicaría el mismo acuerdo. El resumen publica `displaced`, `pending` y `agreed`, y `displaced == pending + agreed` por construcción.
+
+**Un elemento sin acuerdo sigue en la lista.** `renegotiation` viaja nulo y el estado lo dice. No se omite: omitirlo convertiría la lista en «lo que falta» y perdería el histórico de lo ya resuelto, que es la mitad de la trazabilidad.
+
+**Un elemento con acuerdo pero sin eventos auditados no se da por acordado.** No ocurre —el timeline solo marca `DESPLAZADO` a quien tiene un evento que lo justifique, y las dos cosas salen del mismo `rescheduleEvents` del plan— pero si ocurriera no habría sello con el que comparar, y darlo por acordado escondería una renegociación pendiente. La respuesta honesta es «pendiente», y hay una prueba que fija esa rama.
+
+**La ausencia de fila y la ausencia de acuerdo son la misma cosa.** `agreedDate` no admite nulo: no hay un «acuerdo vacío» que representar. Es la diferencia con `PlanningMetadata`, donde los dos valores son independientes y cualquiera puede faltar; aquí hay uno solo y es obligatorio.
+
+**El historial de un elemento sin acuerdo es una lista vacía, no un `404`.** Lo que se pregunta ahí es el historial, y «no ha pasado nada» es una respuesta completa a esa pregunta. `GET /{workItemId}` sí responde `404`, porque ahí sí se pregunta por un recurso que no existe.
+
+**El `409` se captura fuera de la transacción.** `create` no lleva `@Transactional`, a propósito: la inserción corre en su propia transacción —la del adaptador— para que la violación de la clave primaria se pueda capturar ya deshecha y traducir a conflicto. Capturarla dentro no serviría: una transacción marcada para deshacer no puede confirmar nada después. Es el mismo reparto que la declaración.
+
+**`update` sí lleva `@Transactional`**, porque lee con bloqueo antes de calcular el cambio: dos peticiones simultáneas que leyeran la misma fecha y escribieran cada una la suya dejarían un historial que afirma dos cambios partiendo del mismo punto.
+
+**El sello solo se renueva si la fecha cambia.** Reenviar la misma fecha no mueve `agreedAt` ni cambia de autor: si no hubo cambio, no hay cambio que atribuir. Es la misma regla que sigue `PlanningMetadata.declaredWith`, y por la misma razón.
+
+## Los siete casos límite
+
+| Caso | Qué pasa |
+|---|---|
+| **Múltiples desplazamientos sobre el mismo requerimiento** | Una fila con un evento por causa, y un acuerdo. Está `ACORDADA` solo si el acuerdo es posterior al último |
+| **Renegociación repetida** | El `PUT` reemplaza la fecha y anota el cambio; **no** crea un acuerdo nuevo ni apila acuerdos. Reenviar la misma fecha no escribe historial |
+| **Requerimiento ya cerrado en GLPI** | No cambia nada: la lectura no consulta GLPI ni mira el estado del ticket. El acuerdo es sobre el requerimiento desplazado, y el desplazamiento está en el plan |
+| **Requerimiento desaparecido** | Si el plan vigente ya no lo desplaza, no aparece en la lista. El acuerdo **sigue guardado** —es historia— y `GET /{workItemId}` lo devuelve |
+| **Desarrollador sin plan vigente** | No aporta desplazamientos, así que no aporta filas. No es un error: es un desarrollador sin agenda calculada |
+| **Incidente posterior sobre un requerimiento ya renegociado** | La fila vuelve a `PENDIENTE_DE_ACUERDO` y el acuerdo anterior sigue visible, que es lo que deja ver que hubo uno y que se movió después |
+| **Múltiples incidentes simultáneos** | Una fila con un evento por incidente. El acuerdo posterior cubre los dos |
+
+## Las pruebas
+
+Veinte nuevas, en `RenegotiationServiceTest`, sin Spring: puerto en memoria, `PlanningMetricsService` sustituido por un doble y un `Clock` que se puede mover.
+
+**El desplazamiento se dobla, no se calcula.** El motor y su auditoría ya están probados en `PlanningEngineTest` y en las pruebas del timeline; volver a montarlos aquí probaría dos veces lo mismo y escondería lo que sí es nuevo —que el estado se deduzca de los dos hechos y de ninguno más—.
+
+**El reloj se mueve, y tiene que moverse.** «Cubierto» y «no cubierto» se deciden comparando el sello del acuerdo con el del desplazamiento: con un reloj fijo los dos instantes serían el mismo y la prueba no distinguiría una cosa de la otra, que es justo lo que hay que distinguir.
+
+**Las siete que el brief pedía, y qué fija cada una.** La lectura vacía, con los tres números en cero y el acuerdo que ya no está desplazado sin aparecer. El pendiente, con su causa y su estado. El acordado, con el acuerdo visible y **el desplazamiento intacto**. El historial, con la fecha anterior nula en la primera fila, el par anterior/nueva en la segunda, la lista vacía del que no tiene acuerdo y el reenvío de la misma fecha que no ensucia. La trazabilidad, con una sola prueba que contesta **las seis preguntas** sobre una misma fila. Los múltiples desplazamientos, con dos eventos en una fila y el acuerdo que cubre los dos. Y los siete casos límite de arriba, uno por prueba.
+
+**Ninguna prueba existente se debilitó.** Las 309 que ya había siguen pasando sin cambiar una expectativa: la fase no toca ningún componente que ya estuviera probado —no hay una línea modificada en `PlanningEngine`, en las reglas, en `PlanningMetricsService` ni en `PlanningMetadata`—.
+
+## Riesgos identificados
+
+Se listan los que esta fase toca. Los demás siguen como estaban en la Fase 24.
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 110 | **No había pantalla** — el modelo y la lectura existían y solo se alcanzaban con `curl` | **Atendido en la Fase 26**: `/renegociaciones` los consume | Lo que la pantalla necesitaba estaba resuelto y expuesto —el estado viaja derivado, la lista trae el acuerdo entero y el historial tiene ruta propia—, así que no redefinió nada: la Fase 26 no añadió una línea de backend |
+| 111 | **`agreedBy` lo teclea el operador** — no hay autenticación, así que la trazabilidad de quién acordó depende de que se escriba bien | **Medio**: `renegotiation_history` es la auditoría de quién acordó qué, y su autor es un campo libre | Es la limitación que ya existía en `planning_metadata` (riesgo 108). La tabla nueva no la empeora ni la disimula: el campo es obligatorio |
+| 112 | **La cobertura se decide por sello de tiempo** — un incidente ocurrido antes del acuerdo cuyo plan se calculó después deja la fila `PENDIENTE_DE_ACUERDO` teniendo ya un acuerdo | **Bajo**: enseña pendiente algo ya resuelto | Volver a registrar la misma fecha **no ensucia nada**: el acuerdo conserva autor y sello y no se escribe historial (162.3). Es el precio de que el sello del evento sea cuándo se auditó y no cuándo ocurrió el incidente, que el motor no sabe |
+| 113 | **La fecha acordada no se valida contra la capacidad** — el sistema acepta una fecha que el motor no podría cumplir | **Medio**: un acuerdo puede prometer algo que el plan no sostiene, y la discrepancia no se ve aquí | Validarla obligaría a ejecutar el motor sobre un acuerdo, que es justo lo que el brief prohíbe. La discrepancia es visible donde corresponde: el timeline del plan sigue enseñando dónde quedó de verdad y el acuerdo enseña qué se prometió; comparar las dos es la decisión 162.4 |
+
+---
+
+# Fase 26 — La pantalla de renegociación
+
+## Qué se hizo, en una frase
+
+La Fase 25 dejó el modelo formal de la renegociación y su lectura consolidada **y ningún sitio donde usarlos**: el estado de cada requerimiento desplazado solo se veía pidiendo el endpoint a mano, y acordar una fecha era un `curl`. Esta fase construye **`/renegociaciones`** —la entrada **Renegociación** del menú—, que cierra el flujo operativo entero, `Incidente → Desplazamiento → Pendiente de acuerdo → Acuerdo registrado → Historial consultable`, consumiendo **exclusivamente** las cinco rutas que la Fase 25 publicó. El diff es enteramente del frontend: no hay una línea de `PlanningEngine`, de las reglas de negocio, de la integración con GLPI, de `PlanningMetadata` ni de los contratos.
+
+## El análisis obligatorio: qué había y qué no
+
+El brief pedía revisar el frontend entero y documentarlo antes de tocar un archivo. Lo que había:
+
+| Pieza | Qué se encontró |
+|---|---|
+| Convenciones visuales | `Card` con `CardHeader`/`CardContent`; tablas escritas a mano con `data-slot` y atributos `data-*` por fila, que son la costura de las pruebas; `Skeleton` que copia la forma de lo que carga; `EmptyState` con tono, icono, título, detalle y acción de reintento; línea de contexto en `text-xs text-muted-foreground` con `<time dateTime>` |
+| Patrón de lectura/escritura | El de la pantalla de declaración (Fase 24): `useQuery` con `enabled`, `useMutation` que despacha `POST` o `PUT`, y un componente interior que se monta **solo después** de la lectura previa. Es el único patrón de escritura que existía |
+| Invalidación de caché | `invalidateQueries` por clave, con prefijos distintos por recurso para que invalidar uno no arrastre el otro. Nada de recargar la página |
+| Componentes reutilizables | `Card`, `Badge`, `Button`, `EmptyState`, `Skeleton`. **No hay componente `Table` ni `Select`**: las tablas son `<table>` a mano y el filtro es un `<select>` nativo con una clase local |
+| Qué falta en el contrato | `RenegotiationRequest` son `workItemId`, `agreedDate` y `agreedBy`; `RenegotiationUpdateRequest` son los dos últimos. **No hay campo de motivo** |
+
+**Lo que decide el diseño es la regla que el brief pone en mayúsculas.** La UI no decide estados, no calcula cobertura y no determina si algo está renegociado: los dos únicos estados válidos son los del contrato y se usan tal cual. Eso convierte la pantalla en una proyección y deja la única decisión abierta en el sitio de siempre: qué hacer al escribir.
+
+**El caso que la vista no puede resolver y el backend sí.** Un requerimiento **pendiente con acuerdo vigente** —un incidente posterior al acuerdo lo reabre— es la fila que distingue el estado del verbo de la escritura. Decidir el verbo por `status` mandaría un `POST` contra un recurso que existe y el backend respondería `409`: la pantalla convertiría un caso normal en un error. Es el mismo razonamiento de 161.1, con el mismo desenlace.
+
+## Las decisiones
+
+### 164. La escritura de la renegociación lee antes de reemplazar, y el verbo lo decide la existencia del acuerdo
+
+**Decisión.** El formulario de un requerimiento que ya tiene acuerdo abre una lectura fresca de `GET /api/renegotiations/{workItemId}` y no enseña ningún campo hasta que llega; el `PUT` reemplaza la fecha acordada y el autor. Para un requerimiento sin acuerdo no hay nada que leer y el verbo es `POST`. **El verbo sale de `renegotiation !== null` y nunca del estado visual**, y la etiqueta de la acción —«Editar acuerdo» o «Registrar acuerdo»— sale de lo mismo.
+
+**Motivo.** Es la misma regla de 161, aplicada al mismo problema: el `PUT` reemplaza, así que rellenar con lo que traía la lista —una foto del instante en que se consultó— y guardar borraría lo que alguien cambió desde entonces, sin dejar constancia de que se borró. Y el verbo no puede salir del estado porque **estado y existencia del recurso no son lo mismo**: `PENDIENTE_DE_ACUERDO` significa «hay desplazamientos que ningún acuerdo cubre», no «no hay acuerdo». Un requerimiento reabierto está pendiente y tiene fila.
+
+**Alternativas descartadas.** Rellenar con `item.renegotiation`, que ya viene en la lectura consolidada: es una foto, y la lista puede llevar minutos en pantalla. Decidir el verbo por `status`: es el `409` garantizado. Un `PATCH`: sería un endpoint nuevo, y el brief prohíbe cambiar contratos.
+
+**Consecuencia.** Abrir el formulario de un requerimiento con acuerdo cuesta una petición, y se paga al abrir y no al listar. Sin acuerdo no cuesta ninguna.
+
+**Verificación.** Una prueba sirve una lista y un recurso que **discrepan en la fecha** y afirma que el formulario precarga la del recurso y no la de la lista; otra sirve el caso pendiente-con-acuerdo y afirma que se manda `PUT`; y otra más afirma que la lectura del recurso sale antes que su reemplazo.
+
+#### 164.1 La invalidación es selectiva, y no es la misma que en la declaración
+
+**Decisión.** Tras una escritura se invalidan **dos claves**: la lista consolidada, que se relee —es de donde sale el estado nuevo de la fila—, y el historial del requerimiento afectado, que **también se relee**. El detalle del requerimiento solo se marca viejo (`refetchType: 'none'`). Nada más: ni una petición por fila, ni una ruta ajena, ni una recarga de página.
+
+**Motivo.** La diferencia con 161.2 es qué queda en pantalla. En la declaración el formulario se cierra y no hay nada más que mirar; aquí la fila **sigue elegida** después de guardar y el historial sigue montado, así que la entrada recién escrita tiene que aparecer sin que nadie vuelva a abrir nada —y el historial no se puede reconstruir en el cliente (164.2), así que la única forma de verla es releerlo—. El detalle, en cambio, se invalida con el formulario todavía montado: releerlo en ese instante pediría exactamente los valores que se acaban de guardar.
+
+**Alternativas descartadas.** Recargar la página: tira lo que ya estaba bien y pierde la selección. Invalidar todo el árbol de `planning`: la fotografía operativa, las alertas y el timeline miden otras cosas y no cambiaron porque alguien acordara una fecha. Cerrar el formulario y deseleccionar la fila, como hace la declaración: dejaría el historial sin refrescar justo cuando acaba de cambiar.
+
+**Verificación.** Una prueba afirma la conversación entera: la lista dos veces —la segunda trae el estado nuevo—, la lectura previa una, el historial dos, el detalle una, y ninguna petición de otra fila ni de otra ruta.
+
+#### 164.2 El historial se lee y se pinta en el orden en que llega; no se reconstruye
+
+**Decisión.** El historial sale **exclusivamente** de `GET /api/renegotiations/{workItemId}/history`. No se ordena, no se deduplica y no se completa con lo que traía la lista. Una entrada con `previousDate` nulo se rotula «primer acuerdo» en vez de dejar un hueco.
+
+**Motivo.** Un historial recompuesto en el cliente —o reordenado— afirmaría un orden que nadie auditó. Y el rótulo del primer acuerdo no es cosmética: `null` no es una fecha que falte, es el momento en que **no había fecha** y alguien la trajo, que es exactamente lo que esa entrada significa.
+
+**Alternativas descartadas.** Derivar el cambio vigente de la última entrada: el acuerdo actual ya lo publica la fila. Ordenar por `changedAt` «por si acaso»: el backend ya los manda en el orden de la auditoría, y ordenar aquí sería una segunda regla invisible.
+
+**Consecuencia.** Si el backend publicara un orden distinto del cronológico, la pantalla lo enseñaría tal cual. Es deliberado.
+
+**Verificación.** Una prueba sirve dos cambios y afirma que salen en el orden servido, con la fecha anterior nula en el primero.
+
+#### 164.3 Sin acuerdo no se pide el historial: el `404` es el estado normal
+
+**Decisión.** El historial se pide **si y solo si** `renegotiation` no es nulo. Sin acuerdo, la tarjeta declara que todavía no hay acuerdo registrado y **no lanza ninguna petición**.
+
+**Motivo.** La ruta responde `404` cuando no hay acuerdo, y ese `404` no describe una avería: describe el estado normal de un requerimiento desplazado que nadie ha renegociado todavía. Pedirlo para pintar un error convertiría el caso más común de la pantalla en un fallo. Y el hecho que decide si hay historial es uno que el backend publica —`renegotiation` nulo o no—, no una deducción de la vista.
+
+**Alternativas descartadas.** Pedirlo siempre y tratar el `404` como lista vacía: gasta una petición por fila seleccionada y convierte un error legítimo en un silencio.
+
+**Verificación.** Una prueba elige una fila sin acuerdo y afirma que la petición del historial **no sale** y que tampoco sale la del detalle.
+
+#### 164.4 El motivo se enseña, no se captura: un campo que el backend descarta es peor que su ausencia
+
+**Decisión.** El formulario **no pide un motivo**. En su lugar enseña, en solo lectura, el `reason` que el plan publica para cada desplazamiento de la fila, rotulado como lo que es —por qué se desplazó— y no como lo que no es.
+
+**Motivo.** El brief pedía un campo de motivo y **el contrato de la Fase 25 no lo tiene**: `RenegotiationRequest` y `RenegotiationUpdateRequest` no traen ese campo, y el brief prohíbe modificar los contratos. Un `<input>` de texto que Jackson descarta al deserializar no captura un dato: lo pierde con la apariencia de haberlo guardado, y el operador que lo escribió no tiene forma de saber que se perdió. Entre una pérdida silenciosa y una ausencia declarada, la ausencia.
+
+**Alternativas descartadas.** Añadir el campo al backend: exige cambiar el contrato, la entidad, la tabla y el historial, y el brief lo prohíbe expresamente. Pintar un campo deshabilitado: sugeriría que existe y que solo falta permiso. Concatenar el motivo en `agreedBy`: corrompería la auditoría para guardar un dato que no cabe.
+
+**Consecuencia.** Queda registrado que **por qué se acordó esa fecha** no se persiste (riesgo 114). Lo que sí queda registrado, y la pantalla enseña, es **por qué se desplazó**, que el motor audita desde la Fase 3.
+
+**Verificación.** El formulario no tiene campo de motivo y la traza de la escritura no manda ninguna clave fuera del contrato: una prueba afirma el cuerpo exacto del `POST` y del `PUT`.
+
+#### 164.5 La pantalla no decide estados, no calcula cobertura y no determina si algo está renegociado
+
+**Decisión.** La columna de estado pinta `status` tal como llega y el filtro compara contra ese mismo valor, sin traducirlo. No se compara `agreedAt` con ningún sello de desplazamiento, no se comprueba si el acuerdo «cubre» los eventos vigentes y no se deriva ningún estado propio. Las parejas «de qué fecha a qué fecha» son las que el plan auditó: no se recalculan ni se resumen en una sola.
+
+**Motivo.** Es la regla que el brief pone en mayúsculas, y es donde el frontend se rompe: basta un `status === 'PENDIENTE_DE_ACUERDO' && renegotiation ? 'ACORDADA' : status` para tener dos versiones de la misma regla, y la segunda no falla el mismo día que la primera. La cobertura se decide por sello de tiempo (`!displacementAt.isAfter(agreedAt)`), y esa comparación es del backend: repetirla aquí sería la segunda copia de la decisión 162.
+
+**Alternativas descartadas.** Deducir el estado de la presencia del acuerdo y de las fechas. Traducir los dos valores a etiquetas propias: los valores del enum son los que el operador tiene que reconocer, y el `Badge` ya los pinta.
+
+**Consecuencia.** La pantalla puede recibir una combinación que a ella le parezca contradictoria —`PENDIENTE_DE_ACUERDO` con acuerdo— y la muestra, porque el backend manda. La prueba que lo fija construye justo esa fila.
+
+**Verificación.** Una prueba sirve un requerimiento pendiente con acuerdo, con dos desplazamientos, y afirma que la fila enseña el estado del backend, el acuerdo, y las dos parejas de fechas sin colapsarlas.
+
+## La pantalla, por dentro
+
+**Una ruta y una entrada de menú.** `/renegociaciones`, con la etiqueta «Renegociación» en el menú lateral. No hay subrutas: el formulario y el historial son paneles de la misma pantalla, así que abrir un requerimiento no pierde la lista ni el filtro.
+
+**El filtro es local y la fila seleccionada se busca fuera de él.** Todas / Pendientes / Acordadas se aplican en memoria sobre el array recibido: no vuelven a consultar, no cambian la clave de la consulta y no disparan una petición. Filtrar hasta vaciar la lista **no se confunde con no tener nada que renegociar** —son dos estados distintos y se dicen por separado—, y la selección se resuelve contra la lista completa, de modo que cambiar el filtro no cierra un formulario a medio escribir.
+
+**El error se enseña con las palabras del backend.** Un `400`, el `404` de un acuerdo que la lista decía que existía y el `409` de «ya hay renegociación registrada; para modificarla se usa `PUT`» dicen cosas distintas, y reescribirlos aquí sustituiría el diagnóstico por uno peor. El `409` es además un caso legítimo —alguien acordó primero— y no un fallo de la pantalla. Ante el `404` la pantalla **no se cae al `POST` por su cuenta**: eso crearía un acuerdo que la fila decía que existía.
+
+**Ninguna lectura por fila.** La lista sale de una sola petición a `GET /api/renegotiations`; el acuerdo y el historial de un requerimiento se piden solo al elegir su fila, y no se piden en absoluto si esa fila no tiene acuerdo. Una agenda con decenas de desplazados sigue costando una lectura.
+
+## Las pruebas
+
+Dieciséis nuevas, en `Renegotiations.test.tsx`, con `fetch` sustituido y despachado **por dirección y método**: una petición que no esté en la tabla falla con su nombre en vez de devolver algo parecido, y eso es lo que convierte «la pantalla pidió otra cosa» en una prueba que se cae.
+
+**Las doce que el brief pedía, y qué fija cada una.** La lista vacía, que se declara sin tabla y sin una segunda petición. Los pendientes y las acordadas, filtrados contra el estado publicado. La creación, con el identificador en el cuerpo del `POST` y el estado nuevo que devolvió el backend. La actualización, con el `PUT` y su cuerpo. La lectura previa obligatoria, con una lista y un recurso que **discrepan** y el formulario precargando el del recurso. El historial, en el orden servido. La invalidación selectiva, contada petición a petición. El `404` y el `409`, con los mensajes literales de las excepciones del backend y sin reintento por cuenta propia. La ausencia de recálculo, sobre la fila pendiente con acuerdo. Y los filtros en memoria, que no producen ninguna petición.
+
+**La costura de prueba es un atributo, no un texto formateado.** Cada fila lleva `data-work-item`, `data-status`, `data-agreed`, `data-agreed-date` y `data-agreed-by`; cada desplazamiento, su pareja de fechas; cada cambio del historial, su fecha anterior y su fecha nueva. Las aserciones sobre el estado, sobre la fecha acordada y sobre el orden del historial se hacen contra esos atributos, que son el dato del contrato, y no contra un texto que depende del formato.
+
+**El despacho por método es lo que prueba que no hay una petición por fila.** La prueba de la carga exige que la conversación entera sea **una** petición, y las de escritura afirman que el historial de otra fila no se pide nunca.
+
+**Ninguna prueba existente se debilitó.** Las 86 que ya había siguen pasando sin cambiar una expectativa.
+
+## Riesgos identificados
+
+Se listan los que esta fase toca. Los demás siguen como estaban en la Fase 25.
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 114 | **El motivo de la renegociación no se persiste** — el contrato no tiene el campo y el brief prohíbe cambiarlo, así que la decisión de por qué se acordó esa fecha no queda registrada | **Medio**: lo que se conserva es el motivo del **desplazamiento**, que el motor audita, y no el de la **decisión**, que es lo que una persona sabría explicar | La pantalla enseña el `reason` publicado y **no captura un campo que el backend descartaría** (164.4): una pérdida silenciosa es peor que una ausencia declarada. Añadirlo exige un campo en `RenegotiationRequest`, otro en `RenegotiationUpdateRequest`, una columna en `renegotiation`, su reflejo en el historial y la regeneración del contrato —fuera del alcance de una fase de frontend |
+| 115 | **La pantalla no filtra por desarrollador ni pagina** — un plan con muchos desplazados pinta todas sus filas | **Bajo**: la lista consolidada ya trae `developerId` por fila, así que el dato está; falta el control | El filtro por estado ya es local y demuestra el patrón. El filtro por técnico y la paginación son el mismo cambio, y se añaden cuando la agenda real lo pida |
+| 116 | **Guardar relee la lista consolidada entera** — el estado derivado solo se ve actualizándolo, y la lectura recorre los planes vigentes de todos los desarrolladores | **Bajo**: el backend la resuelve con una consulta por lote, no una por elemento | Es el precio de que el estado se derive en el backend y no se guarde (162.1): recalcularlo en el cliente sería la segunda copia de la regla. Si el coste se nota, la lectura ya declara su `source` y su `scope`, y la pantalla no tendría que cambiar |

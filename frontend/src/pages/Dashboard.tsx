@@ -17,19 +17,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePlanningMetrics } from '@/hooks/usePlanningMetrics'
+import { formatInstant } from '@/lib/format'
 import { metricPath } from '@/routes/navigation'
 import { DISPLACED_TOKEN } from '@/types/planningMetrics'
 import type { PlanningOperationalMetricsResponse } from '@/types/planningMetrics'
-
-const GENERATED_AT_FORMAT = new Intl.DateTimeFormat('es-CO', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
-
-/** `generatedAt` es un instante UTC del contrato: se muestra en la hora del navegador. */
-function formatInstant(isoInstant: string): string {
-  return GENERATED_AT_FORMAT.format(new Date(isoInstant))
-}
 
 /** Sin filas declaradas ni planes vigentes no hay fotografia que enseñar, solo ceros. */
 function isEmpty(metrics: PlanningOperationalMetricsResponse): boolean {

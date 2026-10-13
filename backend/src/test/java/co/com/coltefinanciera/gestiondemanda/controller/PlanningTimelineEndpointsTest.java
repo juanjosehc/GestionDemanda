@@ -525,9 +525,9 @@ class PlanningTimelineEndpointsTest {
                 .thenReturn(Optional.of(new GlpiUser(7, "ana", "Perez", "Ana")));
         when(glpiPlanningSource.ticketsOf("7")).thenReturn(List.of(
                 new GlpiTicket(501, "Falla en produccion", 1, GlpiTicket.TYPE_INCIDENT, null, null,
-                        null, 21600L, null, "2026-10-05 09:00:00", 7),
+                        null, 21600L, null, "2026-10-05 09:00:00"),
                 new GlpiTicket(502, "Ajuste de reporte", 1, GlpiTicket.TYPE_REQUEST, null, null,
-                        null, 14400L, "2026-10-05 17:00:00", "2026-10-01 08:00:00", 7)));
+                        null, 14400L, "2026-10-05 17:00:00", "2026-10-01 08:00:00")));
     }
 
     private String planificarDesdeGlpi() throws Exception {

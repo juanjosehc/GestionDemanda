@@ -22,7 +22,7 @@ class GlpiPriorityMapperTest {
 
     private static GlpiTicket ticketWith(Integer priority, Integer impact, Integer urgency) {
         return new GlpiTicket(1, "Ticket", 1, GlpiTicket.TYPE_INCIDENT, priority, impact, urgency,
-                3600L, null, "2026-10-05 09:00:00", 7);
+                3600L, null, "2026-10-05 09:00:00");
     }
 
     private static IncidentSeverity severityOf(Integer priority, Integer impact, Integer urgency) {

@@ -92,6 +92,28 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, "PLANNING_METADATA_ALREADY_EXISTS", ex.getMessage(), request);
     }
 
+    /**
+     * No hay acuerdo de renegociacion para ese elemento de trabajo.
+     *
+     * <p>Es un {@code 404} que no describe una averia: un requerimiento desplazado del que nadie ha
+     * registrado aun la fecha nueva es el estado normal, y quien pregunta por su acuerdo tiene que
+     * poder distinguirlo de un identificador equivocado.
+     */
+    @ExceptionHandler(RenegotiationNotFoundException.class)
+    public ResponseEntity<ApiError> handleRenegotiationNotFound(
+            RenegotiationNotFoundException ex, WebRequest request) {
+        log.warn("Renegociacion inexistente: {}", ex.getMessage());
+        return build(HttpStatus.NOT_FOUND, "RENEGOTIATION_NOT_FOUND", ex.getMessage(), request);
+    }
+
+    /** Ya hay un acuerdo registrado para ese elemento de trabajo. El camino es {@code PUT}. */
+    @ExceptionHandler(RenegotiationAlreadyExistsException.class)
+    public ResponseEntity<ApiError> handleRenegotiationAlreadyExists(
+            RenegotiationAlreadyExistsException ex, WebRequest request) {
+        log.warn("Renegociacion ya registrada: {}", ex.getMessage());
+        return build(HttpStatus.CONFLICT, "RENEGOTIATION_ALREADY_EXISTS", ex.getMessage(), request);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex, WebRequest request) {
         String message = ex.getBindingResult().getFieldErrors().stream()

@@ -2,7 +2,9 @@ package co.com.coltefinanciera.gestiondemanda.integration.glpi;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -26,6 +28,13 @@ import co.com.coltefinanciera.gestiondemanda.exception.GlpiItemNotFoundException
  * ciclo de sesion. Todo lo demas —el caso de uso, el mapeo, el motor— ve la interfaz. Ese es el
  * reparto: aqui el transporte, en {@link GlpiTicketMapper} el significado, en
  * {@link GlpiPlanningRequestFactory} la peticion del dominio.
+ *
+ * <p><strong>Los tickets asignados se piden a {@code /search/Ticket}, no a {@code /Ticket}.</strong> La
+ * razon es que quien tiene asignado un ticket no es un campo del ticket: es una fila de
+ * {@code Ticket_User}, y {@code /Ticket} no la proyecta. Filtrar en memoria obligaba a traerse la
+ * instancia entera —hasta mil tickets, y con mas se perdian— para despues descartar casi todos. La
+ * busqueda trae exactamente los del tecnico, los traiga de a uno o de a dos mil, y el filtro lo hace el
+ * servidor. Queda documentado en la decision 159, con la medicion que la respalda.
  *
  * <p><strong>Es el segundo punto de bloqueo de la aplicacion.</strong> El primero es
  * {@code GlpiConnectivityService}, y la razon de que haya dos es la misma en los dos casos: el stack
@@ -57,22 +66,102 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
      * horas en {@code actiontime} y su fecha en {@code time_to_resolve}; uno construido con la 2 las
      * tiene en {@code PlanningMetadata}, y los dos se leen igual si no se distinguen. La version es
      * justo lo que permite distinguirlos.
+     *
+     * <p><strong>La version 3 es el corte de la decision 159, y es el caso de "cambio una ruta".</strong>
+     * Los tickets dejaron de pedirse a {@code /Ticket?range=0-999} y se piden a {@code /search/Ticket};
+     * el filtro por tecnico dejo de hacerse en memoria y lo hace el servidor. El contenido de un plan no
+     * cambia —los mismos campos, el mismo significado—, pero un plan de la version 2 con cero elementos
+     * puede ser "no tiene trabajo" o "la recuperacion estaba rota", y son dos cosas distintas que hay
+     * que poder separar al releerlo.
      */
-    public static final String VERSION = "glpi-rest-2";
+    public static final String VERSION = "glpi-rest-3";
 
     private static final String PATH_USER = "/User/";
 
     /**
-     * Rango amplio para traer los tickets de una vez.
+     * La busqueda de tickets, que es la unica ruta del API que filtra por tecnico asignado.
      *
-     * <p>{@code ponytail:} se piden hasta mil tickets y se filtra por asignado en memoria, en lugar de
-     * dejar que GLPI filtre con {@code searchText[users_id_assign]}. La razon es que ese parametro no
-     * se puede verificar sin una instancia real, y una consulta que no se ha probado no debe ser la
-     * base de una integracion. El techo es real: una instancia con mas de mil tickets visibles para
-     * la sesion devolveria una lista incompleta. Se cambia a la busqueda del servidor en cuanto se
-     * valide contra un GLPI de verdad.
+     * <p>No se usa {@code /Ticket} para esto porque el tecnico no es un campo del ticket: es una fila de
+     * {@code Ticket_User}, y {@code /Ticket} no la proyecta. Cualquier filtro en memoria sobre esa
+     * respuesta empieza por traerse la instancia entera, que es lo que la decision 159 retira.
      */
-    private static final String PATH_TICKETS = "/Ticket?range=0-999";
+    private static final String PATH_SEARCH_TICKETS = "/search/Ticket";
+
+    /**
+     * Opcion de busqueda 5 = «Technician».
+     *
+     * <p>El numero no se adivino: {@code /listSearchOptions/Ticket} publica que la opcion 5 se llama
+     * «Technician», apunta a {@code glpi_users.name} y cuelga de {@code Ticket.Ticket_User.User.name},
+     * que es exactamente la relacion que se quiere preguntar. Queda como constante con nombre porque un
+     * {@code 5} suelto en la ruta no dice nada.
+     */
+    private static final int FIELD_TECHNICIAN = 5;
+
+    /**
+     * Cuantas filas se piden por pagina.
+     *
+     * <p>Mil es lo que la instancia real sirve de una vez sin que el cuerpo se vuelva un problema de
+     * memoria, y es el mismo tamano que ya usaba la ruta anterior: no se gana nada pidiendo mas de
+     * golpe, porque el recorrido de paginas es el mismo codigo para uno que para diez.
+     */
+    private static final int PAGE_SIZE = 1000;
+
+    /**
+     * Tope de paginas, como guarda contra un recorrido sin fin.
+     *
+     * <p>No es un limite de negocio: veinte paginas son veinte mil tickets para un solo desarrollador,
+     * y la instancia entera tiene decenas de miles. Si alguna vez se alcanza, la lectura sale como
+     * incompleta en lugar de devolver en silencio lo que alcanzo, que es justo el fallo que la decision
+     * 159 corrige.
+     */
+    private static final int MAX_PAGES = 20;
+
+    /** Opcion de busqueda 1: el titulo del ticket. */
+    private static final int FIELD_TITLE = 1;
+
+    /** Opcion de busqueda 2: el identificador del ticket. */
+    private static final int FIELD_ID = 2;
+
+    /** Opcion de busqueda 3: la prioridad. */
+    private static final int FIELD_PRIORITY = 3;
+
+    /** Opcion de busqueda 10: la urgencia. */
+    private static final int FIELD_URGENCY = 10;
+
+    /** Opcion de busqueda 11: el impacto. */
+    private static final int FIELD_IMPACT = 11;
+
+    /** Opcion de busqueda 12: el estado. */
+    private static final int FIELD_STATUS = 12;
+
+    /** Opcion de busqueda 14: el tipo, que separa incidencia de peticion. */
+    private static final int FIELD_TYPE = 14;
+
+    /** Opcion de busqueda 15: la fecha de apertura, que para una incidencia es su fecha de creacion. */
+    private static final int FIELD_DATE = 15;
+
+    /** Opcion de busqueda 18: la fecha de SLA. No alimenta la planificacion desde la decision 124.2. */
+    private static final int FIELD_TIME_TO_RESOLVE = 18;
+
+    /** Opcion de busqueda 45: el tiempo de accion, en segundos. Diagnostico, no planificacion. */
+    private static final int FIELD_ACTION_TIME = 45;
+
+    /**
+     * Lo que se le pide a la busqueda, que es la proyeccion de un ticket que el adaptador sabe leer.
+     *
+     * <p>Sin {@code forcedisplay} GLPI devuelve las columnas que quiere, y la lista de arriba es la
+     * misma que declara {@link GlpiContract#ticketFields()}: si una se amplia y la otra no, el DTO
+     * llega con un valor nulo que parece un dato ausente de GLPI y es una columna que nadie pidio.
+     *
+     * <p><strong>Y es tambien lo que hace que la pagina quepa.</strong> Medido contra la instancia: mil
+     * filas proyectadas a estos diez campos pesan entre 150 y 164 KB, y las mismas mil filas sin
+     * proyeccion pesan 6,2 MB —mas de lo que el transporte de la aplicacion guarda en memoria, que son
+     * 256 KB—, y a un tecnico le respondio directamente {@code HTTP 500}. No es una optimizacion: sin
+     * {@code forcedisplay} la ruta nueva fallaria igual que fallaba la vieja, y por el mismo motivo.
+     */
+    private static final List<Integer> DISPLAYED_FIELDS = List.of(
+            FIELD_TITLE, FIELD_ID, FIELD_PRIORITY, FIELD_URGENCY, FIELD_IMPACT,
+            FIELD_STATUS, FIELD_TYPE, FIELD_DATE, FIELD_TIME_TO_RESOLVE, FIELD_ACTION_TIME);
 
     private final GlpiClient glpiClient;
     private final GlpiProperties properties;
@@ -97,16 +186,28 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
         }
     }
 
+    /**
+     * Los tickets que GLPI tiene asignados al tecnico, leidos por paginas.
+     *
+     * <p>El filtro lo hace el servidor, asi que lo que se devuelve es lo que GLPI dijo y nada mas: no
+     * hay una segunda pasada que pueda quedarse corta ni un techo de mil tickets que nadie vea.
+     */
     @Override
     public List<GlpiTicket> ticketsOf(String glpiUserId) {
-        Duration timeout = properties.timeout();
+        Integer technician = numericId(glpiUserId);
+        if (technician == null) {
+            // La busqueda solo sabe comparar por identificador numerico. Con un login, GLPI no falla:
+            // castea el valor a cero y devuelve los tickets del usuario cero, que son tickets de nadie.
+            // Una lista vacia con su aviso es una respuesta honesta; la otra seria un dato inventado.
+            log.warn("El identificador de usuario de GLPI '{}' no es numerico: la busqueda por tecnico "
+                    + "no puede usarlo y no se devuelve ningun ticket", glpiUserId);
+            return List.of();
+        }
 
+        Duration timeout = properties.timeout();
         String sessionToken = glpiClient.initSession().block(timeout);
         try {
-            List<GlpiTicket> all = reading(PATH_TICKETS,
-                    () -> glpiClient.getList(PATH_TICKETS, sessionToken, GlpiTicket.class)
-                            .block(timeout));
-            return assignedTo(all, glpiUserId);
+            return search(technician, sessionToken, timeout);
 
         } finally {
             closeQuietly(sessionToken);
@@ -114,30 +215,107 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
     }
 
     /**
-     * Filtra por asignado en memoria.
+     * Recorre las paginas de la busqueda hasta juntar todos los tickets que GLPI declara.
      *
-     * <p>Se registra cuantos llegaron y cuantos quedaron porque un filtro que no encaja nunca
-     * devuelve una lista vacia, y una lista vacia es indistinguible de "este desarrollador no tiene
-     * trabajo". El registro es lo que permite ver la diferencia desde fuera.
+     * <p>{@code totalcount} es lo que hace verificable el recorrido: se sabe cuantos hay antes de
+     * terminar de leerlos, asi que al final se puede afirmar que se trajeron todos en lugar de suponer
+     * que la lista esta completa. Una lectura corta no se devuelve: se denuncia. Devolver menos tickets
+     * de los que hay produce un plan que parece completo y no lo esta, y ese es el fallo que esta clase
+     * acaba de dejar atras.
      */
-    private static List<GlpiTicket> assignedTo(List<GlpiTicket> tickets, String glpiUserId) {
-        Integer id = parseId(glpiUserId);
-        if (id == null) {
-            log.warn("El identificador de usuario de GLPI '{}' no es numerico: no se puede filtrar "
-                    + "por asignado y no se devuelve ningun ticket", glpiUserId);
-            return List.of();
+    private List<GlpiTicket> search(int technician, String sessionToken, Duration timeout) {
+        List<GlpiTicket> found = new ArrayList<>();
+        int total = 0;
+
+        for (int page = 0; page < MAX_PAGES; page++) {
+            String path = searchPath(technician, page * PAGE_SIZE);
+            GlpiTicketSearchPage result = reading(path,
+                    () -> glpiClient.get(path, sessionToken, GlpiTicketSearchPage.class).block(timeout));
+
+            total = result.total();
+            result.rows().stream().map(GlpiRestPlanningSource::toTicket).forEach(found::add);
+
+            // Se para al haberlos traido todos, y tambien cuando una pagina llega vacia: sin filas no
+            // hay forma de avanzar, y seguir pidiendo paginas que no existen solo alarga la espera.
+            if (found.size() >= total || result.rows().isEmpty()) {
+                break;
+            }
         }
-        List<GlpiTicket> assigned = tickets.stream()
-                .filter(ticket -> id.equals(ticket.assignedUserId()))
-                .toList();
-        log.info("GLPI devolvio {} tickets; {} estan asignados al usuario {}", tickets.size(),
-                assigned.size(), glpiUserId);
-        return assigned;
+
+        if (found.size() < total) {
+            throw new GlpiInvalidDataException("GLPI declaro " + total + " tickets asignados al "
+                    + "usuario " + technician + " y solo se pudieron leer " + found.size()
+                    + ": la busqueda quedo incompleta y no se devuelve a medias");
+        }
+
+        log.info("GLPI devolvio {} tickets asignados al usuario {}", found.size(), technician);
+        return found;
     }
 
-    private static Integer parseId(String raw) {
+    /**
+     * La ruta de una pagina de la busqueda.
+     *
+     * <p>El criterio es obligatorio y va explicito: sin el, la busqueda no falla, devuelve la instancia
+     * entera —mas de sesenta mil tickets en la instancia medida—, que es un fallo silencioso bastante
+     * peor que un error.
+     */
+    private static String searchPath(int technician, int from) {
+        StringBuilder path = new StringBuilder(PATH_SEARCH_TICKETS)
+                .append("?range=").append(from).append('-').append(from + PAGE_SIZE - 1)
+                .append("&criteria[0][field]=").append(FIELD_TECHNICIAN)
+                .append("&criteria[0][searchtype]=equals")
+                .append("&criteria[0][value]=").append(technician);
+
+        for (int i = 0; i < DISPLAYED_FIELDS.size(); i++) {
+            path.append("&forcedisplay[").append(i).append("]=").append(DISPLAYED_FIELDS.get(i));
+        }
+        return path.toString();
+    }
+
+    /**
+     * Una fila de la busqueda pasada al DTO.
+     *
+     * <p>Es la traduccion que no cabe en {@link GlpiTicket}, porque los dos lados no hablan el mismo
+     * idioma: la fila viene indexada por numero de opcion y el DTO por nombre de campo. Se hace aqui
+     * porque aqui estan los numeros, y se hace en un solo sitio para que el dia que GLPI renombre una
+     * columna haya una unica funcion que mirar.
+     *
+     * <p>Un valor ausente queda nulo, que es lo que el DTO promete: en GLPI un ticket sin prioridad es
+     * un ticket valido, y quien decide si eso lo descalifica es el validador, no esta conversion.
+     */
+    private static GlpiTicket toTicket(Map<String, Object> row) {
+        return new GlpiTicket(
+                integer(row, FIELD_ID),
+                text(row, FIELD_TITLE),
+                integer(row, FIELD_STATUS),
+                integer(row, FIELD_TYPE),
+                integer(row, FIELD_PRIORITY),
+                integer(row, FIELD_IMPACT),
+                integer(row, FIELD_URGENCY),
+                number(row, FIELD_ACTION_TIME),
+                text(row, FIELD_TIME_TO_RESOLVE),
+                text(row, FIELD_DATE));
+    }
+
+    private static Integer integer(Map<String, Object> row, int field) {
+        return row.get(String.valueOf(field)) instanceof Number number ? number.intValue() : null;
+    }
+
+    private static Long number(Map<String, Object> row, int field) {
+        return row.get(String.valueOf(field)) instanceof Number number ? number.longValue() : null;
+    }
+
+    private static String text(Map<String, Object> row, int field) {
+        return row.get(String.valueOf(field)) instanceof String text ? text : null;
+    }
+
+    /** El identificador numerico, o {@code null} si lo que llego no lo es. */
+    private static Integer numericId(String raw) {
+        if (raw == null) {
+            return null;
+        }
         try {
-            return Integer.valueOf(raw);
+            return Integer.valueOf(raw.trim());
         } catch (NumberFormatException ex) {
             return null;
         }

@@ -33,7 +33,7 @@ class GlpiContractVerifierTest {
     private static final String COMPLETO = """
             {"id": 501, "name": "Falla en produccion", "type": 1, "status": 2, "priority": 5,
              "impact": 4, "urgency": 3, "actiontime": 21600, "date": "2026-10-05 09:00:00",
-             "time_to_resolve": "2026-10-06 17:00:00", "users_id_assign": 7}
+             "time_to_resolve": "2026-10-06 17:00:00"}
             """;
 
     @Test
@@ -101,10 +101,26 @@ class GlpiContractVerifierTest {
     @DisplayName("Un campo que el contrato no declara se registra sin bajar el veredicto")
     void unCampoDesconocidoSeRegistraSinDegradar() {
         Report report = GlpiContractVerifier.verify(COMPLETO.replace(
-                "\"users_id_assign\": 7", "\"users_id_assign\": 7, \"date_creation\": \"2026-10-01 08:00:00\""));
+                "\"time_to_resolve\": \"2026-10-06 17:00:00\"",
+                "\"time_to_resolve\": \"2026-10-06 17:00:00\", \"date_creation\": \"2026-10-01 08:00:00\""));
 
         assertThat(report.verdict()).isEqualTo(Verdict.COMPATIBLE);
         assertThat(report.unknownFields()).containsExactly("date_creation");
+    }
+
+    @Test
+    @DisplayName("users_id_assign ya no se declara: si GLPI lo mandara, seria un campo desconocido")
+    void usersIdAssignYaNoSeDeclara() {
+        Report report = GlpiContractVerifier.verify(COMPLETO.replace(
+                "\"time_to_resolve\": \"2026-10-06 17:00:00\"",
+                "\"time_to_resolve\": \"2026-10-06 17:00:00\", \"users_id_assign\": 7"));
+
+        // La decision 159 retiro el campo del contrato porque nunca llego desde GLPI. Que el veredicto
+        // no baje es lo que hace que el error fuera invisible: un campo opcional que no existe no
+        // aparece en "obligatorios ausentes", y el adaptador devolvia la lista vacia sin protestar.
+        assertThat(report.verdict()).isEqualTo(Verdict.COMPATIBLE);
+        assertThat(report.missingRequired()).isEmpty();
+        assertThat(report.unknownFields()).containsExactly("users_id_assign");
     }
 
     @Test
@@ -112,7 +128,7 @@ class GlpiContractVerifierTest {
     void elInformeDeclaraLasVersiones() {
         Report report = GlpiContractVerifier.verify(COMPLETO);
 
-        assertThat(report.adapterVersion()).isEqualTo("glpi-rest-2");
+        assertThat(report.adapterVersion()).isEqualTo("glpi-rest-3");
         assertThat(report.contractVersion()).isEqualTo("glpi-contract-1");
     }
 

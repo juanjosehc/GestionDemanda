@@ -1,0 +1,2 @@
+"id","applied_rule","incident_id","original_date","plan_id","requirement_id","rescheduled_date","severity","occurred_at"
+"1","UMBRAL_INCIDENTE_EXCEDIDO","INC-1","2026-10-05","7dcc0444-e4de-4a7e-ae03-a6d6456b8fc1","REQ-1","2026-10-06",,"2026-10-05 15:06:56.593536-05"

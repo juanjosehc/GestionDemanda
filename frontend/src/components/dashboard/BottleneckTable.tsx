@@ -3,18 +3,10 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
+import { remainingState } from '@/lib/capacity'
 import { formatHours } from '@/lib/timeline'
 import { calendarPath } from '@/routes/navigation'
 import type { DeveloperPlanningMetrics } from '@/types/planningMetrics'
-
-/** Estado de la capacidad restante. Son los dos casos que el backend ya senala, no umbrales. */
-type RemainingState = 'ok' | 'full' | 'over'
-
-function remainingState(remainingHours: number): RemainingState {
-  if (remainingHours < 0) return 'over'
-  if (remainingHours === 0) return 'full'
-  return 'ok'
-}
 
 interface BottleneckTableProps {
   byDeveloper: readonly DeveloperPlanningMetrics[]
