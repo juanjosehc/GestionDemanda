@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Handshake,
   LayoutDashboard,
+  PlayCircle,
   Settings,
   Users,
 } from 'lucide-react'
@@ -23,6 +24,8 @@ export const ROUTES = {
   calendarPlan: '/calendario/:planId',
   incidents: '/incidentes',
   declarations: '/declaraciones',
+  /** Donde se invoca la generacion de un plan desde GLPI. La ruta no planifica: llama a la que ya existia. */
+  planning: '/planificar',
   renegotiations: '/renegociaciones',
   settings: '/configuracion',
   /** Plantilla del desglose de una metrica. Se construye con metricPath(). */
@@ -110,7 +113,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Recursos',
     to: ROUTES.resources,
     icon: Users,
-    description: 'Equipo de desarrollo y su capacidad',
+    description: 'El equipo de hoy: personas, carga y alertas',
   },
   {
     label: 'Calendario',
@@ -129,6 +132,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: ROUTES.declarations,
     icon: ClipboardList,
     description: 'Estimación y compromiso de los tickets asignados a un técnico',
+  },
+  {
+    label: 'Planificación',
+    to: ROUTES.planning,
+    icon: PlayCircle,
+    description: 'Generación del plan de un técnico a partir de lo que GLPI tiene asignado',
   },
   {
     label: 'Renegociación',

@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 import org.springframework.core.codec.DecodingException;
@@ -88,6 +90,17 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
     private static final String PATH_SEARCH_TICKETS = "/search/Ticket";
 
     /**
+     * La busqueda de usuarios, que es la unica ruta del API que filtra por grupo.
+     *
+     * <p>No se usa {@code /Group/{id}/User} para esto: no existe. {@code User} no es un tipo de
+     * relacion valido para {@code Group} —la ruta responde cero filas y no un error, que es la peor
+     * forma de decir que no—, y de las dos que si funcionan, {@code /Group/{id}/Group_User} devuelve
+     * filas de relacion sin perfil y esta devuelve el usuario entero, que es lo que el catalogo
+     * necesita.
+     */
+    private static final String PATH_SEARCH_USERS = "/search/User";
+
+    /**
      * Opcion de busqueda 5 = «Technician».
      *
      * <p>El numero no se adivino: {@code /listSearchOptions/Ticket} publica que la opcion 5 se llama
@@ -163,6 +176,33 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
             FIELD_TITLE, FIELD_ID, FIELD_PRIORITY, FIELD_URGENCY, FIELD_IMPACT,
             FIELD_STATUS, FIELD_TYPE, FIELD_DATE, FIELD_TIME_TO_RESOLVE, FIELD_ACTION_TIME);
 
+    /** Opcion de busqueda 13 de usuario: sus grupos. Es el criterio del catalogo. */
+    private static final int FIELD_GROUP = 13;
+
+    /** Opciones de usuario que el catalogo lee: identificador, login, nombre, apellido y vigencia. */
+    private static final int FIELD_USER_ID = 2;
+    private static final int FIELD_USER_LOGIN = 1;
+    private static final int FIELD_USER_FIRSTNAME = 9;
+    private static final int FIELD_USER_REALNAME = 34;
+    private static final int FIELD_USER_ACTIVE = 8;
+
+    /**
+     * Lo que se le pide a la busqueda de usuarios.
+     *
+     * <p>Los cinco numeros estan comprobados contra la instancia con
+     * {@code GET /listSearchOptions/User}, que es lo que publica como se llama cada opcion: 1 es
+     * «Login» sobre {@code glpi_users.name}, 2 «ID», 8 «Active», 9 «First name», 34 «Last name» y 13
+     * «Groups» sobre {@code glpi_groups.completename}.
+     *
+     * <p>No es una optimizacion como en los tickets —una pagina de cuarenta usuarios tampoco pesa—,
+     * sino lo que hace que las claves de la fila sean estas y no las que GLPI quiera: sin
+     * {@code forcedisplay} el mapa llega con otras columnas y el nombre de la persona sale nulo sin que
+     * nada falle, que es un catalogo con identificadores y sin nombres.
+     */
+    private static final List<Integer> DISPLAYED_USER_FIELDS = List.of(
+            FIELD_USER_ID, FIELD_USER_LOGIN, FIELD_USER_FIRSTNAME, FIELD_USER_REALNAME,
+            FIELD_USER_ACTIVE);
+
     private final GlpiClient glpiClient;
     private final GlpiProperties properties;
 
@@ -215,6 +255,39 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
     }
 
     /**
+     * Los usuarios del grupo, leidos por paginas.
+     *
+     * <p>El grupo se busca por pertenencia «bajo» el y no «igual a» el: quien esta en un subgrupo de
+     * «Desarrollo N2» esta en «Desarrollo N2», y la instancia lo confirma —pertenencia directa,
+     * veintiuna personas; con subgrupos, cuarenta y una—.
+     *
+     * <p>A diferencia de la busqueda de tickets, aqui una lectura corta no se puede detectar: el
+     * {@code totalcount} que GLPI declara cuenta solo lo que la cuenta de integracion puede ver, asi que
+     * un usuario invisible no falta en el recuento, simplemente no existe para esta lectura. La
+     * comprobacion de {@link #paginate} sigue valiendo —no se devuelve media pagina— y lo que no puede
+     * hacer es prometer que estan todos.
+     */
+    @Override
+    public List<GlpiUser> membersOfGroup(String groupId) {
+        String group = groupId == null ? "" : groupId.trim();
+        if (group.isEmpty()) {
+            log.warn("No hay grupo configurado para el catalogo del equipo: no se enumera a nadie");
+            return List.of();
+        }
+
+        Duration timeout = properties.timeout();
+        String sessionToken = glpiClient.initSession().block(timeout);
+        try {
+            return paginate("miembros del grupo " + group, sessionToken, timeout,
+                    from -> userSearchPath(group, from),
+                    GlpiRestPlanningSource::toUser);
+
+        } finally {
+            closeQuietly(sessionToken);
+        }
+    }
+
+    /**
      * Recorre las paginas de la busqueda hasta juntar todos los tickets que GLPI declara.
      *
      * <p>{@code totalcount} es lo que hace verificable el recorrido: se sabe cuantos hay antes de
@@ -224,18 +297,47 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
      * acaba de dejar atras.
      */
     private List<GlpiTicket> search(int technician, String sessionToken, Duration timeout) {
-        List<GlpiTicket> found = new ArrayList<>();
+        List<GlpiTicket> found = paginate("tickets asignados al usuario " + technician,
+                sessionToken, timeout, from -> searchPath(technician, from),
+                GlpiRestPlanningSource::toTicket);
+
+        log.info("GLPI devolvio {} tickets asignados al usuario {}", found.size(), technician);
+        return found;
+    }
+
+    /**
+     * Recorre las paginas de una busqueda hasta juntar todas las filas que GLPI declara.
+     *
+     * <p>{@code totalcount} es lo que hace verificable el recorrido: se sabe cuantas hay antes de
+     * terminar de leerlas, asi que al final se puede afirmar que se trajeron todas en lugar de suponer
+     * que la lista esta completa. Una lectura corta no se devuelve: se denuncia. Devolver menos filas
+     * de las que hay produce un plan que parece completo y no lo esta, y ese es el fallo que esta clase
+     * acaba de dejar atras.
+     *
+     * <p><strong>Es la misma paginacion para las dos busquedas, y por eso esta escrita una vez.</strong>
+     * El recorrido y la comprobacion de lectura corta son una regla de correccion, no un detalle de una
+     * ruta: dos copias se separarian el dia que alguien arregle una —por ejemplo, al anadir el tope de
+     * paginas— y la otra seguiria devolviendo catalogos a medias sin que nada lo delate.
+     *
+     * @param what   que se esta leyendo, para el mensaje del fallo: «tickets asignados al usuario 296»
+     * @param pathAt la ruta de la pagina que empieza en la fila que se le pasa
+     * @param mapper la traduccion de una fila al DTO de su busqueda
+     */
+    private <T> List<T> paginate(String what, String sessionToken, Duration timeout,
+            IntFunction<String> pathAt, Function<Map<String, Object>, T> mapper) {
+
+        List<T> found = new ArrayList<>();
         int total = 0;
 
         for (int page = 0; page < MAX_PAGES; page++) {
-            String path = searchPath(technician, page * PAGE_SIZE);
-            GlpiTicketSearchPage result = reading(path,
-                    () -> glpiClient.get(path, sessionToken, GlpiTicketSearchPage.class).block(timeout));
+            String path = pathAt.apply(page * PAGE_SIZE);
+            GlpiSearchPage result = reading(path,
+                    () -> glpiClient.get(path, sessionToken, GlpiSearchPage.class).block(timeout));
 
             total = result.total();
-            result.rows().stream().map(GlpiRestPlanningSource::toTicket).forEach(found::add);
+            result.rows().stream().map(mapper).forEach(found::add);
 
-            // Se para al haberlos traido todos, y tambien cuando una pagina llega vacia: sin filas no
+            // Se para al haberlas traido todas, y tambien cuando una pagina llega vacia: sin filas no
             // hay forma de avanzar, y seguir pidiendo paginas que no existen solo alarga la espera.
             if (found.size() >= total || result.rows().isEmpty()) {
                 break;
@@ -243,12 +345,11 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
         }
 
         if (found.size() < total) {
-            throw new GlpiInvalidDataException("GLPI declaro " + total + " tickets asignados al "
-                    + "usuario " + technician + " y solo se pudieron leer " + found.size()
+            throw new GlpiInvalidDataException("GLPI declaro " + total + " " + what
+                    + " y solo se pudieron leer " + found.size()
                     + ": la busqueda quedo incompleta y no se devuelve a medias");
         }
 
-        log.info("GLPI devolvio {} tickets asignados al usuario {}", found.size(), technician);
         return found;
     }
 
@@ -283,6 +384,46 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
      * <p>Un valor ausente queda nulo, que es lo que el DTO promete: en GLPI un ticket sin prioridad es
      * un ticket valido, y quien decide si eso lo descalifica es el validador, no esta conversion.
      */
+    private static String userSearchPath(String group, int from) {
+        StringBuilder path = new StringBuilder(PATH_SEARCH_USERS)
+                .append("?range=").append(from).append('-').append(from + PAGE_SIZE - 1)
+                .append("&criteria[0][field]=").append(FIELD_GROUP)
+                .append("&criteria[0][searchtype]=under")
+                .append("&criteria[0][value]=").append(UriUtils.encodeQueryParam(group, StandardCharsets.UTF_8));
+
+        for (int i = 0; i < DISPLAYED_USER_FIELDS.size(); i++) {
+            path.append("&forcedisplay[").append(i).append("]=").append(DISPLAYED_USER_FIELDS.get(i));
+        }
+        return path.toString();
+    }
+
+    /**
+     * Una fila de la busqueda de usuarios pasada al DTO.
+     *
+     * <p>Misma traduccion que la de los tickets y por el mismo motivo: la fila viene indexada por numero
+     * de opcion y el DTO por nombre de campo. El nombre de la persona no se compone aqui —eso es
+     * {@link GlpiUser#displayName()}, que ya lo hace para las otras dos lecturas—, asi que un usuario
+     * leido por el grupo y el mismo usuario leido por su identificador se ven igual.
+     *
+     * <p>El login es lo que el catalogo usa como identificador de la persona, y puede faltar: un
+     * usuario sin login es un usuario al que no se le puede pedir nada por su nombre. Se devuelve igual
+     * —es una fila de GLPI y quien la lee decide—. Quien la descarta es quien la junta.
+     */
+    private static GlpiUser toUser(Map<String, Object> row) {
+        return new GlpiUser(
+                integer(row, FIELD_USER_ID),
+                text(row, FIELD_USER_LOGIN),
+                text(row, FIELD_USER_REALNAME),
+                text(row, FIELD_USER_FIRSTNAME),
+                active(row, FIELD_USER_ACTIVE));
+    }
+
+    /** La vigencia, que GLPI publica como 0 o 1 y no como booleano. */
+    private static Boolean active(Map<String, Object> row, int field) {
+        Integer value = integer(row, field);
+        return value == null ? null : value != 0;
+    }
+
     private static GlpiTicket toTicket(Map<String, Object> row) {
         return new GlpiTicket(
                 integer(row, FIELD_ID),

@@ -4,6 +4,7 @@ import type {
   DeveloperDeclarationsResponse,
   PlanningMetadata,
 } from '@/types/declarations'
+import type { PlanningFromGlpiResponse } from '@/types/planning'
 import type {
   DeclaredGapDetailResponse,
   DisplacedRequirementsResponse,
@@ -13,6 +14,7 @@ import type {
   RenegotiationHistoryResponse,
   RenegotiationsResponse,
 } from '@/types/renegotiations'
+import type { TeamCatalogResponse } from '@/types/team'
 import type { TimelinePlanResponse } from '@/types/timeline'
 
 export const PLAN_ID = '11111111-1111-1111-1111-111111111111'
@@ -692,6 +694,115 @@ export function renegotiationHistoryFixture(
         changedAt: '2026-10-06T09:30:00Z',
       },
     ],
+    ...overrides,
+  }
+}
+
+export const GENERATED_PLAN_ID = '44444444-4444-4444-4444-444444444444'
+/** El identificador que se teclea y el que devuelve el plan: el de GLPI, en su escala numerica. */
+export const GENERATED_DEVELOPER_ID = '296'
+
+/**
+ * El plan que devuelve la generacion desde GLPI, con la forma de descarte que la pantalla tiene que
+ * saber contar.
+ *
+ * **Trae solo las tres listas que la pantalla cuenta**, no la simulacion entera que el backend
+ * publica: el contrato de esta vista declara unicamente lo que lee —ver `types/planning`—, y un
+ * fixture con los diez campos de `PlanningSimulationResponse` describiria una copia que nadie usa. Los
+ * tres numeros son **distintos a proposito** (2 ubicados, 1 desplazado, 1 conflicto) para que una
+ * prueba no pueda confundir una cuenta con otra y pasar por casualidad.
+ *
+ * Los dos descartes son **el mismo ticket con dos causas**. Es el caso que el contrato documenta —un
+ * ticket puede aparecer mas de una vez— y el que distingue contar filas de contar tickets: una vista
+ * que agrupara por ticket daria 1 donde el backend publica 2. Los codigos y los motivos salen de
+ * `GlpiDiscardReason` y del validador, no se inventan aqui.
+ */
+export function planningFromGlpiFixture(
+  overrides: Partial<PlanningFromGlpiResponse> = {},
+): PlanningFromGlpiResponse {
+  return {
+    planId: GENERATED_PLAN_ID,
+    createdAt: '2026-10-13T14:00:00Z',
+    plan: {
+      developerId: GENERATED_DEVELOPER_ID,
+      allocations: [
+        { workItemId: '501', developerId: GENERATED_DEVELOPER_ID },
+        { workItemId: '502', developerId: GENERATED_DEVELOPER_ID },
+      ],
+      displacedRequirements: [{ workItemId: 'REQ-1' }],
+      conflicts: [{ workItemId: 'REQ-9' }],
+    },
+    discarded: [
+      {
+        ticketId: '504',
+        code: 'SIN_ESTIMACION_DECLARADA',
+        reason: 'la planificacion declarada no tiene estimacion',
+      },
+      {
+        ticketId: '504',
+        code: 'SIN_COMPROMISO_DECLARADO',
+        reason: 'la planificacion declarada no tiene fecha compromiso',
+      },
+    ],
+    ...overrides,
+  }
+}
+
+/** El número de GLPI de cada persona del fixture: la otra clave con la que se puede pedir un plan. */
+export const DEVELOPER_GLPI_ID = 101
+export const FULL_DEVELOPER_GLPI_ID = 102
+export const OVER_DEVELOPER_GLPI_ID = 103
+
+/**
+ * El padrón del equipo: las tres personas del grupo de GLPI, con su nombre y su vigencia.
+ *
+ * **Es la lectura que decide quién está en la tabla**, y por eso trae los nombres: hasta esta fase el
+ * nombre de cada persona lo publicaba la declaración del técnico —una lectura por persona— y ahora lo
+ * publica el padrón entero de una vez. Son las mismas tres de la fotografía operativa, con su número de
+ * GLPI, que es la otra clave con la que un plan puede haberse pedido.
+ *
+ * `available` en verdadero y ninguna excepción: es el estado normal, y las pruebas que quieren otro lo
+ * cambian por `overrides` en vez de darlo por supuesto.
+ */
+export function teamCatalogFixture(
+  overrides: Partial<TeamCatalogResponse> = {},
+): TeamCatalogResponse {
+  return {
+    generatedAt: '2026-10-14T15:00:00Z',
+    // Los textos de procedencia salen de las constantes del DTO del backend, no se inventan aquí.
+    source: {
+      glpi:
+        '/search/User por criterio de grupo (opcion 13), con subgrupos: id, login, nombre, ' +
+        'apellido y vigencia',
+      exceptions:
+        'team.exceptions de la configuracion: personas declaradas a mano con su login, su ' +
+        'identificador de GLPI si lo tienen y su vigencia',
+    },
+    glpi: { available: true, groupId: 1, groupName: 'Desarrollo N2', detail: null },
+    people: [
+      {
+        developerId: DEVELOPER_ID,
+        glpiId: DEVELOPER_GLPI_ID,
+        name: 'Ana Perez',
+        active: true,
+        sourceType: 'GLPI',
+      },
+      {
+        developerId: FULL_DEVELOPER_ID,
+        glpiId: FULL_DEVELOPER_GLPI_ID,
+        name: 'Carlos Ruiz',
+        active: true,
+        sourceType: 'GLPI',
+      },
+      {
+        developerId: OVER_DEVELOPER_ID,
+        glpiId: OVER_DEVELOPER_GLPI_ID,
+        name: 'Diana Lopez',
+        active: true,
+        sourceType: 'GLPI',
+      },
+    ],
+    unusedExceptions: [],
     ...overrides,
   }
 }

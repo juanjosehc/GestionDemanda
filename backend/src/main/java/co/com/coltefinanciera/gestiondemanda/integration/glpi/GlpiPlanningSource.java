@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Lo que la capa anticorrupcion necesita saber de GLPI, expresado como dos preguntas.
+ * Lo que la capa anticorrupcion necesita saber de GLPI, expresado como tres preguntas.
  *
  * <p>Es un puerto, y es el artefacto que hace explicita la frontera: de un lado, el dominio y su
  * caso de uso, que solo conocen esta interfaz; del otro, el adaptador HTTP, que es el unico que sabe
@@ -38,4 +38,26 @@ public interface GlpiPlanningSource {
      * mapeador, no del transporte. Filtrar aqui repartiria el criterio entre dos capas.
      */
     List<GlpiTicket> ticketsOf(String userId);
+
+    /**
+     * Los usuarios que pertenecen a un grupo de GLPI, con sus subgrupos.
+     *
+     * <p>Es la pregunta que faltaba: las otras dos son de a uno —dado un usuario, quien es y que tiene
+     * asignado— y ninguna enumera. Por eso el sistema no tenia padron de personas y la pantalla de
+     * recursos consolidaba planes en lugar de equipo: sin una operacion que liste, el unico modo de
+     * saber quien existe era preguntar por alguien que ya se conocia.
+     *
+     * <p><strong>Incluye los subgrupos, y eso es una decision, no un efecto del API.</strong> El grupo
+     * «Desarrollo N2» de esta instancia tiene tres subgrupos, y quien pertenece a uno de ellos
+     * pertenece al equipo: leer solo la pertenencia directa devolveria veintiuna personas de las
+     * cuarenta y una que hay. Quien quiera el sentido estricto tiene un grupo sin hijos.
+     *
+     * <p><strong>Puede devolver menos de los que hay, y esto no se puede comprobar desde aqui.</strong>
+     * Un usuario que la cuenta de integracion no tiene permiso de leer no aparece —ni en la lista ni en
+     * el total—, asi que no hay forma de distinguir «el grupo esta vacio» de «no se pudo leer a nadie».
+     * Es la limitacion que el catalogo declara y la razon por la que existen las excepciones.
+     *
+     * <p>Una lista vacia es un resultado: el grupo no tiene miembros legibles.
+     */
+    List<GlpiUser> membersOfGroup(String groupId);
 }

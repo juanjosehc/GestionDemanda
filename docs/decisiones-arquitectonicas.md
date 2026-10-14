@@ -3697,7 +3697,7 @@ El brief pedía revisar el frontend entero y documentarlo antes de tocar un arch
 
 **Lo que no existía es la parte que decide el diseño.** Sin patrón de escritura previo, lo único que había era el de lectura, y la pregunta abierta era qué hacer después de escribir: recargar la página, refrescar todo o invalidar. La respuesta está en 161.2.
 
-**Tampoco había dónde elegir un técnico.** El backend no publica el padrón —la lista de personas del equipo sigue sin existir (riesgo 91)—, así que el selector es un campo de texto. Ofrecer un desplegable con nombres inventados sería afirmar que existen.
+**Tampoco había dónde elegir un técnico.** El backend no publica el padrón —la lista de personas del equipo sigue sin existir (riesgo 124)—, así que el selector es un campo de texto. Ofrecer un desplegable con nombres inventados sería afirmar que existen.
 
 ## Las decisiones
 
@@ -3778,7 +3778,7 @@ Se listan los que esta fase toca. Los demás siguen como estaban en la Fase 23.
 | # | Riesgo | Impacto | Mitigación |
 |---|---|---|---|
 | 106 | **La pantalla no pagina ni filtra** — el riesgo 102 se cumple aquí: un técnico con 1949 tickets pinta 1949 filas | **Medio**: el navegador carga con todas y la tabla deja de ser revisable a ojo | Se mide y se deja escrito. El filtro natural es `declarationStatus` y no se aplica en esta fase porque el brief pedía la pantalla de declaración, no la de consulta. La tabla se desplaza en horizontal, como la del centro de alertas (riesgo 92) |
-| 107 | **El técnico se escribe a mano** — no hay padrón que ofrecer, así que un login responde `404` y un identificador mal tecleado también | **Bajo**: el error se enseña con el mensaje del backend, que dice que el usuario no está | El campo es de texto porque el backend no publica la lista de personas (riesgo 91). Se convierte en desplegable el día que ese catálogo exista |
+| 107 | **El técnico se escribe a mano** — no hay padrón que ofrecer, así que un login responde `404` y un identificador mal tecleado también | **Bajo**: el error se enseña con el mensaje del backend, que dice que el usuario no está | El campo es de texto porque el backend no publica la lista de personas (riesgo 124, que la Fase 29 volvió a encontrarse por el otro lado: tampoco hay de dónde sacar un nombre). Se convierte en desplegable el día que ese catálogo exista |
 | 108 | **`changedBy` lo teclea el operador** — no hay autenticación, así que la trazabilidad de quién declaró depende de que se escriba bien | **Medio**: el historial de `planning_metadata` es la auditoría de quién cambió qué, y su autor es un campo libre | Es la limitación que ya existía en el backend —la decisión 124 acepta el autor en el cuerpo—. La pantalla no la empeora ni la disimula: el campo es obligatorio y se ve |
 | 109 | **Los tickets cerrados aparecen** — el riesgo 104 se ve ahora en la pantalla y no solo en el JSON | **Bajo**: es paridad con lo que el plan recibe | Filtrar por estado sigue siendo una decisión de negocio, y la pantalla no la toma a medias |
 
@@ -4260,3 +4260,389 @@ La Fase 26 había decidido **no** capturar el motivo (164.4) y esa decisión que
 Y para el caso completo —«qué cambió, quién lo cambió, cuándo y por qué»—, `GET /api/renegotiations/{workItemId}/history` devuelve cada cambio con sus **cinco** respuestas: `previousDate`, `newDate`, `changedBy`, `changedAt` y `agreedReason`. Cada fila del historial contesta las cinco por sí sola, con el motivo **que se dio entonces** y no el vigente.
 
 **La pregunta concreta —«¿por qué se renegoció esta fecha?»— se responde con el valor de `renegotiation.agreedReason`, y solo con él.** No se deduce de la regla aplicada, ni del incidente, ni de las fechas: se lee. Es el único campo de la fila que ningún dato puede reconstruir, y por eso es el que cierra la trazabilidad. Y la respuesta no se puede confundir con la de la pregunta vecina —«¿por qué se desplazó?»— porque el motivo del movimiento sigue en `events[].reason`, en su propio campo y con su propio nombre, sin que ninguno de los dos haya ocupado el sitio del otro.
+
+---
+
+# Fase 28 — La generación operativa del plan
+
+## Qué se hizo, en una frase
+
+Las veintisiete fases anteriores sabían leer un plan, declararlo y renegociarlo, y **ninguna sabía producirlo desde la interfaz**: generar un plan era un `curl` a `POST /api/planning/from-glpi`, y el único sitio donde se podía ver el resultado era el timeline, escribiendo a mano el identificador que devolvía ese `curl`. Esta fase abre **`/planificar`** —la entrada **Planificación** del menú—, la primera pantalla que **invoca** la generación: se escribe el identificador de un técnico, el backend planifica con lo que GLPI tiene asignado y lo que ya está declarado, y lo que vuelve se enseña —el plan, su sello, el técnico que GLPI reconoció y los descartes— con los cuatro destinos del flujo a un clic. **El diff es enteramente del frontend**: ni una línea de `PlanningEngine`, de las reglas de negocio, de la integración con GLPI, de los contratos, de `PlanningMetadata` ni de la proyección de métricas. La pantalla **no planifica**: invoca la ruta que ya existía y enseña lo que devuelve.
+
+## El análisis obligatorio: cómo se genera hoy un plan
+
+El brief pedía documentar cuatro cosas antes de escribir una línea. Las cuatro, con lo que había:
+
+**1. Qué endpoint ejecuta realmente la planificación.** `POST /api/planning/from-glpi`, y **solo ese**. `POST /api/planning` existe desde la Fase 1, pero recibe la simulación entera escrita a mano —incidentes, requerimientos y reglas— y no es el camino operativo: nadie lo llama con datos de producción. La generación real es `from-glpi`, y su recorrido está entero en el backend: `GlpiPlanningService` recupera los tickets del técnico por `/search/Ticket`, `GlpiPlanningRequestFactory` los traduce y los cruza con `PlanningMetadata`, el `PlanningEngine` calcula y el plan se persiste con su entrada, su contexto y su auditoría. Existe además una lectura que **no** planifica —`GET /api/planning-metadata/declarations/{developerId}`, de la Fase 23—, y es exactamente la razón por la que la pantalla de declaración no usa esta ruta: pedirle un listado a un endpoint que escribe dejaría un plan guardado por cada vez que alguien abre la pantalla.
+
+**2. Qué información devuelve.** Un `201` con cuatro campos: `planId`, `createdAt`, `plan` —la simulación completa, con `developerId`, `allocations`, `blocks`, `displacedRequirements` y `conflicts`— y `discarded[]`, con `ticketId`, `code` y `reason` por cada descarte. **No publica cuántos tickets entregó GLPI**: ese número existe en el servidor —`tickets.size()`, que va al log— y no viaja en la respuesta. Es la única cifra de la operación que el contrato se queda.
+
+**3. Cómo podría integrarse sin romper las convenciones existentes.** Con la misma forma que las dos pantallas operativas que ya existen: una ruta en `ROUTES` y una entrada en `NAV_ITEMS`, un servicio que envuelve una sola llamada sobre el `apiPost` que ya existe desde la Fase 24, un hook de TanStack Query que la ejecuta como mutación, y una página que la pinta con las primitivas que ya están en `components/ui`. Nada nuevo de infraestructura, ninguna dependencia nueva y ninguna convención estrenada: la Fase 28 es la tercera vez que se aplica este patrón, después de la declaración y de la renegociación.
+
+**4. Por qué una pantalla propia y no una ampliación de una existente.** El candidato natural era `/calendario`, y se descartó por lo que la propia vista declara de sí misma: es una vista de **solo lectura** y lo dice dos veces en su interfaz —en la descripción de la tarjeta y en la lista «Alcance de esta vista»—, además de llevar escrito desde la Fase 16 que «todavía no hay ninguna pantalla que genere planes, así que el identificador se escribe a mano». Meterle un formulario de escritura obligaría a reescribir esa declaración de alcance y a mezclar en la misma vista la generación y la lectura, que es justo la separación que la Fase 23 hizo por el lado del backend. La convención del proyecto ya estaba fijada por la Fase 24 y la Fase 26: **cada operación nueva es una página con su entrada de menú**.
+
+## Las decisiones
+
+### 166. La generación de un plan es una pantalla propia que invoca el endpoint que ya existía
+
+La pantalla vive en `/planificar`, se llama **Planificación** en el menú y está entre **Declaración** y **Renegociación**, que es el orden del flujo: se declara lo que el técnico estima y compromete, se planifica con ello, y lo que el plan desplaza se renegocia. Tiene una sola acción —generar—, un solo campo —el técnico— y ninguna regla.
+
+**Lo que la pantalla no puede hacer, y es lo que la define.** No hay en ella una sola regla, horizonte, prioridad o calendario que se pueda tocar: el cuerpo de la petición lleva **solo el identificador del técnico** y el motor corre entero en el backend. Esto no es una limitación de tiempo, es la regla crítica del brief —«la UI no genera planificación, la UI solamente invoca el endpoint existente»— y tiene una consecuencia que conviene decir en voz alta: **cambiar cómo se planifica sigue siendo cambiar la configuración del backend**, no un formulario. La pantalla no es el sitio donde se decide nada; es el sitio donde se dispara lo que ya está decidido.
+
+#### 166.1 La pantalla es nueva y no una ampliación del calendario
+
+El análisis de la cuarta pregunta la cerró, y la decisión se apoya en un hecho del código y no en una preferencia: `/calendario` **declara su alcance como solo lectura** en su propia interfaz. Una vista que afirma «esto es de lectura» y además escribe deja de poder afirmarlo, y la afirmación era útil: es lo que permite abrir el calendario de cualquier plan sin miedo a que mirarlo lo cambie. Ampliarla habría costado reescribir esa declaración y, con ella, la garantía.
+
+**El coste de la decisión es una entrada más en el menú**, y se paga a gusto: el menú ya tiene nueve entradas y cada una responde a una operación distinta. La alternativa —una sola vista con un modo— habría escondido la operación detrás de un estado, que es la forma más rápida de que alguien planifique sin querer.
+
+#### 166.2 Generar es una acción explícita y nunca ocurre al abrir la pantalla
+
+**Generar escribe.** Cada llamada guarda una fila de plan y sube el contador de ejecuciones que publica `/metrics` en `plans.generated`. Eso tiene tres consecuencias que la pantalla respeta una por una:
+
+**La petición sale del botón, no del montaje.** Abrir `/planificar` no deja rastro, y hay una prueba que lo afirma sobre el `fetch` —`expect(fetchMock).not.toHaveBeenCalled()` antes del clic—. Es la misma razón por la que `Declarations` no usa `from-glpi` para listar, y la misma que llevó a que el timeline no se invalide al generar.
+
+**La petición sale al enviar, no al teclear.** El campo es un `<input>` de texto con estado local y la consulta se dispara en el `submit`: escribir «296» no debe generar el plan de «2» ni el de «29», porque **cada intento deja un plan guardado**. Es el mismo patrón que la pantalla de declaración, y por el mismo motivo.
+
+**Un identificador vacío no sale a la red.** El botón está deshabilitado mientras el valor recortado sea vacío y el `submit` vuelve antes de llamar al hook, así que un espacio no es un identificador: el backend respondería `400` a una petición que no hacía falta enviar, y el hueco se explica mejor en el propio formulario que con un error del servidor. Hay una prueba que envía el formulario vacío y exige que el `fetch` no se haya llamado.
+
+**No hay reintento automático.** El error se enseña con su estado y su mensaje, y no se ofrece un botón de «Reintentar»: el formulario de arriba **es** el reintento, y sigue en pie con el identificador escrito. La razón es la misma de siempre —cada intento guarda un plan— y una prueba exige que un `503` produzca **una sola** petición.
+
+**Generar dos veces al mismo técnico es lo normal.** Se vuelve a planificar cuando lo declarado cambió, y cada corrida crea un plan **nuevo con su propio identificador**: la segunda no reemplaza a la primera. La pantalla enseña la última; las anteriores siguen donde estaban y sus timelines se abren con el suyo. Hay una prueba que genera dos veces y exige que el segundo identificador sea el que se enseña, con dos `POST` en el registro.
+
+#### 166.3 El refresco alcanza las tres lecturas que dependen del plan vigente, y solo esas
+
+Después de generar se invalidan **tres claves y ninguna más**, y cada una se justifica por lo que lee:
+
+| Clave invalidada | Por qué depende del plan nuevo |
+|---|---|
+| `['planning','metrics']` | Es la fotografía operativa: su bloque `current` es **el plan vigente de cada desarrollador** y su contador `plans.generated` **cuenta ejecuciones**. Un plan recién guardado mueve las dos cosas. **`/recursos` no tiene consulta propia: lee esta misma clave**, así que la vista de equipo se refresca por aquí y no hace falta una cuarta |
+| `['planning','alerts']` | Las alertas son una **proyección de esa misma fotografía** —el servicio no tiene repositorios ni reloj, solo lee las métricas y cuenta—, así que una alerta y la métrica de la que sale no pueden discrepar. Pero es **otra consulta con otra clave**, y sin invalidarla la pantalla de alertas seguiría enseñando la proyección del plan anterior |
+| `['renegotiations','list']` | La lista consolidada se construye sobre **el plan vigente de cada desarrollador** y su `status` se recalcula en cada lectura. Un plan nuevo cambia qué está desplazado y qué está pendiente de acuerdo |
+
+**Los dos desgloses caen con la primera, y no se enumeran aparte.** `['planning','metrics','declared',gap]` y `['planning','metrics','displaced']` cuelgan del prefijo `['planning','metrics']`, y `invalidateQueries` invalida **por prefijo**: los dos quedan obsoletos con la misma llamada. Enumerarlos sería afirmar que se invalidan por su cuenta cuando lo que ocurre es que los alcanza la primera.
+
+**Lo que no se invalida, y por qué.**
+
+- **El timeline.** Cada plan tiene su propio `planId`, así que el plan recién creado **no tiene entrada de caché** —nadie lo ha leído todavía— y la entrada del plan anterior sigue siendo la lectura correcta de *su* plan. Invalidar `['planning','timeline']` entero sería tirar la caché de planes que no han cambiado.
+- **La salud de GLPI** (`['glpi','health']`). Es un diagnóstico de conectividad —¿responde?, ¿autentica?— y no un dato que un plan nuevo cambie.
+- **El detalle y el historial de una renegociación.** Son filas propias de un `workItemId` concreto y un plan nuevo no las toca; lo que cambia es **qué requerimientos aparecen** en la lista, y eso lo cubre la tercera clave.
+
+**La prueba de esto necesitó un montaje, y conviene dejarlo escrito.** `invalidateQueries` solo vuelve a pedir lo que está **activo**: una consulta que nadie tiene montada se marca obsoleta sin salir a la red. Una prueba que solo montara `Planning` no podría distinguir «no se invalidó» de «se invalidó y no había nadie mirando». Así que la prueba monta un componente que ejecuta las tres consultas **y** pinta la pantalla, espera a que las tres estén resueltas, genera, y exige que cada dirección se haya pedido **dos veces** y que el conjunto de direcciones pedidas sea exactamente las cuatro esperadas —las tres lecturas y el `POST`—. Ese conjunto es lo que convierte «no se tocó nada más» en una afirmación comprobable, y no en una ausencia.
+
+#### 166.4 La vista declara lo que lee y no inventa la cifra que el contrato no publica
+
+El brief pedía enseñar «los tickets recuperados **si el contrato lo publica**», y el contrato **no lo publica**: `PlanningFromGlpiResponse` lleva el plan y los descartes, y el total consultado se queda en el log del servidor. La pantalla lo dice en vez de calcularlo:
+
+> Cuántos tickets entregó GLPI no viaja en esta respuesta —el contrato publica el plan y los descartes, no el total consultado—, así que no se enseña una cifra que nadie publicó.
+
+La alternativa habría sido deducirlo —sumar asignaciones, desplazados, conflictos y descartes, o contar los descartes distintos— y **ninguna de esas sumas es el número**: un ticket puede estar planificado y no aparecer en ninguna de las tres listas de conflicto, y los descartes cuentan causas y no tickets. Inventar la cifra habría sido enseñar un número que parece del backend y no lo es, que es peor que no enseñarlo.
+
+**Lo que sí se declara es lo que la pantalla lee.** El tipo `PlanningFromGlpiResponse` declara **solo los campos que esta vista usa** —el identificador, el sello, el técnico, las tres listas que cuenta y los descartes— y no el contrato entero. Declarar la simulación completa habría sido mantener una copia sin consumidores que se queda vieja en cuanto el backend añada un campo, y el contrato completo ya tiene dueños: el timeline en `types/timeline.ts` y el tablero en su propio tipo.
+
+**El resultado se compone de cifras contadas, no calculadas.** Los tres números que se enseñan son las longitudes de tres listas que el backend devolvió —elementos ubicados, desplazados **de esta ejecución**, conflictos— y el rótulo del desplazamiento lo dice explícitamente: «los de esta corrida, no los del plan vigente». Es la distinción que impide confundir esta tarjeta con el tablero, donde el desplazamiento es el del plan vigente de cada técnico: coinciden cuando este plan **es** el vigente, y no antes.
+
+#### 166.5 Los descartes se cuentan por causa y no por ticket
+
+La lista de descartes se pinta **tal como llega**, una fila por entrada, con su código y su motivo. Y se dice por qué:
+
+> Un ticket puede aparecer más de una vez: cada fila es una causa, no un ticket.
+
+Es la consecuencia directa de la decisión 124.1 y de la opción B que la Fase 14 eligió: un ticket sin ninguna declaración produce **dos** entradas con el mismo `ticketId` —`SIN_ESTIMACION_DECLARADA` y `SIN_COMPROMISO_DECLARADO`—, porque cada una nombra **a una persona distinta** que tiene que actuar. Agrupar por ticket en la vista daría 1 donde el backend publica 2, y afirmaría una cuenta que el contrato no hace. La prueba usa justamente ese caso —dos filas con el mismo `ticketId`— y exige que las dos estén, con sus dos códigos.
+
+**El motivo que se enseña es el del backend**, no el código de la causa: el código dice de qué se trata y el motivo lo explica con las palabras del servidor. La pantalla no los traduce ni los reescribe.
+
+**El error va antes que el resultado, y el orden es deliberado.** Una generación que falla deja en pie el plan de la anterior —la mutación conserva su último dato—, así que enseñar el resultado debajo del fallo lo haría pasar por el resultado de esta acción. El error se pinta con el `message` del backend sin traducir y con su estado en una etiqueta —`HTTP 404`, `HTTP 503`—, porque un `404` y un `503` explican cada uno un problema distinto y con sus propias palabras. **Esta ruta no produce `409`**: no hay unicidad que violar, porque cada generación crea un plan nuevo. El `409` del brief se cumple como se cumple el resto —enseñando lo que el backend mande, con sus palabras— y no inventando un caso.
+
+## Las pruebas
+
+**Ocho pruebas nuevas en `Planning.test.tsx`**, una por caso que el brief pedía, con dos de los siete pedidos cubiertos por la misma prueba:
+
+| Caso del brief | Prueba |
+|---|---|
+| Generación exitosa | `genera el plan invocando el endpoint que ya existia, con el tecnico en el cuerpo` — afirma que no se llamó al `fetch` antes del clic, que el `POST` lleva `{developerId}`, y las tres cifras contadas (2/1/1, deliberadamente distintas para que no se puedan confundir entre sí) |
+| Navegación al timeline | `abre el timeline del plan recien generado, sin armar la direccion a mano` — el `href` sale de `calendarPath()`, y los otros tres destinos del flujo son enlaces y no recargas |
+| Error del backend | `enseña el 404 del backend tal cual, con su estado y sin inventar un resultado` y `enseña un 5xx sin traducirlo ni reintentar por su cuenta` |
+| Identificador inválido | `no sale a la red con un identificador vacio, ni escribiendolo ni enviando el formulario` |
+| Refresco selectivo | `refresca las metricas, las alertas y las renegociaciones, y ninguna otra direccion` |
+| Respuesta con descartes | `lista los descartes tal como llegan, contando causas y no tickets` |
+| Generación repetida | `genera otra vez al mismo tecnico y enseña el plan nuevo, que es otro plan` |
+
+**Los dos mensajes de error son los del backend, copiados de su código**, y no textos inventados: el `404` es literalmente el que produce `GlpiPlanningService` —`"GLPI no tiene un usuario con identificador " + developerId`— y el `503` tiene la forma que arma `GlpiClient` —«No fue posible alcanzar GLPI en `<url>` durante `<operación>`: `<causa>`»—. Una prueba de que la pantalla no reescribe un error afirmaría algo sobre un texto que el servidor nunca manda si el texto no fuera el suyo.
+
+**Ninguna prueba existente se debilitó.** Las 105 que había siguen pasando sin cambiar una expectativa: la fase añade un archivo de pruebas y un fixture, y no toca ningún archivo de pruebas anterior.
+
+**Resultado de la ejecución.** Frontend: **113 pruebas, 0 fallos** (10 archivos), con `typecheck`, `lint` y `build` limpios. Backend: **336 pruebas, 0 fallos, 3 omitidas** —sin cambios en esta fase, y ejecutadas igualmente para confirmarlo—.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 119 | **Generar escribe con un solo clic** — un clic de más guarda un plan y sube `plans.generated`, y no hay forma de deshacerlo desde la interfaz | **Bajo**: el plan no es un dato del que dependa nada irreversible —no borra nada, no toca GLPI y no modifica `PlanningMetadata`— y un plan de más es ruido en el histórico, no corrupción. Lo que sí es cierto es que el contador de ejecuciones cuenta clics y no decisiones | Es deliberado y está dicho en la pantalla antes del botón. Se descartó la confirmación previa —un diálogo para una operación normal y repetible entrena a pulsar «sí» sin leer— y se descartó el reintento automático por el mismo motivo. Si el ruido llegara a importar, el camino es una **marca de plan descartado** en el modelo, no un diálogo en el cliente |
+| 120 | **El refresco por prefijo relee dos desgloses que la pantalla no necesita** — `['planning','metrics']` arrastra `declared/{gap}` y `displaced`, así que si alguien los tiene abiertos se releen | **Muy bajo**: son dos peticiones y solo si hay una vista montada mirándolas; en la pantalla de generación no hay ninguna | Se prefiere la petición de más al riesgo de dejar una vista vieja. Enumerar las claves hijas en vez del prefijo sería afirmar que se invalidan por su cuenta cuando lo que ocurre es que las alcanza la primera |
+| 121 | **La pantalla no puede ver ni cambiar las reglas con las que se planifica** — no enseña el umbral, el horizonte ni el calendario vigentes, así que un plan inesperado no se explica desde aquí | **Bajo**: es la regla crítica del brief, y la explicación ya tiene su sitio —`/{planId}/context` publica la configuración **con la que se calculó** ese plan—, que es un hecho pasado y no la configuración viva | Es deliberado (166). La consecuencia práctica es que la pantalla no sirve para diagnosticar un plan raro; para eso está el contexto del plan, y el riesgo se acepta a cambio de que no exista ningún camino por el que la interfaz cambie cómo se planifica |
+| 122 | **El total de tickets que GLPI entregó sigue sin publicarse** — la operación no puede decir «GLPI devolvió 1266 tickets y se planificaron 40» | **Bajo**: el plan y los descartes ya explican qué pasó con lo que entró; lo que falta es el denominador, y sin él no se puede distinguir «GLPI devolvió poco» de «se descartó casi todo» sin contar los descartes a mano | Se declara en la pantalla en vez de deducirlo (166.4). Publicarlo exige un campo nuevo en el contrato de respuesta —`retrieved`, o el `totalcount` que la búsqueda ya devuelve— y el brief de esta fase no lo pide: es la decisión natural de una fase que quiera cerrar la observabilidad de la recuperación |
+
+## Limitaciones
+
+**El técnico se escribe a mano, y es la misma limitación de las dos pantallas anteriores.** El backend no publica un catálogo de personas, así que el campo es texto y no un desplegable (riesgo 107). Escribir un identificador que GLPI no conoce devuelve `404` con el mensaje del servidor, que es la respuesta correcta a la pregunta.
+
+**No hay historial de ejecuciones navegable.** `plans.generated` cuenta ejecuciones y no planes distintos, y `PlanSnapshotRepository` solo expone un plan por desarrollador, así que no hay una lista de «los planes que se han generado» que abrir. La pantalla enseña **la última generación de esta sesión de trabajo** y nada más: al recargar, el resultado desaparece y el plan sigue existiendo —se abre por su timeline si se conserva el identificador, y se relee por el tablero, que sí enseña el vigente de cada técnico—. Es la misma limitación que la Fase 18 dejó escrita para el contador de planes.
+
+**La pantalla no enseña el plan, enseña su resumen.** Se ve el identificador, el sello, el técnico y tres cuentas; el plan entero —tramos, asignaciones, conflictos— se lee en su timeline, a un clic. Pintarlo aquí habría duplicado la vista del calendario en un sitio peor: sin ejes de tiempo, sin capacidad y sin filtros.
+
+**Un plan generado no se puede borrar ni marcar.** No hay endpoint de borrado y esta fase no lo añade: es la cara visible del riesgo 119.
+
+**La fase no mejora la recuperación de GLPI.** Si un técnico tiene 1266 tickets y todos se descartan por falta de declaración, la pantalla lo dice —con 2532 descartes listados, uno por causa— y no lo resume. La lista de descartes de un técnico grande es larga y no está paginada ni agrupada, igual que la tabla de declaraciones (riesgo 106).
+
+## La verificación explícita: «¿se puede generar un plan desde la interfaz y abrirlo?»
+
+**Sí, y el recorrido entero queda operativo.** El flujo que el brief pedía cerrar —`GLPI → Declaración → Generación del plan → Timeline → Métricas → Alertas → Renegociación`— tiene ahora una pantalla en cada tramo y ningún paso que exija un `curl`:
+
+| Tramo | Dónde se hace | Qué usa |
+|---|---|---|
+| GLPI entrega los tickets | — | `GET /api/glpi/health` para saber si responde (Fase 10) |
+| Se declara estimación y compromiso | `/declaraciones` | `GET .../declarations/{developerId}`, `POST` y `PUT` de `/api/planning-metadata` (Fases 23 y 24) |
+| **Se genera el plan** | **`/planificar`** | **`POST /api/planning/from-glpi` (Fase 9), sin cambios** |
+| Se abre la agenda | `/calendario/{planId}` | `GET /api/planning/{planId}/timeline` (Fases 15 y 16) |
+| Se leen las métricas | `/` y `/metricas/{gap}` | `GET /api/planning/metrics` y sus desgloses (Fases 17 y 18) |
+| Se leen las alertas | `/alertas` | `GET /api/planning/alerts` (Fases 19 y 20) |
+| Se renegocian los desplazamientos | `/renegociaciones` | las cinco rutas de `/api/renegotiations` (Fases 25 a 27) |
+
+**Los cuatro destinos del flujo salen de la pantalla y ninguno arma una dirección a mano.** El timeline se construye con `calendarPath(planId)` —el único sitio que sabe cómo se arma esa dirección— y los otros tres son las constantes de `ROUTES`. La prueba de navegación afirma el `href` de los cuatro, y ese `href` sale de la misma plantilla que usa la tabla de renegociaciones para enlazar un plan: no hay dos formas de construir la dirección del calendario.
+
+**El criterio de aceptación del brief se cumple entero**: existe una operación visible para generar planes (1), `PlanningEngine` no se modificó (2), las reglas tampoco (3), el endpoint que se reutiliza es el que ya existía (4), el timeline generado se abre (5), todas las pruebas pasan —**113 del frontend y 336 del backend**— (6) y el flujo completo está operativo (7).
+
+---
+
+# Fase 29 — Recursos representa personas
+
+## Qué se hizo, en una frase
+
+La Fase 21 construyó `/recursos` como una **comparación de planes** y la identificó por el `developerId`: la tabla era correcta y aun así no se podía leer, porque quien la mira no reconoce `dev-001`, reconoce a Ana Pérez. Esta fase **gira la pantalla alrededor de la persona** —el nombre pasa a ser la identificación y el identificador baja a dato técnico— y con el giro la vista pasa a contestar de un vistazo la pregunta que antes exigía abrir el tablero, la declaración, la planificación y la renegociación: **¿cómo está el equipo hoy?** La tabla gana nombre, tickets y renegociaciones pendientes, la columna de alertas por persona y las acciones al detalle; la columna `Restante` sigue siendo el estado de capacidad, porque el número con su signo ya lo dice. **El diff es enteramente del frontend**: ni una línea de `PlanningEngine`, de las reglas de negocio, de los desplazamientos, de las renegociaciones, de la integración con GLPI ni de los contratos.
+
+## El análisis obligatorio: qué muestra hoy Recursos y de dónde sale cada dato
+
+El brief pedía documentar cuatro cosas **antes** de escribir una línea, y la primera de ellas —dónde vive un nombre— ordenó todo lo demás.
+
+**Qué información muestra hoy la pantalla.** `developerId`, `capacity.availableHours` / `occupiedHours` / `remainingHours`, `displacedRequirements`, `planId` con su ventana y su sello, los tres totales agregados de `current.capacity` y las seis alertas del catálogo. Todo eso sale de **dos respuestas que ya existían** —`GET /api/planning/metrics` y `GET /api/planning/alerts`— y la Fase 21 no añadió endpoint, entidad, tabla ni dependencia.
+
+**Qué entiende realmente un usuario.** De esa lista, un usuario entiende **todo menos el sujeto**: las horas, los desplazamientos y las alertas son cifras que se leen sin traducción, y `planId` es una dirección. Lo que no se puede leer es **de quién es la fila**. Y hay un segundo hueco, más callado: la pantalla enseña la carga de cada persona pero **no el trabajo que el plan todavía no ve** —los tickets que GLPI tiene asignados y que aún no están planificados—, que es justo lo que explica por qué alguien tiene la capacidad que tiene.
+
+**Qué identificadores son técnicos.** El `developerId` lo es: es la clave con la que GLPI nombra a un usuario y con la que el resto de la aplicación pide las cosas, no un nombre de persona. El `planId` también lo es. Y el `workItemId` de cada ticket. **Ninguno de los tres desaparece de la pantalla**, porque los tres hacen falta para ir a mirar: lo que cambia es **dónde se ponen**.
+
+**Qué nombres reales puede resolver el sistema hoy.** Aquí está el hallazgo que decidió la fase, y se comprobó leyendo el código y no suponiendo: **el nombre de una persona solo lo publica un sitio**. No está en la fotografía operativa (`PlanningOperationalMetricsResponse` no lleva nombres), no está en el plan, no está en el snapshot guardado, y `planning_metadata` no tiene ni siquiera columna de `developerId`. Vive **únicamente** en `GET /api/planning-metadata/declarations/{developerId}`, que es la lectura de la Fase 23 y devuelve `developer.name` junto a los tickets asignados. **No hay padrón de personas**: el puerto `GlpiPlanningSource` tiene exactamente dos métodos —`findUser` y `ticketsOf`—, y la operación que listaría a todos los usuarios de GLPI no existe. Esa es la restricción de arquitectura que la fase no puede saltar, y de la que salen las dos limitaciones que quedan dichas.
+
+## Las decisiones
+
+### 167. El nombre se pide persona a persona, y no se le añade a la fotografía operativa
+
+Era la única decisión de verdad de la fase: el nombre existe en un sitio, y había que elegir **quién lo pide**.
+
+**La alternativa descartada era la obvia: enriquecer `/metrics` con nombres.** El backend ya tiene la ruta, ya tiene el cliente de GLPI y le sobra contexto para resolver `developer.name` de cada fila antes de responder. Se descartó por lo que esa ruta **es**, no por lo que costaría: `/api/planning/metrics` es deliberadamente **una proyección de lo persistido que no consulta GLPI** —así lo afirma su contrato y así lo repite el README—, y esa propiedad es la que hace que el tablero siga en pie cuando GLPI no responde. Añadirle una llamada a GLPI habría convertido la única pantalla que sobrevive a una caída de GLPI en una que cae con él, y a cambio de un nombre.
+
+**La elegida: la fotografía se deja intacta y el nombre se pide por persona desde el cliente**, con la lectura que ya existe. Es un intercambio explícito —una petición por fila a cambio de que nada de lo que ya funcionaba dependa de GLPI— y se acepta a sabiendas (riesgo 123). Tres propiedades hacen que el precio sea llevadero:
+
+**Solo se pregunta por quien está en la tabla.** La lista de personas la decide la fotografía: `current.byDeveloper[]`. A un técnico sin plan vigente **no se le pregunta nada** —su nombre no se pide y no cuesta una consulta—, y con el equipo vacío la pantalla no lanza ni una. Hay una prueba que lo afirma sobre el `fetch`.
+
+**Cada consulta falla sola.** Un identificador que GLPI no conozca deja **su** fila con el identificador y el motivo, y no se lleva las otras: es la misma propiedad de aislamiento por fila que ya tenían las consultas de declaración, aplicada aquí por primera vez a N lecturas a la vez.
+
+**`useQueries` y no un hook por fila.** El número de personas cambia con la fotografía y los hooks no se pueden llamar en un bucle. Además, `useQueries` devuelve las respuestas **en el orden en que se pidieron**, que es lo que permite emparejarlas con los identificadores sin depender de que lleguen en orden.
+
+**Y una cuarta, que es de dónde salen los tickets.** La misma respuesta que trae el nombre trae los `items[]` del técnico, así que **el trabajo que el plan todavía no ve cuesta cero peticiones adicionales**: es la segunda columna que el brief pedía y la que explica la carga de una persona.
+
+#### 167.1 Las otras dos columnas nuevas tampoco estrenan consulta por fila
+
+**Las renegociaciones pendientes salen de una sola lectura para todo el equipo.** `GET /api/renegotiations` devuelve los elementos desplazados **por requerimiento**, cada uno con su `developerId` y su `status` calculado por el backend. Contar los `PENDIENTE_DE_ACUERDO` de cada persona es **agrupar lo que ya viene agrupable**, no volver a decidir nada: el estado se compara contra el literal del contrato y no se re-deriva de fechas ni de acuerdos, que sería la segunda copia de la regla de `RenegotiationService`. Hay una prueba que exige que la petición salga **una sola vez** para las tres personas.
+
+**La columna de alertas cuenta lo que la fila produce, no lo que el catálogo dice.** De las seis alertas, **dos tienen dueño**: las dos de capacidad, que el backend calcula filtrando por el restante de cada plan —es decir, sobre estas mismas filas— y los requerimientos desplazados, que se cuentan sobre los planes vigentes. Las otras cuatro se evalúan sobre lo declarado y no sobre un plan, así que son del conjunto. La vista **no reparte las seis** ni **escribe los nombres de los tipos**: el nombre lo publica el enum del backend, y en la vista sería una segunda copia que solo se descubre el día que discrepen. Lo que pinta es **cuántas condiciones cumple la persona** y el enlace al centro donde están todas contadas y nombradas.
+
+#### 167.2 «Estado de capacidad» es la columna del número, y no se le añade una etiqueta
+
+El brief pedía una columna de estado de capacidad. **Ya existía, y es la del restante.** El estado son los dos casos que el backend distingue —`0`, el punto en el que el siguiente requerimiento desplaza a otro, y `< 0`, el que contradice el propio contexto del plan— y la columna los pinta con el número y su tono. Añadir «Agotada» o «Negativa» al lado del `0` **diría dos veces lo mismo en la misma fila**, y hay una prueba heredada de la Fase 21 que lo dice desde el otro lado: «marca la capacidad agotada, **con el número recibido y no una etiqueta**». El predicado vive en `lib/capacity.ts` desde entonces y lo comparten el tablero y esta tabla, para que las dos no puedan discrepar.
+
+#### 167.3 `null` sigue sin ser `0`, y en esta pantalla se nota más
+
+La vista gana celdas que **pueden no leerse**, así que la regla se aplica una por una en vez de relajarse: un nombre que GLPI no publica deja la fila **con su identificador y el motivo escrito**, no en blanco —que se leería como una persona sin nombre en vez de como una lectura que no se pudo hacer—; una lectura caída deja «Sin dato» en los tickets y en las pendientes, y **no un cero**, que afirmaría un hecho que nadie comprobó; y una persona **sin** tickets dice «Sin tickets», que es un cero verificado, y no «Sin dato». Al ordenar, lo desconocido va **al final de la lista** en vez de disfrazarse del menor valor, que es lo que haría un `0` de relleno. El fallo de las renegociaciones, además, se declara **donde se ve su efecto** —la columna que se queda sin dato— y no se lleva por delante la tabla.
+
+## Las pruebas
+
+**Las 16 que ya existían pasan sin debilitarse, y se añaden 11.** Una prueba que hubo que **cambiar de forma y no de sentido** fue la que afirmaba «dos endpoints»: ahora el conjunto exacto de direcciones que la pantalla pide es parte de lo que hay que afirmar, porque la fase introduce lecturas nuevas y «una de más» es un fallo silencioso —nadie ve la petición sobrante en la pantalla—. Se afirma el conjunto **sin depender del orden** y con la correspondencia exacta: las tres del equipo, más **una declaración por persona de la tabla y ninguna más**.
+
+Las once nuevas cubren una por una las columnas y los estados que el brief pedía: el nombre visible; el identificador como dato secundario —la primera celda de la fila **no** lo contiene, que es la forma de afirmar «no es la identificación» sobre el DOM y no sobre la intención—; la persona con plan, que trae nombre, tickets, capacidad y plan; **la persona sin plan vigente, a la que no se le pregunta por su nombre** —se afirma que la dirección de su declaración no se pidió nunca, y el texto que declara por qué no aparece—; los tickets en sus tres estados —cinco, «Sin tickets» y «Sin dato» por un `404`—; los desplazamientos por persona; las pendientes contadas **de una sola lectura**; los marcadores de alerta en sus tres valores —0, 2 y 1— con su enlace a `/alertas`; la ordenación por las columnas nuevas, incluida la de pendientes en los dos sentidos y con el desempate por identificador; el equipo vacío, que **no lanza ni una consulta de declaración**; el identificador desconocido, que conserva su fila y su motivo sin llevarse las otras; y la lectura de renegociaciones caída, que deja «Sin dato» y deja la tabla en pie.
+
+**Un defecto se evitó antes de escribirlo, y conviene dejarlo escrito** porque es el tipo de cosa que se arregla mal: con la columna de tickets en la tabla, la aserción heredada `getByText('0')` de la persona con el restante agotado habría pasado a ser ambigua —«encontrados múltiples elementos»— y el arreglo fácil habría sido `getAllBy`, que **debilita** la prueba en vez de arreglarla. La salida correcta era la que además es honesta: un cero de tickets se dice con palabras —«Sin tickets»— y no con un dígito, así que la aserción original sigue afirmando lo que afirmaba.
+
+**Frontend: 124 pruebas en 10 archivos, 0 fallos**, con `typecheck`, `lint` y `build` limpios. **Backend: sin cambios en esta fase**, y ejecutado igualmente para confirmarlo.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 123 | **Nombrar la tabla cuesta una petición por persona** — la vista pide la declaración de cada fila, así que un equipo de cuarenta personas lanza cuarenta lecturas (más las tres del conjunto) | **Bajo**: van en paralelo, se cachean por `developerId` con las mismas claves que ya usa la pantalla de declaración —así que una persona ya consultada no se vuelve a pedir— y **a quien no tiene plan no se le pregunta**. El coste crece con el equipo y no con el trabajo | Es el precio explícito de no atar `/metrics` a GLPI (167), y se paga a gusto. La salida es del backend y tiene dos formas: exponer el catálogo de usuarios de GLPI por el puerto —que además cerraría el riesgo 124— o un agregado nuevo que sirva nombres sin depender de GLPI en la ruta de la fotografía |
+| 124 | **Un técnico con trabajo declarado pero sin plan vigente no aparece en la pantalla** — la vista consolida planes y él no tiene ninguno, así que su carga y sus pendientes son invisibles aquí | **Bajo-medio**: el líder puede leer el equipo como completo cuando le falta alguien. Lo que falta no es un dato —se sabe que existe— sino el padrón para enumerarlo | Se declara en la pantalla en vez de rellenarse con una fila de ceros, que afirmaría una capacidad que nadie calculó. Cerrarlo exige el catálogo de personas, que hoy no existe: el puerto `GlpiPlanningSource` tiene `findUser` y `ticketsOf`, y ninguna operación que liste usuarios |
+| 125 | **La columna de alertas cuenta dos de las seis condiciones** — un lector puede tomar el número por «las alertas de esta persona» | **Bajo**: el enlace lleva al centro de alertas, donde están las seis, contadas y nombradas, y la tarjeta de abajo dice cuáles se reparten por persona y cuáles son del conjunto | Es deliberado (167.1): repartir las cuatro de declaración sería re-derivar un predicado del backend sobre datos que no son de la fila. Si un día esas condiciones ganaran dueño, el cambio es del contrato —que tendría que llevar el `developerId`—, no de la vista |
+
+## Limitaciones
+
+**Un técnico sin plan vigente no aparece, y es la limitación que la fase no puede cerrar.** No es un hueco de la vista: es el techo que impone no tener padrón. La pantalla consolida planes, y el backend no publica la lista de personas (riesgo 124). Por eso el nombre se pide **persona a persona** en vez de leerse de una lista, y por eso el estado vacío **declara** que el equipo puede estar incompleto en vez de insinuar que está completo.
+
+**Los tickets que se enseñan son los asignados, no los planificados.** El número sale de los `items[]` de la declaración, que es lo que GLPI tiene asignado hoy a ese técnico. La pantalla no los cruza con los elementos del plan —esa comparación no existe publicada en ningún sitio— y por eso no puede decir «estos cinco entraron al plan y estos dos no». Es un dato de contexto, que es como se rotula.
+
+**La pantalla es la misma vista de solo lectura que era.** El giro es de identidad y de información, no de capacidad de acción: sigue sin haber edición, alta, baja o edición de calendarios. El mantenimiento de recursos sigue pendiente y esta fase no lo adelanta.
+
+**La tabla sigue sin caber en un móvil.** Ahora tiene más columnas, así que se desplaza en horizontal, como la del centro de alertas (riesgo 92).
+
+## La verificación explícita: «¿puede un líder identificar a las personas y entender el estado del equipo de un vistazo?»
+
+**Sí, y las dos mitades de la pregunta se responden de la misma tabla.** Identificar es leer la primera columna, que es un nombre; entender el estado es leer la misma fila: quién tiene el restante agotado o negativo —el número con su tono—, quién arrastra desplazamientos, quién tiene renegociaciones esperando un acuerdo, quién tiene tickets asignados que el plan todavía no ve. Y ninguna de esas respuestas exige abrir otra pantalla, que era la pregunta de negocio del brief:
+
+| Pregunta | Dónde se responde | ¿Hay que salir de `/recursos`? |
+|---|---|---|
+| ¿Quién es quién? | Columna **Nombre** | No |
+| ¿Cómo está la capacidad? | Columnas **Disponible**, **Ocupada** y **Restante**, con el tono de los dos casos del backend, y las tres tarjetas agregadas | No |
+| ¿Cuánto trabajo tiene asignado que el plan todavía no ve? | Columna **Tickets** (el asignado en GLPI, no el planificado) | No |
+| ¿Quién tiene trabajo desplazado? | Columna **Desplazados** | No |
+| ¿Quién tiene acuerdos sin cerrar? | Columna **Renegociaciones pendientes** | No |
+| ¿Quién exige atención ahora? | Columna **Alertas**, con el enlace al centro para el detalle | No |
+| ¿Cómo se hizo ese plan? | Columna **Plan vigente** → `/calendario/{planId}` | Sí, a un clic |
+
+**El criterio de aceptación del brief se cumple entero**: la pantalla representa personas (1), los nombres son visibles (2), el `developerId` deja de ser la identificación principal sin desaparecer (3), la vista responde «¿cómo está el equipo hoy?» sin abrir ninguna otra pantalla (4), `PlanningEngine` no se modificó (5), las reglas de negocio tampoco (6) y todas las pruebas pasan (7).
+
+# Fase 30 — El catálogo híbrido del equipo
+
+## Qué se hizo, en una frase
+
+La Fase 29 giró `/recursos` alrededor de la persona y dejó escrito su techo: **no existía forma de enumerar a nadie**. La lista de personas del equipo no estaba en ninguna respuesta —el puerto `GlpiPlanningSource` sabía buscar un usuario y sus tickets, y no sabía listar un grupo— y por eso la tabla se armaba con planes y quien no tenía uno no existía para ella (riesgo 124). Esta fase estrena **`GET /api/team`**, el primer contrato del sistema que **enumera personas**: lee el grupo de GLPI configurado —**con sus subgrupos**—, le suma las **excepciones declaradas a mano** y publica un padrón con el origen de cada fila. `/recursos` deja de consolidar planes y pasa a consolidar **el equipo**. **No se tocó `PlanningEngine`, ni una regla de negocio, ni los desplazamientos, ni las renegociaciones**: el diff es un puerto más, un servicio que junta dos fuentes, un endpoint de lectura y las dos pantallas que lo consumen.
+
+## El análisis obligatorio: cómo se enumera hoy a las personas
+
+El brief pedía documentar tres cosas antes de escribir una línea, más cinco preguntas sobre las excepciones. Las tres, con lo que había:
+
+**1. Cómo se enumeran hoy las personas.** No se enumeran. Es la respuesta literal y es la que explica las veintinueve fases anteriores. Todo el sistema pregunta **por alguien que ya se conoce**: el plan por `developerId`, la declaración por `developerId`, los tickets por el número de usuario de GLPI, la renegociación por elemento. La única lectura que devuelve una colección de personas es `current.byDeveloper[]` de `/api/planning/metrics`, y **es una colección de planes, no de personas**: trae a quien tiene un plan vigente y a nadie más. El puerto de la integración lo confirma: `findUser(login)`, `ticketsOf(technician)` y —desde esta fase— `membersOfGroup(groupId)`. Las dos primeras exigen saber a quién se pregunta.
+
+**2. Cómo podría construirse el catálogo desde GLPI.** GLPI ya sabe hacerlo y el contrato ya estaba verificado contra la instancia real (decisión 159): `GET /search/User` con `criteria[0][field]=13` —grupos—, `searchtype=under` y el identificador del grupo devuelve sus miembros, **subgrupos incluidos**. Sobre el grupo **1 (Desarrollo N2)** son **41 personas**, contra las 21 que devuelve la búsqueda directa: la diferencia son los subgrupos 41, 42 y 48, y es exactamente la gente que hoy se perdería si el catálogo se armara de cualquier otra forma. La respuesta llega en el sobre de `GlpiSearchPage` —el mismo que ya usa `/search/Ticket`, porque la forma del sobre no depende de lo que se busca— y cada fila viene indexada por número de opción: `1` login, `2` identificador, `8` vigencia, `9` nombre, `34` apellido.
+
+**3. Cómo se representarían las excepciones.** Es la pregunta que el brief delegó, y tiene cinco partes. Las cinco, contestadas antes de elegir:
+
+| Pregunta | Respuesta |
+|---|---|
+| **Cómo se representa una excepción** | Un login, un nombre opcional, un número de GLPI opcional y una vigencia. Es una `Person` del catálogo con `sourceType = EXCEPTION`, con la misma forma que las demás: la vista no tiene que aprender un segundo tipo |
+| **Dónde vive** | En la configuración del backend, bajo `team.exceptions`. La decisión está en 168.1 y se eligió entre cuatro sitios |
+| **Cómo se distingue de un miembro de GLPI** | En `sourceType` (`GLPI` o `EXCEPTION`), que viaja en cada fila. La vista pinta una insignia **solo cuando no es `GLPI`**: en cuarenta filas del grupo sería ruido, y la que importa es la que no se puede explicar mirando GLPI |
+| **Cómo se evitan duplicados** | Una excepción cuyo login ya vino de GLPI **no se aplica**, y el login se publica en `unusedExceptions`. La comparación ignora mayúsculas —los dos orígenes pueden escribir el mismo login distinto— pero **el login conserva su texto tal como se declaró**, porque es el identificador con el que se pide todo lo demás y ese sí distingue mayúsculas |
+| **Cómo se fusionan los dos orígenes** | El grupo de GLPI es la **base** y las excepciones se aplican encima, pudiendo solo **añadir** o **marcar retirado**. Nunca quitar. La fusión está en 168.2 |
+
+## Las decisiones
+
+### 168. GLPI enumera y las excepciones complementan, y las dos cosas viajan en una sola respuesta
+
+**GLPI sigue siendo la fuente principal y esta fase no la degrada.** El padrón es, por defecto, el grupo configurado con sus subgrupos: quien GLPI publica ahí está en el equipo sin que nadie lo declare. Lo que la fase añade no es una segunda fuente de verdad sino una **vía de excepción**, con tres usos y ninguno más: **agregar** a una persona que GLPI no publica, **mantener vigente** a alguien hasta que GLPI se corrija, y **documentar** el caso para que quede en el diff con su autor. Una excepción que intentara **quitar** a alguien que GLPI entrega no se aplica: se publica como no aplicada y se dice cuál.
+
+**Una sola respuesta, no dos.** El brief pedía un `GET /api/team` que publicara `source` y `generatedAt`, y por persona `developerId`, `glpiId`, `name`, `active` y `sourceType`. Es lo que hay, y la forma importa: **si las excepciones vivieran en una lectura aparte, cada consumidor tendría que fusionarlas por su cuenta** —y el día que dos lo hicieran distinto, el equipo sería distinto en dos pantallas—. Fusionar es del backend porque es donde está la regla de quién manda.
+
+#### 168.1 La excepción vive en `application.properties`, y no en una tabla
+
+Se evaluaron los cuatro sitios que el brief pedía evaluar. La decisión es **B**, y el argumento que la decide es que una excepción **es configuración de operación, no un dato de negocio**: describe cómo se lee el equipo, no algo que el equipo haga.
+
+| | Simplicidad | Mantenibilidad | Trazabilidad | Veredicto |
+|---|---|---|---|---|
+| **A — `application.yml`** | Alta | Alta | Buena: vive en git con su autor | **Descartada**: es la misma decisión que B con un formato que el proyecto no usa. No hay un solo `.yml` de configuración en el repositorio |
+| **B — `application.properties`** | Alta: `@ConfigurationProperties(prefix = "team")` sobre un `Map<String, DeclaredException>`, que es el idioma que el proyecto ya usa (`planning.incident-policies.ALTO.*`) | Alta: se valida al arrancar y el arranque falla si la forma está mal | **La mejor**: el cambio entra en un diff, con autor, fecha y mensaje. Quién añadió a quién y por qué es una línea de `git log` | **Elegida** |
+| **C — archivo JSON aparte** | Media: exige un lector propio y un `ObjectMapper` para un dato que Spring ya sabe enlazar | Media: un archivo más que nadie valida al arrancar | Buena, pero **igual** que B: también es git | **Descartada**: paga complejidad por la misma trazabilidad |
+| **D — tabla propia** | Baja: entidad, repositorio, migración y endpoint de escritura | Baja: el esquema lo gobierna `ddl-auto=update` y no hay Flyway (decisión 66), así que la tabla derivaría sin control | La peor de las cuatro: un dato que cambia por SQL no dice quién lo cambió ni por qué | **Descartada**: es la opción más cara para el caso menos frecuente. Una excepción se declara una vez y se revisa cuando GLPI se corrige; no es un alta de usuario |
+
+**El precio de B se dice en voz alta: cambiar una excepción exige reiniciar el backend.** Se acepta porque el caso de uso no es urgente —una persona que GLPI no publica hoy seguirá sin publicarla dentro de una hora— y porque la alternativa (D) pagaba ese precio con un esquema sin control de versiones. El día que las excepciones se editen desde la interfaz, la decisión cambia, y entonces D será la respuesta correcta.
+
+**Una excepción es aditiva por construcción, y eso está en el tipo.** `DeclaredException(name, glpiId, active)` no tiene forma de expresar «quitar»: lo único que puede hacer con la vigencia es marcarla en falso. Un campo que no existe no se puede usar mal.
+
+#### 168.2 La fusión: GLPI primero, la excepción encima, y la clave es el login
+
+El orden no es una preferencia de implementación, es la regla crítica del brief escrita en código:
+
+1. **Se lee el grupo configurado**, con subgrupos. Cada fila entra con `sourceType = GLPI` y su login como `developerId`. Un usuario sin login utilizable **no entra** y se registra el motivo: no hay clave con la que nombrarlo.
+2. **Se leen las excepciones declaradas.** Por cada una, se compara su login contra los que ya vinieron de GLPI, **sin distinguir mayúsculas**.
+3. **Si ya vino de GLPI, la excepción no se aplica** y su login va a `unusedExceptions`. GLPI gana. Este es el punto que hace que una excepción **no pueda** quitar a nadie: para quitar a alguien habría que dejar de listarlo, y el paso 1 ya lo listó.
+4. **Si no vino, se añade** con `sourceType = EXCEPTION`, conservando el texto del login tal como se declaró.
+5. **El padrón se ordena por identificador** y se publica con su sello: `generatedAt`, `source` —los dos textos que declaran de dónde sale cada mitad—, `glpi` —cómo fue la lectura—, `people[]` y `unusedExceptions[]`.
+
+**El login es la clave y las mayúsculas no lo son.** Dos orígenes pueden escribir `NicoSuar` y `nicosuar` y estar hablando de la misma persona; tratar los dos como distintos crearía un duplicado silencioso. Pero **el identificador que se publica conserva su texto original**, porque es con el que se pide el plan de esa persona y ese sí distingue mayúsculas: normalizarlo «para que quede bonito» rompería justo la lectura que existe para no depender del catálogo. Las dos cosas a la vez es lo que el brief pedía como «eliminar duplicados correctamente»: comparar sin distinguir y publicar sin alterar.
+
+#### 168.3 La degradación es parte del contrato, no un estado de error
+
+**Cuando GLPI no responde, `GET /api/team` contesta `200`.** El cuerpo trae las excepciones declaradas, `people[]` sin las personas que solo GLPI conoce, un sobre `glpi` con `available = false` y el **motivo que da la propia integración**, y la pantalla lo enseña entero: que no se pudo, qué grupo se intentó leer y por qué.
+
+Se eligió así por tres razones, y la tercera es la que decide:
+
+- **`500` diría «no hay padrón» y habría uno**: el de las excepciones. Una respuesta de error tiraría un dato que sí se pudo leer.
+- **Un `200` mudo mentiría**: una tabla con tres filas y sin aviso se lee como un equipo de tres personas.
+- **Y sobre todo: el motivo es lo que convierte el hueco en algo accionable.** «No se pudo leer el grupo Desarrollo N2: *Connection refused*» dice a quién hay que llamar. Un `503` genérico no.
+
+Solo se capturan `GlpiConnectionException` y `GlpiInvalidDataException` —las dos que la capa de integración declara para «no se pudo leer»—, nunca un `RuntimeException` a secas: un fallo de programación tiene que romper, no disfrazarse de GLPI caído.
+
+#### 168.4 El nombre se lee del padrón, y la declaración se sigue pidiendo, pero solo por los tickets
+
+**El nombre cambia de dueño.** Hasta la Fase 29 lo publicaba la declaración de cada técnico, y por eso nombrar la tabla costaba **una petición por persona** (riesgo 123): cuarenta lecturas para un equipo de cuarenta. Ahora lo publica el padrón, **una sola lectura para todo el equipo**. Ese riesgo queda cerrado, y su mitigación —«exponer el catálogo de usuarios de GLPI por el puerto»— es literalmente lo que esta fase hizo.
+
+**La declaración se sigue pidiendo, y sigue costando una petición por persona, pero solo por quien tiene plan vigente.** Es deliberado y no un resto: los tickets son de la columna que sí se pinta, y sin plan no hay columna que llenar. Pedirlos por las 41 personas del grupo serían 41 lecturas a GLPI en **cada carga** de la pantalla —una que la Fase 29 no tenía y que esta fase no estrena—. Una persona sin plan muestra «Sin dato» en su celda de tickets, que es distinto de «Sin tickets»: lo primero es un hueco declarado, lo segundo un cero verificado.
+
+**El contrato de `/api/planning/metrics` no se toca, y es lo que mantiene el tablero en pie.** Añadirle nombres habría atado la fotografía operativa a GLPI, y hoy esa ruta no lo consulta —es por lo que el tablero sigue respondiendo cuando GLPI no responde (decisión 167)—. El padrón es una lectura **nueva y aparte** precisamente para que su caída no se lleve nada más.
+
+## Las pruebas
+
+Se añadieron **9 pruebas de servicio** (`TeamCatalogServiceTest`), **2 de endpoint** (`TeamEndpointsTest`) y **4 de interfaz** en `Resources.test.tsx`, sobre las que ya había. Las nueve del servicio cubren los escenarios que el brief pedía uno por uno:
+
+| Escenario del brief | Prueba |
+|---|---|
+| 1. Catálogo solo GLPI | `soloConGlpiElPadronEsElGrupo` |
+| 2. Catálogo solo excepciones | `soloConExcepcionesElPadronSigueEnPie` |
+| 3. Catálogo mixto | `lasDosFuentesSeJuntan` |
+| 4. Deduplicación | `laExcepcionQueGlpiYaEntregaNoSeAplica` y `elLoginEnMinusculasTampocoDuplica` |
+| 5. Nicolás Suárez | `nicolasSuarezEntraPorLaExcepcion` |
+| 6. Persona sin plan | Cubierto en el frontend: «a quien no tiene plan vigente se le ve igual, pero no se le piden sus tickets» |
+| 7. GLPI caído | `conGlpiCaidoElPadronSaleDeLasExcepciones` y, en el endpoint, `conGlpiCaidoRespondeConElMotivo` |
+| 8. Origen visible | `publicaElOrigenYElSello` (endpoint) y «marca el origen de quien no viene de GLPI, y calla el de quien sí» (interfaz) |
+| 9. Compatibilidad con Recursos | «un plan que el padrón no conoce sigue apareciendo, y dice que solo se le conoce por él» |
+
+Más dos que el brief no pedía y el contrato sí: `unaExcepcionRetiradaEntraMarcada` —una excepción marcada como retirada entra marcada y no desaparece— y `unUsuarioSinLoginNoEntra` —sin clave con la que nombrar a alguien, no hay fila—.
+
+**Ninguna prueba existente se borró.** Cinco se reescribieron porque esta fase **invierte su premisa** —afirmaban que una persona sin plan no aparece, y ese era el defecto que la fase corrige— y se dejó escrito en cada una por qué cambia. El resto de las pruebas del frontend y del backend pasa sin tocarse.
+
+**El caso obligatorio, con nombres y números.** `NicoSuar` —Nicolás Alejandro Suárez Flores, usuario 1071 de GLPI— **no lo publica el grupo**, así que entra al padrón por una excepción declarada. La prueba lo comprueba en las tres formas en que puede llegar: por la excepción sola, con el grupo respondiendo y sin él, y —en la interfaz— con su plan pedido **por el número 1071**, que es el caso en que una implementación descuidada lo enseñaría dos veces, una como `NicoSuar` y otra como `1071`.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 126 | **Una excepción mal tecleada crea una persona que no existe** — un login con una errata entra al padrón como una fila más, sin nombre ni número de GLPI, y el equipo queda con alguien fantasma | **Bajo-medio**: la tabla es el padrón, y una fila de más se lee como una persona de más | La fila se ve marcada como **Excepción**, que es exactamente la señal de «esto lo puso alguien a mano». No se valida contra GLPI al arrancar: comprobarlo exigiría que el backend no arrancara sin GLPI, y hoy arranca sin él a propósito. Es el precio de que las excepciones **funcionen cuando GLPI no responde**, que es justo cuando hacen falta |
+| 127 | **Una excepción que GLPI ya entrega queda muerta y nadie la limpia** — el día que GLPI publica a esa persona, la declaración sobra y sigue en el archivo | **Bajo**: no hace nada, porque GLPI gana | Se publica en `unusedExceptions` y la pantalla lo enseña con los logins concretos. Exige que alguien mire, y por eso el aviso está en la pantalla y no solo en el log: es un recordatorio de limpieza, no un error |
+| 128 | **El padrón se lee entero en cada carga de la pantalla, sin caché del lado del servidor** — cada apertura de `/recursos` es una búsqueda de usuarios a GLPI | **Bajo**: los miembros de un grupo son decenas y cambian poco; TanStack Query ya cachea del lado del cliente. Crece con el número de pantallas abiertas, no con el tamaño del equipo | Si llega a molestar, la caché es del backend —un `@Cacheable` con vida corta sobre `membersOfGroup`— y no cambia el contrato. No se hizo porque nadie lo ha medido, y adelantarla sería inventar un problema antes de tenerlo |
+| 129 | **El equipo entero depende de un número en la configuración** — `TEAM_GROUP_ID` vale `1` por defecto, y si el grupo real del equipo no es ese, el padrón sale con las excepciones y nada más | **Medio en la puesta en marcha, bajo después**: se detecta la primera vez que alguien abre la pantalla | El grupo **viaja en la respuesta** (`glpi.groupId` y `glpi.groupName`) y la pantalla lo nombra al declarar el fallo. Un equipo vacío sin motivo sería indistinguible de un grupo vacío; con el nombre del grupo a la vista, la diferencia se lee |
+| 130 | **`active = false` mantiene a alguien indefinidamente** — es una decisión manual y sin caducidad; nadie la revisa | **Bajo-medio**: una persona retirada sigue apareciendo en la tabla, marcada como inactiva | Es deliberado —mantener a alguien vigente hasta corregir GLPI es uno de los tres usos— y se ve: la fila lleva su insignia **Inactivo**. No hay fecha de caducidad porque no hay forma de saber cuándo GLPI estará corregido, y un vencimiento automático devolvería a la persona al olvido sin que nadie lo decidiera |
+
+**Y un riesgo que esta fase cierra.** El **124** —«un técnico con trabajo declarado pero sin plan vigente no aparece»— queda resuelto: el padrón enumera personas y la tabla dejó de depender de los planes para saber quién está. Su texto se conserva porque describe el estado de la Fase 29, y su mitigación escrita —«exponer el catálogo de usuarios de GLPI por el puerto»— es la que se aplicó.
+
+## Limitaciones
+
+**Una excepción no se puede editar sin reiniciar, y es el precio de la decisión 168.1.** Se evaluó y se aceptó a cambio de que cada cambio quede en git con su autor. El día que se editen desde la interfaz, la decisión se revisa y la tabla propia pasa a ser la respuesta correcta.
+
+**El padrón no dice si alguien tiene trabajo sin plan.** Enumera personas y publica, de cada una, lo que el sistema sabe hoy: su nombre, su número y su vigencia. **No sabe —ni puede saber— qué técnicos tienen tickets asignados en GLPI si nadie ha pedido su declaración**: eso exigiría una lectura por persona, que es el coste que la decisión 168.4 evita deliberadamente. Una persona sin plan aparece con su celda de tickets en «Sin dato», y ese hueco está declarado, no rellenado.
+
+**La pantalla de generación de plan sigue pidiendo el técnico a mano.** El riesgo 107 —«el técnico se escribe a mano porque no hay padrón que ofrecer»— **ya tiene de dónde salir**, pero esta fase no lo cambia: convertir ese campo en un desplegable es una decisión de otra pantalla y no estaba en el brief. Queda dicho para que no se descubra dos veces.
+
+**Las excepciones no se pueden consultar por API.** Solo se publican aplicadas, dentro del padrón. Un endpoint que las listara aparte sería una segunda lectura del mismo hecho, y el día que discrepara, ¿cuál manda? El padrón ya trae lo que hace falta saber de ellas: cuáles entraron y cuáles sobraron.
+
+**Sigue sin haber mantenimiento de recursos.** El padrón **lee** personas; no las crea, ni las da de baja, ni las asigna a un grupo. El alta sigue siendo editar la configuración de GLPI o declarar una excepción, y eso es lo que esta fase deja escrito.
+
+## La verificación explícita: «¿puede alguien desaparecer del equipo por un error de GLPI?»
+
+**No, y hay tres mecanismos que lo impiden, cada uno para una forma distinta de fallo.**
+
+| Forma del fallo | Qué pasa | Por qué no desaparece nadie |
+|---|---|---|
+| **GLPI no responde** | El padrón contesta `200` con `glpi.available = false`, el motivo, y las excepciones declaradas | Las excepciones son **la mitad del padrón que no depende de GLPI**, y es exactamente el escenario para el que existen. La pantalla lo declara en vez de enseñar un equipo corto como si fuera el equipo |
+| **GLPI responde y no publica a alguien** | Esa persona no está en el grupo, así que no entra por el paso 1 | Se declara una **excepción** con su login. Entra al padrón con `sourceType = EXCEPTION` y se ve marcada, así que la fila no se confunde con alguien que GLPI sí publica |
+| **GLPI lo publica mal** —sin nombre, o dado de baja antes de tiempo— | Entra con el nombre en nulo y el motivo, o con `active = false` y su insignia **Inactivo** | **Ninguna de las dos cosas lo saca de la tabla.** Un nombre nulo se dice —«GLPI no publica un nombre para este identificador»— y una baja se marca; las dos filas siguen ahí, que es lo que el brief pedía: la persona vigente no desaparece |
+
+**Y la regla que lo hace verificable: una excepción nunca puede quitar a nadie.** No es una convención ni una recomendación escrita en un comentario: `DeclaredException` no tiene un campo que exprese «quitar», y la fusión comprueba que el login no venga ya de GLPI **antes** de aplicar nada. La única dirección posible es añadir.
+
+**El criterio de aceptación del brief se cumple entero**: el grupo de Desarrollo N2 sigue siendo la fuente principal (1), se pueden añadir excepciones explícitas (2), ninguna persona vigente desaparece por un error de GLPI (3), `/recursos` representa el equipo real y no la parte con plan (4), las excepciones son visibles en la propia fila y auditables en el historial del archivo (5), y las **347 pruebas del backend y las 128 del frontend pasan** (6).

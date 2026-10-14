@@ -19,7 +19,32 @@ public record GlpiUser(
         @JsonProperty("id") Integer id,
         @JsonProperty("name") String name,
         @JsonProperty("realname") String realname,
-        @JsonProperty("firstname") String firstname) {
+        @JsonProperty("firstname") String firstname,
+        @JsonProperty("is_active") Boolean active) {
+
+    /**
+     * Un usuario del que no se pregunto la vigencia.
+     *
+     * <p>La busqueda del grupo si la pide —opcion 8—; {@code /User/{id}} tambien la publica. Pero quien
+     * arma un usuario a mano esta describiendo a alguien, no interrogando a GLPI, y para ese caso el
+     * nulo es lo correcto: no es un dato, es una pregunta que no se hizo.
+     */
+    public GlpiUser(Integer id, String name, String realname, String firstname) {
+        this(id, name, realname, firstname, null);
+    }
+
+    /**
+     * Si la cuenta esta vigente, con el nulo de GLPI leido como lo que es.
+     *
+     * <p>El campo puede no venir —{@code /User/{id}} lo publica y una busqueda solo si se pide su
+     * opcion 8—, y entonces no se sabe. Se devuelve {@code true} en ese caso a proposito: el unico
+     * consumidor que decide algo con esto es el catalogo del equipo, y ante la duda prefiere mostrar a
+     * alguien que resulta estar dado de baja que hacerlo desaparecer. Un catalogo con una persona de
+     * mas se corrige leyendo; uno con una de menos no se nota.
+     */
+    public boolean isActive() {
+        return active == null || active;
+    }
 
     /**
      * El nombre con que se conoce a la persona, para el dominio.

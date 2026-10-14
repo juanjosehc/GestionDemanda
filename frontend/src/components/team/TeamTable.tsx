@@ -3,55 +3,106 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
-import { remainingState, sortDevelopers } from '@/lib/capacity'
-import type { SortDirection, TeamSortKey } from '@/lib/capacity'
+import { remainingState } from '@/lib/capacity'
+import { personName, sortTeam } from '@/lib/team'
+import type { SortDirection, TeamMember, TeamSortKey } from '@/lib/team'
 import { formatHours } from '@/lib/timeline'
 import { formatInstant } from '@/lib/format'
-import { calendarPath, metricPath } from '@/routes/navigation'
+import { ROUTES, calendarPath, metricPath } from '@/routes/navigation'
 import { DISPLACED_TOKEN } from '@/types/planningMetrics'
-import type { DeveloperPlanningMetrics } from '@/types/planningMetrics'
 
 /** Columnas ordenables, en el orden en que se pintan. */
 const COLUMNS: readonly { key: TeamSortKey; label: string; numeric: boolean }[] = [
-  { key: 'developerId', label: 'Desarrollador', numeric: false },
+  { key: 'name', label: 'Nombre', numeric: false },
+  { key: 'developerId', label: 'Identificador', numeric: false },
+  { key: 'tickets', label: 'Tickets', numeric: true },
+  { key: 'displacedRequirements', label: 'Desplazados', numeric: true },
+  { key: 'pendingRenegotiations', label: 'Renegociaciones pendientes', numeric: true },
   { key: 'availableHours', label: 'Disponible', numeric: true },
   { key: 'occupiedHours', label: 'Ocupada', numeric: true },
   { key: 'remainingHours', label: 'Restante', numeric: true },
-  { key: 'displacedRequirements', label: 'Desplazados', numeric: true },
 ]
 
 /** La ventana que cubre el plan, o el motivo por el que no hay ninguna. */
-function windowOf(developer: DeveloperPlanningMetrics): string {
-  if (!developer.from || !developer.to) {
+function windowOf(member: TeamMember): string {
+  if (!member.plan) {
+    return 'Sin plan vigente hoy'
+  }
+
+  if (!member.plan.from || !member.plan.to) {
     return 'Sin agenda: el plan no tiene tramos'
   }
 
-  return `${developer.from} → ${developer.to} · calculado el ${formatInstant(developer.calculatedAt)}`
-}
-
-interface TeamTableProps {
-  /** El plan vigente de cada desarrollador, tal como lo publica la fotografía. */
-  byDeveloper: readonly DeveloperPlanningMetrics[]
+  return `${member.plan.from} → ${member.plan.to} · calculado el ${formatInstant(member.plan.calculatedAt)}`
 }
 
 /**
- * La tabla operativa del equipo: un plan vigente por fila.
+ * Las alertas que esta fila produce por si sola.
  *
- * Cada fila **es** un plan, no una suma de planes: la consolidación no fusiona nada. Los números que
- * se ven son los que el backend publicó para ese plan —disponible, ocupada, restante y
- * desplazamientos—, y el color es lo único que la vista decide: los dos casos que el backend ya
- * distingue, restante agotado y restante negativo.
+ * Son **dos de las seis del catalogo, y son las dos unicas que tienen dueño**: el backend cuenta las
+ * dos condiciones de capacidad filtrando por el restante de cada plan y despues tira la identidad, y
+ * los requerimientos desplazados se cuentan sobre los planes vigentes, que son estas mismas filas. Las
+ * otras cuatro —sin estimacion, sin compromiso, metadata incompleta— se evaluan sobre lo declarado y
+ * no sobre un plan, asi que no hay por que repartirlas.
+ *
+ * No se nombran los tipos aqui: el nombre lo publica el catalogo del backend, y escribirlo en la vista
+ * seria una segunda copia que solo se descubre el dia que los dos discrepen. Lo que se pinta es
+ * cuantas condiciones cumple la persona y el enlace al centro donde estan contadas.
+ *
+ * Una persona sin plan vigente no produce ninguna: las dos condiciones se evaluan sobre un plan, y sin
+ * plan no hay nada que evaluar. No es que este todo bien —es que no hay nada que medir—, y por eso su
+ * celda queda vacia en vez de con un cero que afirmaria lo mismo que una persona con margen.
+ */
+function alertsOf(member: TeamMember): number {
+  if (!member.plan) {
+    return 0
+  }
+
+  const remaining = remainingState(member.plan.capacity.remainingHours)
+
+  return (remaining === 'ok' ? 0 : 1) + (member.plan.displacedRequirements > 0 ? 1 : 0)
+}
+
+interface TeamTableProps {
+  /** El equipo, ya con el nombre y lo que se sabe de cada persona. */
+  members: readonly TeamMember[]
+}
+
+/**
+ * La tabla operativa del equipo: una persona por fila.
+ *
+ * **Cada fila es una persona, no un plan.** Es lo que cambió: antes la fila *era* un plan vigente y
+ * por eso quien no tenía ninguno no aparecía en la tabla. Ahora la lista sale del padrón del equipo y
+ * el plan es un dato de la fila que puede faltar —`plan` en nulo—, así que alguien sin nada
+ * planificado se ve, con su columna de capacidad en «sin plan» en vez de con tres ceros.
+ *
+ * Los números que se ven son los que el backend publicó —disponible, ocupada, restante y
+ * desplazamientos—, y lo único que la vista decide es el color de los dos casos que el backend ya
+ * distingue: restante agotado y restante negativo.
+ *
+ * **El nombre es la identificación y el identificador es el dato técnico.** El de GLPI se sigue
+ * enseñando —es la clave con la que se pide todo lo demás, y sin él no se puede consultar nada por
+ * fuera de esta pantalla—, pero en su columna, en monoespaciado y sin peso: quien lee la tabla
+ * reconoce a la persona por su nombre, y el identificador está ahí para copiarlo, no para leerlo.
+ *
+ * **El origen se enseña cuando no es el de siempre.** Una insignia en las cuarenta filas del grupo de
+ * GLPI sería ruido; la que importa es la de quien está aquí por una excepción declarada a mano, o por
+ * un plan que el padrón no conoce, porque esas dos filas no se pueden explicar mirando GLPI.
+ *
+ * Lo que la vista no pudo leer se declara y no se rellena: una persona cuyo nombre GLPI no publica
+ * sigue apareciendo —está en el equipo— con su identificador y el motivo, y una lectura caída deja su
+ * celda en «sin dato» en vez de en un cero, que afirmaría un hecho que nadie comprobó.
  *
  * Ordenar es una acción del usuario. El orden de partida es el que entregó el backend —por
- * desarrollador, con la vigencia ya resuelta—, y la tabla no re-agrupa ni recalcula: mueve filas.
+ * identificador, con la vigencia ya resuelta—, y la tabla no re-agrupa ni recalcula: mueve filas.
  *
  * Recibe una lista no vacía: el estado vacío lo decide la página, que es quien sabe si además hay
  * alertas que enseñar.
  */
-export function TeamTable({ byDeveloper }: TeamTableProps) {
+export function TeamTable({ members }: TeamTableProps) {
   const [sort, setSort] = useState<{ key: TeamSortKey; direction: SortDirection } | null>(null)
 
-  const rows = sort ? sortDevelopers(byDeveloper, sort.key, sort.direction) : byDeveloper
+  const rows = sort ? sortTeam(members, sort.key, sort.direction) : members
 
   /** Un clic ordena por esa columna; el siguiente la invierte. Cambiar de columna empieza ascendente. */
   function toggle(key: TeamSortKey) {
@@ -64,7 +115,7 @@ export function TeamTable({ byDeveloper }: TeamTableProps) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[58rem] text-sm">
+      <table className="w-full min-w-[88rem] text-sm">
         <thead>
           <tr className="border-b border-border text-xs text-muted-foreground">
             {COLUMNS.map((column) => {
@@ -90,85 +141,221 @@ export function TeamTable({ byDeveloper }: TeamTableProps) {
               )
             })}
 
-            <th scope="col" className="py-2 text-left font-medium">
+            <th scope="col" className="py-2 pr-4 text-right font-medium">
+              Alertas
+            </th>
+
+            <th scope="col" className="py-2 pr-4 text-left font-medium">
               Plan vigente
+            </th>
+
+            <th scope="col" className="py-2 text-left font-medium">
+              Acciones
             </th>
           </tr>
         </thead>
 
         <tbody>
-          {rows.map((developer) => {
-            const remaining = remainingState(developer.capacity.remainingHours)
-            const displaced = developer.displacedRequirements > 0
+          {rows.map((member) => {
+            // Sin plan no hay estado de capacidad que enseñar: la columna queda en «sin plan» y no en
+            // un verde que diria que a esta persona le sobra capacidad, cuando lo que pasa es que no
+            // se le ha calculado ninguna.
+            const remaining = member.plan
+              ? remainingState(member.plan.capacity.remainingHours)
+              : 'sin-plan'
+            const displaced = (member.plan?.displacedRequirements ?? 0) > 0
+            const alerts = alertsOf(member)
             // Agotado advierte; negativo señala un plan que contradice su propio contexto.
             const remainingTone =
               remaining === 'over' ? 'danger' : remaining === 'full' ? 'warning' : undefined
 
             return (
               <tr
-                key={developer.developerId}
+                key={member.developerId}
                 data-slot="team-row"
-                data-developer={developer.developerId}
+                data-developer={member.developerId}
+                data-name={member.name ?? ''}
+                data-source={member.sourceType}
                 data-remaining={remaining}
                 data-displaced={displaced ? 'true' : 'false'}
                 className="border-b border-border/60 align-top last:border-0"
               >
-                <td className="py-3 pr-4 font-medium">{developer.developerId}</td>
+                <td data-slot="team-name" className="py-3 pr-4">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    {personName(member)}
 
-                <td className="py-3 pr-4 text-right tabular-nums">
-                  {formatHours(developer.capacity.availableHours)}
+                    {/*
+                      El origen solo se enseña cuando no es el de siempre. Una insignia en cada fila
+                      del grupo de GLPI seria ruido; la que importa es la que dice que esta persona
+                      esta aqui por una decision escrita a mano y no porque GLPI la publique.
+                    */}
+                    {member.sourceType !== 'GLPI' && (
+                      <Badge variant="outline" data-slot="team-origin">
+                        {member.sourceType === 'EXCEPTION' ? 'Excepción' : 'Solo plan'}
+                      </Badge>
+                    )}
+
+                    {/*
+                      Dado de baja en GLPI y todavia en el padron: se dice, porque una fila vigente de
+                      alguien retirado se lee como un error de datos y no lo es.
+                    */}
+                    {!member.active && (
+                      <Badge variant="warning" data-slot="team-inactive">
+                        Inactivo
+                      </Badge>
+                    )}
+                  </span>
+
+                  {/*
+                    Sin nombre no se deja la celda muda: el identificador de arriba es un respaldo, y
+                    decir de donde sale evita que alguien lo lea como si fuera la persona. El motivo
+                    depende del origen —una excepcion sin nombre es una declaracion incompleta, no un
+                    silencio de GLPI— y por eso no se escribe el mismo texto para las dos.
+                  */}
+                  {!member.name && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {member.sourceType === 'EXCEPTION'
+                        ? 'La excepción no declara un nombre'
+                        : member.sourceType === 'PLAN'
+                          ? 'Solo se conoce por su plan'
+                          : 'GLPI no publica un nombre para este identificador'}
+                    </p>
+                  )}
+                </td>
+
+                <td
+                  data-slot="team-developer-id"
+                  className="py-3 pr-4 font-mono text-xs text-muted-foreground"
+                >
+                  {member.developerId}
+                </td>
+
+                <td data-slot="team-tickets" className="py-3 pr-4 text-right">
+                  {member.tickets === null ? (
+                    <span className="text-xs text-muted-foreground">Sin dato</span>
+                  ) : member.tickets === 0 ? (
+                    <span className="text-xs text-muted-foreground">Sin tickets</span>
+                  ) : (
+                    <span className="tabular-nums">{member.tickets}</span>
+                  )}
+                </td>
+
+                <td data-slot="team-displaced" className="py-3 pr-4 text-right">
+                  {!member.plan ? (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  ) : displaced ? (
+                    <Badge variant="warning">{member.plan.displacedRequirements}</Badge>
+                  ) : (
+                    <span className="tabular-nums">{member.plan.displacedRequirements}</span>
+                  )}
+                </td>
+
+                <td data-slot="team-pending" className="py-3 pr-4 text-right">
+                  {member.pendingRenegotiations === null ? (
+                    <span className="text-xs text-muted-foreground">Sin dato</span>
+                  ) : member.pendingRenegotiations > 0 ? (
+                    <Badge variant="warning">{member.pendingRenegotiations}</Badge>
+                  ) : (
+                    <span className="tabular-nums">0</span>
+                  )}
                 </td>
 
                 <td className="py-3 pr-4 text-right tabular-nums">
-                  {formatHours(developer.capacity.occupiedHours)}
+                  {member.plan ? formatHours(member.plan.capacity.availableHours) : '—'}
                 </td>
 
+                <td className="py-3 pr-4 text-right tabular-nums">
+                  {member.plan ? formatHours(member.plan.capacity.occupiedHours) : '—'}
+                </td>
+
+                {/*
+                  Esta columna **es** el estado de capacidad: el numero con el color de los dos casos
+                  que el backend distingue. No se anade la palabra al lado —«agotada», «negativa»— ni
+                  una columna aparte con ella: seria el mismo hecho dicho dos veces en la misma fila.
+                */}
                 <td className="py-3 pr-4 text-right">
-                  {remainingTone ? (
+                  {!member.plan ? (
+                    <span className="text-xs text-muted-foreground">Sin plan</span>
+                  ) : remainingTone ? (
                     <Badge variant={remainingTone}>
-                      {formatHours(developer.capacity.remainingHours)}
+                      {formatHours(member.plan.capacity.remainingHours)}
                     </Badge>
                   ) : (
                     <span className="tabular-nums">
-                      {formatHours(developer.capacity.remainingHours)}
+                      {formatHours(member.plan.capacity.remainingHours)}
                     </span>
                   )}
                 </td>
 
-                <td className="py-3 pr-4 text-right">
-                  {displaced ? (
-                    <Badge variant="warning">{developer.displacedRequirements}</Badge>
-                  ) : (
-                    <span className="tabular-nums">{developer.displacedRequirements}</span>
-                  )}
-
-                  {/*
-                    Los desplazamientos de este desarrollador se pueden abrir: su listado ya existe y
-                    es el mismo que el de la tarjeta del tablero. La ruta se construye con el token,
-                    no con un literal.
-                  */}
-                  {displaced && (
+                <td data-slot="team-alerts" data-alerts={alerts} className="py-3 pr-4 text-right">
+                  {alerts > 0 ? (
                     <Link
-                      to={metricPath(DISPLACED_TOKEN)}
-                      className="mt-1 block text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      to={ROUTES.alerts}
+                      aria-label={`Ver la alerta de ${personName(member)}`}
+                      className="inline-flex rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     >
-                      Ver el desglose
+                      <Badge variant={remaining === 'over' ? 'danger' : 'warning'}>{alerts}</Badge>
                     </Link>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
                   )}
                 </td>
 
                 <td className="py-3 pr-4">
-                  {/*
-                    El plan vigente y su timeline son el mismo recurso: la agenda de un plan ya existe
-                    y se abre por su identificador. No hay una segunda pantalla que inventar.
-                  */}
-                  <Link
-                    to={calendarPath(developer.planId)}
-                    className="font-mono text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                  >
-                    {developer.planId}
-                  </Link>
-                  <p className="mt-1 text-xs text-muted-foreground">{windowOf(developer)}</p>
+                  {!member.plan ? (
+                    <span className="text-xs text-muted-foreground">{windowOf(member)}</span>
+                  ) : (
+                    <>
+                      {/*
+                        El plan vigente y su timeline son el mismo recurso: la agenda de un plan ya
+                        existe y se abre por su identificador. No hay una segunda pantalla que
+                        inventar.
+                      */}
+                      <Link
+                        to={calendarPath(member.plan.planId)}
+                        className="font-mono text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      >
+                        {member.plan.planId}
+                      </Link>
+                      <p className="mt-1 text-xs text-muted-foreground">{windowOf(member)}</p>
+                    </>
+                  )}
+                </td>
+
+                <td data-slot="team-actions" className="py-3">
+                  <div className="flex flex-col items-start gap-1 text-xs">
+                    {/*
+                      Cada accion aparece solo cuando hay algo que abrir: un enlace a una lista vacia
+                      promete un contenido que no existe. El plan no esta aqui porque su enlace es el
+                      identificador de la columna de al lado.
+                    */}
+                    {member.tickets !== null && member.tickets > 0 && (
+                      <Link
+                        to={ROUTES.declarations}
+                        className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      >
+                        Ver los tickets
+                      </Link>
+                    )}
+
+                    {displaced && (
+                      <Link
+                        to={metricPath(DISPLACED_TOKEN)}
+                        className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      >
+                        Ver el desglose
+                      </Link>
+                    )}
+
+                    {member.pendingRenegotiations !== null && member.pendingRenegotiations > 0 && (
+                      <Link
+                        to={ROUTES.renegotiations}
+                        className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      >
+                        Ver las renegociaciones
+                      </Link>
+                    )}
+                  </div>
                 </td>
               </tr>
             )

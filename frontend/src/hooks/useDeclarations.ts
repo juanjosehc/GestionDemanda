@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   createDeclaration,
@@ -41,6 +41,33 @@ export function useDeclarations(developerId: string) {
     queryFn: ({ signal }) => fetchDeclarations(developerId, signal),
     enabled: developerId !== '',
     retry: false,
+  })
+}
+
+/**
+ * La declaracion de cada persona del equipo: de donde salen su nombre y sus tickets.
+ *
+ * **Es la unica lectura de la aplicacion que multiplica peticiones, y es a proposito.** El nombre de
+ * una persona solo lo publica esta ruta —el backend no expone un catalogo de GLPI, y la fotografia
+ * operativa no lleva nombres—, asi que nombrar la tabla entera cuesta una consulta por fila. La
+ * alternativa era enriquecer `/metrics` con nombres, y eso ataria la fotografia a GLPI: hoy esa ruta
+ * no lo consulta y por eso el tablero sigue en pie cuando GLPI no responde.
+ *
+ * `useQueries` y no un hook por fila dentro de un bucle: la lista de personas cambia con la
+ * fotografia y los hooks no se pueden llamar en un bucle. Ademas deja las respuestas en el orden en
+ * que se pidieron, que es lo que permite emparejarlas con los identificadores.
+ *
+ * `retry: false` como en la pantalla de declaracion y por el mismo motivo: el `404` de un
+ * identificador que GLPI no conoce es esperable, y reintentarlo solo retrasa el mensaje. Cada
+ * consulta falla sola: un tecnico que GLPI no conozca deja su fila sin nombre sin llevarse las otras.
+ */
+export function useTeamDeclarations(developerIds: readonly string[]) {
+  return useQueries({
+    queries: developerIds.map((developerId) => ({
+      queryKey: declarationsQueryKey(developerId),
+      queryFn: (context) => fetchDeclarations(developerId, context.signal),
+      retry: false,
+    })),
   })
 }
 

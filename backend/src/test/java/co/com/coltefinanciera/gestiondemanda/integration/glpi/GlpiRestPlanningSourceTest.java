@@ -94,10 +94,10 @@ class GlpiRestPlanningSourceTest {
     }
 
     /** Encadena las paginas que la busqueda va a devolver, en orden. */
-    private void searchReturns(GlpiTicketSearchPage... pages) {
-        OngoingStubbing<Mono<GlpiTicketSearchPage>> stubbing =
-                when(glpiClient.get(anyString(), eq(SESSION), eq(GlpiTicketSearchPage.class)));
-        for (GlpiTicketSearchPage page : pages) {
+    private void searchReturns(GlpiSearchPage... pages) {
+        OngoingStubbing<Mono<GlpiSearchPage>> stubbing =
+                when(glpiClient.get(anyString(), eq(SESSION), eq(GlpiSearchPage.class)));
+        for (GlpiSearchPage page : pages) {
             stubbing = stubbing.thenReturn(Mono.just(page));
         }
     }
@@ -105,7 +105,7 @@ class GlpiRestPlanningSourceTest {
     /** La unica ruta de busqueda que se pidio. */
     private String searchedPath() {
         ArgumentCaptor<String> paths = ArgumentCaptor.forClass(String.class);
-        verify(glpiClient).get(paths.capture(), eq(SESSION), eq(GlpiTicketSearchPage.class));
+        verify(glpiClient).get(paths.capture(), eq(SESSION), eq(GlpiSearchPage.class));
         return paths.getValue();
     }
 
@@ -135,7 +135,7 @@ class GlpiRestPlanningSourceTest {
     @DisplayName("Los tickets asignados son los que la busqueda devuelve, traducidos campo a campo")
     void traeLosTicketsAsignadosAlTecnico() {
         sessionOpens();
-        searchReturns(new GlpiTicketSearchPage(2, List.of(
+        searchReturns(new GlpiSearchPage(2, List.of(
                 row(5602, "Eliminación de usuario PSE", 6, GlpiTicket.TYPE_REQUEST, "2026-10-05 09:00:00"),
                 row(4666, "Error en ciclo de pagos", 6, GlpiTicket.TYPE_INCIDENT, "2026-10-04 08:30:00"))));
 
@@ -152,7 +152,7 @@ class GlpiRestPlanningSourceTest {
     @DisplayName("El filtro por tecnico viaja a GLPI como criterio, no se hace en memoria")
     void buscaPorElCriterioDeTecnico() {
         sessionOpens();
-        searchReturns(new GlpiTicketSearchPage(0, List.of()));
+        searchReturns(new GlpiSearchPage(0, List.of()));
 
         source.ticketsOf("13");
 
@@ -168,7 +168,7 @@ class GlpiRestPlanningSourceTest {
     @DisplayName("La recuperacion no depende de users_id_assign: ni en la ruta, ni en el contrato, ni en el DTO")
     void noDependeDeUsersIdAssign() {
         sessionOpens();
-        searchReturns(new GlpiTicketSearchPage(1, List.of(row(7))));
+        searchReturns(new GlpiSearchPage(1, List.of(row(7))));
 
         source.ticketsOf("13");
 
@@ -184,13 +184,13 @@ class GlpiRestPlanningSourceTest {
     void recorreMasDeUnaPagina() {
         sessionOpens();
         searchReturns(
-                new GlpiTicketSearchPage(4, List.of(row(1), row(2))),
-                new GlpiTicketSearchPage(4, List.of(row(3), row(4))));
+                new GlpiSearchPage(4, List.of(row(1), row(2))),
+                new GlpiSearchPage(4, List.of(row(3), row(4))));
 
         assertThat(source.ticketsOf("13")).extracting(GlpiTicket::id).containsExactly(1, 2, 3, 4);
 
         ArgumentCaptor<String> paths = ArgumentCaptor.forClass(String.class);
-        verify(glpiClient, times(2)).get(paths.capture(), eq(SESSION), eq(GlpiTicketSearchPage.class));
+        verify(glpiClient, times(2)).get(paths.capture(), eq(SESSION), eq(GlpiSearchPage.class));
         assertThat(paths.getAllValues().get(0)).contains("range=0-999");
         assertThat(paths.getAllValues().get(1)).contains("range=1000-1999");
     }
@@ -200,7 +200,7 @@ class GlpiRestPlanningSourceTest {
     void unaBusquedaVaciaEsUnaListaVacia() {
         sessionOpens();
         // La instancia real omite "data" cuando no hay tickets: {"totalcount":0,"count":0,...}
-        searchReturns(new GlpiTicketSearchPage(0, null));
+        searchReturns(new GlpiSearchPage(0, null));
 
         assertThat(source.ticketsOf("13")).isEmpty();
         verify(glpiClient).killSession(SESSION);
@@ -212,11 +212,11 @@ class GlpiRestPlanningSourceTest {
         sessionOpens();
 
         // Uno: no tiene trabajo. Lista vacia, y el plan vacio que salga de aqui es la respuesta correcta.
-        searchReturns(new GlpiTicketSearchPage(0, List.of()));
+        searchReturns(new GlpiSearchPage(0, List.of()));
         assertThat(source.ticketsOf("13")).isEmpty();
 
         // Dos: GLPI fallo. Sale como fallo, para que nadie lo lea como "este desarrollador no tiene nada".
-        when(glpiClient.get(anyString(), eq(SESSION), eq(GlpiTicketSearchPage.class)))
+        when(glpiClient.get(anyString(), eq(SESSION), eq(GlpiSearchPage.class)))
                 .thenReturn(Mono.error(new GlpiConnectionException("GLPI respondio HTTP 500")));
         assertThatThrownBy(() -> source.ticketsOf("13"))
                 .isInstanceOf(GlpiConnectionException.class)
@@ -224,7 +224,7 @@ class GlpiRestPlanningSourceTest {
 
         // Tres: GLPI declaro mas tickets de los que entrego. Leer medio trabajo y planificarlo como si
         // fuera todo es el fallo que esta fase corrige, asi que se denuncia en lugar de devolverse.
-        searchReturns(new GlpiTicketSearchPage(5, List.of(row(1))), new GlpiTicketSearchPage(5, List.of()));
+        searchReturns(new GlpiSearchPage(5, List.of(row(1))), new GlpiSearchPage(5, List.of()));
         assertThatThrownBy(() -> source.ticketsOf("13"))
                 .isInstanceOf(GlpiInvalidDataException.class)
                 .hasMessageContaining("5")
@@ -269,7 +269,7 @@ class GlpiRestPlanningSourceTest {
     @DisplayName("Un cuerpo ilegible es un fallo de datos, no un error interno")
     void unCuerpoIlegibleEsUnFalloDeDatos() {
         sessionOpens();
-        when(glpiClient.get(anyString(), eq(SESSION), eq(GlpiTicketSearchPage.class)))
+        when(glpiClient.get(anyString(), eq(SESSION), eq(GlpiSearchPage.class)))
                 .thenReturn(Mono.error(new DecodingException("no es un sobre de busqueda")));
 
         assertThatThrownBy(() -> source.ticketsOf("13"))
@@ -309,6 +309,6 @@ class GlpiRestPlanningSourceTest {
 
         assertThatThrownBy(() -> source.ticketsOf("13"))
                 .isInstanceOf(GlpiAuthenticationException.class);
-        verify(glpiClient, never()).get(anyString(), anyString(), eq(GlpiTicketSearchPage.class));
+        verify(glpiClient, never()).get(anyString(), anyString(), eq(GlpiSearchPage.class));
     }
 }
