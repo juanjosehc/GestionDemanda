@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, FilterX, Layers } from 'lucide-react'
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { IncidentTable } from '@/components/incidents/IncidentTable'
 import { Button } from '@/components/ui/button'
@@ -11,28 +12,20 @@ import { useTeam } from '@/hooks/useTeam'
 import {
   ANY,
   DECLARED,
-  NO_FILTERS,
   PENDING,
+  declarationBreakdown,
   filterIncidents,
+  filtersFromParams,
+  modeFromParams,
   sortIncidents,
   toIncidentRows,
   type IncidentFilters,
+  type IncidentRow,
+  type TeamViewMode,
 } from '@/lib/incidents'
 import { declarationKeysFor } from '@/lib/team'
+import { declarationPath, incidentsPath } from '@/routes/navigation'
 import type { TeamPerson } from '@/types/team'
-
-/**
- * Los dos modos de la vista.
- *
- * El brief pide que por defecto se enseñe **solo el equipo operativo** y que se pueda abrir a todo
- * Desarrollo N2, igual que en la tabla del equipo. Son los mismos dos modos y el mismo conmutador.
- *
- * **Aquí el modo decide algo más que en Recursos, y se dice:** allí la columna de tickets era del
- * equipo entero y cambiar de modo no preguntaba nada a nadie; aquí las filas **son** los tickets, así
- * que ampliar la vista pide el trabajo de quien entra. Es el precio de que la tabla no tenga filas
- * inventadas, y es la divergencia que queda escrita en la decisión.
- */
-type TeamViewMode = 'operativo' | 'todos'
 
 /** Esqueleto de la carga: la misma forma que el contenido, para que no haya salto de altura. */
 function IncidentsSkeleton() {
@@ -131,14 +124,29 @@ function Filter({
  * en `/alertas`, y lo que esta pantalla añade es la lista que allí no cabe —quién tiene qué—. Las
  * cifras que enseña son de la vista, no del negocio.
  *
+ * **Desde aquí se declara.** Cada fila pendiente lleva su atajo a la declaración de ese ticket, con la
+ * vuelta ya puesta para no perder la vista. Lo que se abre es la pantalla de declaración de siempre,
+ * con sus mismas reglas: lo único que cambia es que el técnico y el ticket llegan puestos en vez de
+ * tecleados y buscados a ojo.
+ *
+ * **El modo decide algo más que en Recursos, y se dice:** allí la columna de tickets era del equipo
+ * entero y cambiar de modo no preguntaba nada a nadie; aquí las filas **son** los tickets, así que
+ * ampliar la vista pide el trabajo de quien entra. Es el precio de que la tabla no tenga filas
+ * inventadas, y es la divergencia que queda escrita en la decisión.
+ *
  * Todo lo que se pide aquí se pide con la misma clave de caché que la tabla del equipo, así que
  * visitar las dos pantallas no repite ninguna lectura de GLPI.
  */
 export function Incidents() {
   const { data, isPending, isError, error, refetch } = useTeam()
 
-  const [mode, setMode] = useState<TeamViewMode>('operativo')
-  const [filters, setFilters] = useState<IncidentFilters>(NO_FILTERS)
+  // La dirección **siembra** el modo y los filtros, una sola vez, y el estado local sigue mandando. Si
+  // la dirección los gobernara, cada `<select>` sería una navegación y el botón «atrás» desharía
+  // filtros en vez de salir de la pantalla. Lo que sí viaja es el enlace de vuelta, que se compone con
+  // lo que hay vivo en el momento del clic.
+  const [searchParams] = useSearchParams()
+  const [mode, setMode] = useState<TeamViewMode>(() => modeFromParams(searchParams))
+  const [filters, setFilters] = useState<IncidentFilters>(() => filtersFromParams(searchParams))
 
   const people = data?.people ?? []
 
@@ -159,6 +167,24 @@ export function Incidents() {
   )
 
   const visible = filterIncidents(rows, filters)
+
+  // El desglose se cuenta sobre lo que se ve, así que las cifras cuadran con las filas de debajo y
+  // nadie puede contar otra cosa mirando la tabla.
+  const breakdown = declarationBreakdown(visible)
+
+  /**
+   * El atajo de una fila: la dirección de la declaración de ese ticket, con la vuelta ya puesta.
+   *
+   * Se compone con el modo y los filtros **de este render**, así que lo que queda guardado como vuelta
+   * es la vista tal como está en el momento del clic. Es lo que permite conservar los filtros sin
+   * llevar el estado de la pantalla en la dirección.
+   */
+  const declarationHref = (row: IncidentRow) =>
+    declarationPath({
+      developerId: row.developerId,
+      workItemId: row.item.workItemId,
+      from: incidentsPath(filters, mode),
+    })
 
   // Una respuesta que falta es una persona a la que **no se le pudo leer el trabajo**, y eso no es lo
   // mismo que no tener ninguno. Se cuenta para poder decirlo.
@@ -230,6 +256,22 @@ export function Incidents() {
         . Solo entran los que GLPI tiene sin resolver —nuevo, asignado, planificado o pendiente—: lo
         resuelto y lo cerrado no aparecen. El tipo, el estado, la prioridad y la fecha los publica
         GLPI; el estado de declaración lo calcula el backend sobre la planificación declarada.
+      </p>
+
+      {/* El desglose de la observabilidad, sobre lo que se ve. Se dice que las cuentas se solapan
+          porque lo hacen: sin esa frase, «pendientes» y «sin estimación» se leerían como dos cajones
+          que no comparten nada y las cifras parecerían no cuadrar con el total.
+
+          «Con algo pendiente» y no «sin declarar»: un ticket sin estimación ya tiene su fila, y
+          llamarlo sin declarar sería afirmar lo contrario de lo que el backend publica. Las cifras
+          van delante de una frase que no concuerda —«1 con su fila creada», «3 con su fila creada»—,
+          porque el número uno es el caso normal de esta pantalla. */}
+      <p className="text-xs text-muted-foreground" data-slot="declaration-breakdown">
+        De esos {visible.length} tickets: {breakdown.declared} en estado declarado —nada les falta
+        para planificarse— y {breakdown.pending} con algo pendiente. De estos últimos,{' '}
+        {breakdown.withoutEstimation} con su fila ya creada y la estimación sin declarar, y{' '}
+        {breakdown.withoutCommitment} con su fila creada y el compromiso sin declarar. Las cuentas se
+        solapan —un ticket sin estimación también está pendiente—: es un desglose, no un reparto.
       </p>
 
       {/* Un fallo de lectura se declara donde se ve su efecto —faltan filas— y no se lleva por
@@ -337,7 +379,7 @@ export function Incidents() {
                   detail={`Se recibieron ${rows.length} tickets activos y los filtros dejan fuera a todos. Los filtros no vuelven a consultar nada: se aplican sobre lo que ya está en pantalla.`}
                 />
               ) : (
-                <IncidentTable rows={visible} />
+                <IncidentTable rows={visible} declarationHref={declarationHref} />
               )}
             </>
           )}

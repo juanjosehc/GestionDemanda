@@ -1,6 +1,10 @@
+import { Link } from 'react-router-dom'
+
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { DECLARATION_VARIANTS } from '@/lib/declarations'
 import { formatInstant } from '@/lib/format'
+import { PENDING, declarationSideOf } from '@/lib/incidents'
 import { formatHours } from '@/lib/timeline'
 import type { IncidentRow } from '@/lib/incidents'
 import type { PlanningMetadata } from '@/types/declarations'
@@ -21,6 +25,13 @@ function declarationSummary(declaration: PlanningMetadata): string {
 
 interface IncidentTableProps {
   rows: readonly IncidentRow[]
+  /**
+   * La dirección que abre la declaración de una fila, con su ticket y su vuelta.
+   *
+   * La tabla **no la compone**: no sabe nada de filtros, de modos ni de rutas, y construirla aquí
+   * obligaría a pasarle el estado de la pantalla entera. Quien la sabe —Incidentes— la entrega hecha.
+   */
+  declarationHref: (row: IncidentRow) => string
 }
 
 /**
@@ -32,15 +43,19 @@ interface IncidentTableProps {
  * existirían dos versiones de la misma regla, y la de la pantalla se desviaría de la del plan sin que
  * nadie se enterara.
  *
+ * **Solo las filas pendientes llevan atajo, y el lado lo dice `declarationSideOf`** —el mismo
+ * predicado que el filtro—, no una comparación escrita aquí. Una fila ya declarada deja la celda
+ * vacía: se sigue editando desde la declaración, como antes.
+ *
  * Es hermana de `DeclarationTable` y no una variante suya: allí las props son la maquinaria de
  * selección y edición que esta pantalla no tiene, y allí una fila se identifica solo por el ticket
  * —aquí un ticket compartido por dos personas necesita además el nombre de quién lo tiene, o las dos
  * filas colisionarían—.
  */
-export function IncidentTable({ rows }: IncidentTableProps) {
+export function IncidentTable({ rows, declarationHref }: IncidentTableProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[72rem] text-sm">
+      <table className="w-full min-w-[78rem] text-sm">
         <thead>
           <tr className="border-b border-border text-xs text-muted-foreground">
             <th scope="col" className="py-2 pr-4 text-left font-medium">
@@ -64,8 +79,11 @@ export function IncidentTable({ rows }: IncidentTableProps) {
             <th scope="col" className="py-2 pr-4 text-left font-medium">
               Fecha publicada por GLPI
             </th>
-            <th scope="col" className="py-2 text-left font-medium">
+            <th scope="col" className="py-2 pr-4 text-left font-medium">
               Estado de declaración
+            </th>
+            <th scope="col" className="py-2 text-left font-medium">
+              Acciones
             </th>
           </tr>
         </thead>
@@ -112,7 +130,7 @@ export function IncidentTable({ rows }: IncidentTableProps) {
                 )}
               </td>
 
-              <td className="py-3">
+              <td className="py-3 pr-4">
                 <Badge variant={DECLARATION_VARIANTS[row.item.declarationStatus]}>
                   {row.item.declarationStatus}
                 </Badge>
@@ -135,6 +153,22 @@ export function IncidentTable({ rows }: IncidentTableProps) {
                       </li>
                     ))}
                   </ul>
+                )}
+              </td>
+
+              {/* El atajo, solo donde hay algo que declarar. El nombre accesible lleva el ticket y la
+                  persona porque un ticket compartido produce dos enlaces con el mismo texto y destinos
+                  distintos: sin él, la pantalla tendría dos enlaces indistinguibles. */}
+              <td className="py-3" data-slot="incident-action">
+                {declarationSideOf(row.item) === PENDING && (
+                  <Button asChild variant="outline" size="sm">
+                    <Link
+                      to={declarationHref(row)}
+                      aria-label={`Declarar el ticket ${row.item.workItemId} de ${row.personName}`}
+                    >
+                      Declarar
+                    </Link>
+                  </Button>
                 )}
               </td>
             </tr>

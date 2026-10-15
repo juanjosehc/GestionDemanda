@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
+import { incidentsQuery } from '@/lib/incidents'
+import type { IncidentFilters, TeamViewMode } from '@/lib/incidents'
 import { DISPLACED_TOKEN, METRIC_GAPS } from '@/types/planningMetrics'
 import type { MetricToken } from '@/types/planningMetrics'
 
@@ -47,6 +49,80 @@ export function calendarPath(planId: string): string {
  */
 export function metricPath(token: MetricToken): string {
   return ROUTES.metricDetail.replace(':gap', token)
+}
+
+/**
+ * La vista de Incidentes tal como está: su dirección con los filtros y el modo vivos.
+ *
+ * Existe para que el enlace de vuelta pueda guardar **a dónde volver** sin que la pantalla tenga que
+ * llevar su estado en la dirección mientras se usa. Se compone en el momento del clic, con lo que hay
+ * en pantalla en ese instante, y por eso la vuelta conserva los filtros y el conmutador.
+ *
+ * Una vista sin tocar se escribe como la ruta pelada: `incidentsQuery` omite lo que está en su valor
+ * por defecto, así que no hay direcciones con cuatro huecos vacíos.
+ */
+export function incidentsPath(filters: IncidentFilters, mode: TeamViewMode): string {
+  const query = incidentsQuery(filters, mode)
+
+  return query === '' ? ROUTES.incidents : `${ROUTES.incidents}?${query}`
+}
+
+/**
+ * El contexto con el que se abre la declaración de un ticket.
+ *
+ * Es el único sitio donde se escriben los nombres de estos tres parámetros: quien los pone y quien los
+ * lee son `declarationPath` y `declarationContextOf`, aquí al lado.
+ */
+export interface DeclarationContext {
+  /** El técnico cuyo listado hay que abrir. Sin él la pantalla no tiene nada que pedir. */
+  developerId: string
+  /** El ticket que se quiere declarar. Sin él se abre el listado y nada más. */
+  workItemId?: string
+  /** A dónde volver, ya validado por `safeReturnPath`. */
+  from?: string
+}
+
+/**
+ * Una dirección de vuelta, solo si es una ruta de esta aplicación.
+ *
+ * **`startsWith('/')` no basta y esto no es paranoia:** `//evil.com` es una URL protocolo-relativa
+ * —el navegador la resuelve contra otro origen— y pasa el primer filtro. Es la única entrada de este
+ * flujo que viene de fuera y acaba en un `<Link to>`, así que se valida aquí, donde se escribe.
+ */
+function safeReturnPath(value: string | null): string | undefined {
+  return value !== null && value.startsWith('/') && !value.startsWith('//') ? value : undefined
+}
+
+/**
+ * La dirección que abre la declaración de un ticket, con todo lo que la pantalla necesita para no
+ * pedir nada a mano.
+ *
+ * Es lo que convierte «ve a Declaración, teclea el identificador del técnico, busca la fila a ojo»
+ * en un clic. El identificador es el mismo login que publica el padrón: el backend lo resuelve igual
+ * que un número de GLPI, así que no hay nada que traducir por el camino.
+ */
+export function declarationPath(context: DeclarationContext): string {
+  const params = new URLSearchParams()
+
+  params.set('tecnico', context.developerId)
+
+  if (context.workItemId) {
+    params.set('ticket', context.workItemId)
+  }
+  if (context.from) {
+    params.set('volver', context.from)
+  }
+
+  return `${ROUTES.declarations}?${params.toString()}`
+}
+
+/** El contexto que trae una dirección de declaración. La vuelta se valida; el resto se toma tal cual. */
+export function declarationContextOf(params: URLSearchParams): DeclarationContext {
+  return {
+    developerId: params.get('tecnico') ?? '',
+    workItemId: params.get('ticket') ?? undefined,
+    from: safeReturnPath(params.get('volver')),
+  }
 }
 
 /**

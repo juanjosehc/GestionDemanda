@@ -8,7 +8,7 @@ import { inOperationalTeam, personName, sortTeam } from '@/lib/team'
 import type { SortDirection, TeamMember, TeamSortKey } from '@/lib/team'
 import { formatHours } from '@/lib/timeline'
 import { formatInstant } from '@/lib/format'
-import { ROUTES, calendarPath, metricPath } from '@/routes/navigation'
+import { ROUTES, calendarPath, declarationPath, metricPath } from '@/routes/navigation'
 import { DISPLACED_TOKEN } from '@/types/planningMetrics'
 
 /** Columnas ordenables, en el orden en que se pintan. */
@@ -342,10 +342,14 @@ export function TeamTable({ members }: TeamTableProps) {
                       Cada accion aparece solo cuando hay algo que abrir: un enlace a una lista vacia
                       promete un contenido que no existe. El plan no esta aqui porque su enlace es el
                       identificador de la columna de al lado.
+
+                      La de los tickets lleva el identificador de esta fila: la pantalla de
+                      declaracion ya sabe abrirse por direccion, asi que dejar al usuario delante de
+                      un campo vacio —teniendo aqui el dato— era un callejon sin salida.
                     */}
                     {member.tickets !== null && member.tickets > 0 && (
                       <Link
-                        to={ROUTES.declarations}
+                        to={declarationPath({ developerId: member.developerId })}
                         className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                       >
                         Ver los tickets

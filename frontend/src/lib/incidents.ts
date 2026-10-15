@@ -165,6 +165,87 @@ export const NO_FILTERS: IncidentFilters = {
 }
 
 /**
+ * Los dos modos de la vista: solo el equipo operativo, o todo Desarrollo N2.
+ *
+ * Vive aquí y no en la página porque **la dirección lo lleva**: el enlace de vuelta desde la
+ * declaración tiene que poder reconstruir la vista tal como estaba, y quien escribe esa dirección es
+ * `navigation.ts`, que no puede importar de una página.
+ */
+export type TeamViewMode = 'operativo' | 'todos'
+
+/**
+ * El nombre de cada filtro en la dirección, y el del modo.
+ *
+ * En español, como el resto de las rutas. Son **los únicos sitios donde se escriben**: el que los pone
+ * y el que los lee son las funciones de abajo.
+ */
+const PARAM_OF: Readonly<Record<keyof IncidentFilters, string>> = {
+  person: 'persona',
+  type: 'tipo',
+  status: 'estado',
+  declaration: 'declaracion',
+}
+
+const MODE_PARAM = 'modo'
+
+/** El valor del modo que no es el de por defecto, y por eso es el único que viaja. */
+const ALL_TEAM: TeamViewMode = 'todos'
+
+/**
+ * Los filtros que trae una dirección, para sembrar la vista con ellos.
+ *
+ * **No se validan aquí.** Un valor que la tabla no conozca llega al `<select>` sin opción que case, la
+ * tabla sale vacía y se lee «Ningún ticket coincide con los filtros», que es exactamente lo que
+ * significa. Validarlo contra las opciones exigiría tener las filas ya leídas, y la siembra ocurre
+ * antes de que lleguen.
+ */
+export function filtersFromParams(params: URLSearchParams): IncidentFilters {
+  return {
+    person: params.get(PARAM_OF.person) ?? ANY,
+    type: params.get(PARAM_OF.type) ?? ANY,
+    status: params.get(PARAM_OF.status) ?? ANY,
+    declaration: params.get(PARAM_OF.declaration) ?? ANY,
+  }
+}
+
+/** El modo que trae una dirección. Cualquier cosa que no sea «todos» es el de por defecto. */
+export function modeFromParams(params: URLSearchParams): TeamViewMode {
+  return params.get(MODE_PARAM) === ALL_TEAM ? ALL_TEAM : 'operativo'
+}
+
+/**
+ * Los filtros y el modo, en una sola cadena de consulta.
+ *
+ * **Solo viaja lo que no está en su valor por defecto**, así que la vista sin tocar se escribe como la
+ * ruta pelada y no como una dirección con cuatro huecos. El modo va con su nombre y no con un
+ * booleano: es el valor que el conmutador usa y el que `modeFromParams` sabe leer.
+ *
+ * La usa el enlace de vuelta. Lo que se guarda es **a dónde volver**, no el estado de la pantalla: por
+ * eso se compone en el momento del clic, con lo que hay vivo en ese instante.
+ */
+export function incidentsQuery(filters: IncidentFilters, mode: TeamViewMode): string {
+  const params = new URLSearchParams()
+
+  if (filters.person !== ANY) {
+    params.set(PARAM_OF.person, filters.person)
+  }
+  if (filters.type !== ANY) {
+    params.set(PARAM_OF.type, filters.type)
+  }
+  if (filters.status !== ANY) {
+    params.set(PARAM_OF.status, filters.status)
+  }
+  if (filters.declaration !== ANY) {
+    params.set(PARAM_OF.declaration, filters.declaration)
+  }
+  if (mode !== 'operativo') {
+    params.set(MODE_PARAM, mode)
+  }
+
+  return params.toString()
+}
+
+/**
  * En cuál de los dos lados del filtro de declaración cae un ticket.
  *
  * **`PLANIFICABLE` es el único estado que significa que no falta nada**: es el que el backend emite
@@ -197,4 +278,54 @@ export function filterIncidents(
       (filters.status === ANY || row.item.status === filters.status) &&
       (filters.declaration === ANY || declarationSideOf(row.item) === filters.declaration),
   )
+}
+
+/**
+ * Lo que hay en pantalla, contado por estado de declaración.
+ *
+ * **Las cifras se solapan y no se suman.** `pending` es todo lo que no es `PLANIFICABLE`, así que
+ * `withoutEstimation` y `withoutCommitment` están **dentro** de él: un ticket sin estimación también
+ * es un ticket pendiente y aparece en las dos cuentas. Lo que no cae en ninguna de las dos son
+ * `SIN_DECLARACION` y `NO_TRADUCIBLE`, que están dentro de `pending` sin nombre propio. Es un
+ * desglose, no un reparto, y quien lo pinte tiene que enseñarlo como tal.
+ *
+ * El estado **se lee, no se recalcula**: es el mismo trato que `declarationSideOf` y por el mismo
+ * motivo. Mirar `estimatedHours` o `committedDate` para deducir si falta algo sería la segunda versión
+ * de la regla que el backend ya aplicó.
+ */
+export interface DeclarationBreakdown {
+  /** Los que no tienen nada pendiente: los `PLANIFICABLE`. */
+  declared: number
+  /** Todo lo demás. Es la respuesta a «¿cuántos necesitan declaración?». */
+  pending: number
+  /** Tienen fila y les falta la estimación. Cuentan también en `pending`. */
+  withoutEstimation: number
+  /** Tienen fila y les falta el compromiso. Cuentan también en `pending`. */
+  withoutCommitment: number
+}
+
+export function declarationBreakdown(rows: readonly IncidentRow[]): DeclarationBreakdown {
+  const breakdown: DeclarationBreakdown = {
+    declared: 0,
+    pending: 0,
+    withoutEstimation: 0,
+    withoutCommitment: 0,
+  }
+
+  for (const row of rows) {
+    if (declarationSideOf(row.item) === DECLARED) {
+      breakdown.declared += 1
+    } else {
+      breakdown.pending += 1
+    }
+
+    if (row.item.declarationStatus === 'SIN_ESTIMACION') {
+      breakdown.withoutEstimation += 1
+    }
+    if (row.item.declarationStatus === 'SIN_COMPROMISO') {
+      breakdown.withoutCommitment += 1
+    }
+  }
+
+  return breakdown
 }

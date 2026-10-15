@@ -1,5 +1,6 @@
-import { AlertTriangle, ClipboardList, Inbox, Search } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ClipboardList, Inbox, Search } from 'lucide-react'
 import { useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { FormEvent } from 'react'
 
 import { DeclarationForm } from '@/components/declarations/DeclarationForm'
@@ -9,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDeclarations } from '@/hooks/useDeclarations'
+import { ROUTES, declarationContextOf } from '@/routes/navigation'
 
 /** Esqueleto de la carga: la misma forma que el contenido, para que no haya salto de altura. */
 function DeclarationsSkeleton() {
@@ -81,11 +83,26 @@ function DeveloperPicker({
  * y no de negocio.
  *
  * Leer no escribe: abrir la pantalla, cambiar de técnico y ordenar no guardan nada.
+ *
+ * **Se puede llegar desde Incidentes, y entonces no hay nada que teclear.** La dirección trae el
+ * técnico, el ticket que se quiere declarar y a dónde volver, y la pantalla los usa para **sembrarse
+ * una sola vez**: el listado se pide solo, el formulario del ticket aparece abierto y el enlace de
+ * vuelta lleva de regreso a la vista de la que se salió. Cerrar el formulario no lo reabre aunque el
+ * parámetro siga en la dirección —ya nadie lo lee—, igual que el valor inicial de un campo no vuelve
+ * cuando alguien lo borra.
+ *
+ * Nada de esto cambia **cómo** se declara: los mismos verbos, la misma validación y el mismo
+ * formulario.
  */
 export function Declarations() {
-  const [draft, setDraft] = useState('')
-  const [developerId, setDeveloperId] = useState('')
-  const [selected, setSelected] = useState<string | null>(null)
+  // El contexto se lee una vez, al montar. A partir de ahí manda el estado local, que es lo que
+  // permite cerrar el formulario, cambiar de técnico y consultar sin reescribir la dirección.
+  const [searchParams] = useSearchParams()
+  const [seed] = useState(() => declarationContextOf(searchParams))
+
+  const [draft, setDraft] = useState(seed.developerId)
+  const [developerId, setDeveloperId] = useState(seed.developerId)
+  const [selected, setSelected] = useState<string | null>(seed.workItemId ?? null)
 
   const { data, isPending, isError, error, refetch } = useDeclarations(developerId)
   const loading = developerId !== '' && isPending && !data
@@ -93,6 +110,11 @@ export function Declarations() {
   // El ticket abierto se busca en la respuesta y no se guarda copiado: así, cuando la lista se
   // refresca tras guardar, el formulario ve la fila nueva y no una foto vieja de sí misma.
   const selectedItem = data?.items.find((item) => item.workItemId === selected) ?? null
+
+  // Un ticket pedido que ya no está. Se calla si la lista viene vacía: ahí la pantalla ya dice que
+  // este técnico no tiene nada, y añadir esto serían dos diagnósticos del mismo hecho.
+  const missingTicket =
+    selected !== null && data !== undefined && data.items.length > 0 && selectedItem === null
 
   /** Consultar cierra el formulario abierto: los tickets que van a llegar son otros. */
   function consult() {
@@ -108,6 +130,16 @@ export function Declarations() {
         plan—: esta pantalla no reclasifica nada. Lo que sí se escribe aquí es la estimación y la
         fecha compromiso, que son las dos cosas que GLPI no guarda.
       </p>
+
+      {/* La vuelta se ofrece siempre, venga o no de Incidentes: el flujo empieza allí —la lista es la
+          que dice qué falta— y sin este enlace el camino de vuelta es el menú. `replace` para que el
+          botón «atrás» salga del flujo en vez de devolver al formulario que se acaba de cerrar. */}
+      <Button asChild variant="outline" size="sm">
+        <Link to={seed.from ?? ROUTES.incidents} replace>
+          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          Volver a Incidentes
+        </Link>
+      </Button>
 
       <DeveloperPicker value={draft} onChange={setDraft} onSubmit={consult} />
 
@@ -148,6 +180,18 @@ export function Declarations() {
 
           {selectedItem && (
             <DeclarationForm item={selectedItem} onClose={() => setSelected(null)} />
+          )}
+
+          {/* Un ticket pedido que ya no está se declara, en vez de dejar la pantalla como si nadie
+              hubiera pedido nada: quien llegó por el atajo espera ver su ticket, y no verlo sin
+              explicación se lee como que el atajo falló. `consult()` lo limpia solo, porque pone
+              `selected` a nulo. */}
+          {missingTicket && (
+            <p className="text-xs text-muted-foreground" data-slot="missing-ticket">
+              El ticket <span className="font-mono">{selected}</span> no está entre los que GLPI tiene
+              hoy asignados a este técnico: se cerró, o dejó de estar asignado. No hay nada que
+              declararle; los de la tabla son los que sí tiene.
+            </p>
           )}
 
           <Card>

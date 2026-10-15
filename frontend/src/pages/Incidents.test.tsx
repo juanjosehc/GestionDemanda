@@ -146,6 +146,17 @@ function cellOf(row: HTMLElement, slot: string): string {
   return row.querySelector(`[data-slot="${slot}"]`)?.textContent ?? ''
 }
 
+/** El texto de un bloque, con los saltos de línea de la plantilla colapsados a un espacio. */
+function textOf(container: HTMLElement, slot: string): string {
+  const node = container.querySelector<HTMLElement>(`[data-slot="${slot}"]`)
+
+  if (!node) {
+    throw new Error(`No hay bloque "${slot}"`)
+  }
+
+  return (node.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
 /** Espera a que la tarjeta esté pintada. El título es único y está en todos los estados de la vista. */
 async function tableRendered() {
   await screen.findByText('Trabajo activo')
@@ -506,5 +517,106 @@ describe('Incidents', () => {
 
     expect(orderOf(container)).toEqual(['901'])
     expect(screen.getByText(/No fue posible leer el trabajo de 1 de las 3 personas/)).toBeInTheDocument()
+  })
+
+  /**
+   * Un ticket sin declaración ninguna: el caso que el atajo existe para servir.
+   *
+   * Es el mismo `504` del fixture —las dos carencias informadas, porque son dos personas distintas
+   * las que tienen que actuar— con un identificador propio, para poder afirmar sobre su destino sin
+   * confundirlo con el de otro ticket.
+   */
+  const SIN_DECLARAR = ticket({
+    workItemId: '908',
+    declarationStatus: 'SIN_DECLARACION',
+    discards: [
+      { code: 'SIN_ESTIMACION_DECLARADA', reason: 'no hay planificacion declarada para este elemento' },
+      { code: 'SIN_COMPROMISO_DECLARADO', reason: 'no hay planificacion declarada para este elemento' },
+    ],
+    declaration: null,
+  })
+
+  it('un ticket pendiente ofrece el atajo, con el técnico, el ticket y la vuelta', async () => {
+    serve({ declarations: byDeveloper({ [ANA]: [SIN_DECLARAR] }) })
+
+    const { container } = renderWithClient(<Incidents />)
+    await tableRendered()
+
+    // El nombre accesible lleva el ticket y la persona: sin él, un ticket compartido produciría dos
+    // enlaces con el mismo texto y destinos distintos.
+    const link = within(rowOf(container, '908')).getByRole('link', {
+      name: 'Declarar el ticket 908 de Ana Perez',
+    })
+
+    // El destino lleva las tres cosas: a quién se declara, qué ticket se abre y a dónde se vuelve.
+    // La vuelta es esta misma vista tal como está en el momento del clic —aquí, sin filtros—, y va
+    // codificada porque es una dirección dentro de otra.
+    expect(link).toHaveAttribute(
+      'href',
+      '/declaraciones?tecnico=dev-001&ticket=908&volver=%2Fincidentes',
+    )
+  })
+
+  it('la vuelta del atajo lleva el filtro y el modo puestos', async () => {
+    serve({
+      team: okResponse(
+        teamCatalogFixture({ people: [...teamCatalogFixture().people, ELENA_PERSON] }),
+      ),
+      declarations: byDeveloper({ [ANA]: [INCIDENTE, SIN_DECLARAR] }),
+    })
+
+    const { container } = renderWithClient(<Incidents />)
+    await tableRendered()
+
+    chooseFilter('Declaración', 'PENDIENTE')
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar todo Desarrollo N2' }))
+
+    const href = within(rowOf(container, '908'))
+      .getByRole('link', { name: /^Declarar el ticket 908/ })
+      .getAttribute('href')
+
+    // El modo viaja aunque no sea el de por defecto, y los filtros van con su nombre de la interfaz.
+    // Sin el modo, la fila de alguien de fuera del equipo operativo desaparecería justo al volver,
+    // que es cuando hay que ver el estado nuevo.
+    expect(href).toContain('&volver=%2Fincidentes%3F')
+    expect(decodeURIComponent(href ?? '')).toContain('declaracion=PENDIENTE')
+    expect(decodeURIComponent(href ?? '')).toContain('modo=todos')
+  })
+
+  it('un ticket ya declarado no ofrece atajo: se sigue editando desde la declaración', async () => {
+    serve({ declarations: byDeveloper({ [ANA]: [INCIDENTE] }) })
+
+    const { container } = renderWithClient(<Incidents />)
+    await tableRendered()
+
+    expect(rowOf(container, '901').getAttribute('data-declaration')).toBe('PLANIFICABLE')
+    expect(within(rowOf(container, '901')).queryByRole('link')).toBeNull()
+    // La columna está en todas las filas: lo que falta es el enlace, no la celda.
+    expect(cellOf(rowOf(container, '901'), 'incident-action')).toBe('')
+  })
+
+  it('el desglose cuenta declarados, pendientes, sin estimación y sin compromiso', async () => {
+    serve({
+      declarations: byDeveloper({
+        [ANA]: [
+          INCIDENTE, // PLANIFICABLE: nada le falta.
+          SIN_DECLARAR, // sin fila: cuenta como pendiente, pero no en los dos parciales.
+          ticket({ workItemId: '902', declarationStatus: 'SIN_ESTIMACION' }),
+          ticket({ workItemId: '903', declarationStatus: 'SIN_COMPROMISO' }),
+        ],
+      }),
+    })
+
+    const { container } = renderWithClient(<Incidents />)
+    await tableRendered()
+
+    // Un ticket sin fila **no** engrosa «sin estimación»: ese parcial cuenta las filas que existen y
+    // les falta el valor, que es otra cosa. Por eso los parciales suman 1 y 1, y no 2 y 2.
+    expect(textOf(container, 'declaration-breakdown')).toBe(
+      'De esos 4 tickets: 1 en estado declarado —nada les falta para planificarse— y 3 con algo ' +
+        'pendiente. De estos últimos, 1 con su fila ya creada y la estimación sin declarar, y 1 con ' +
+        'su fila creada y el compromiso sin declarar. Las cuentas se solapan —un ticket sin ' +
+        'estimación también está pendiente—: es un desglose, no un reparto.',
+    )
   })
 })
