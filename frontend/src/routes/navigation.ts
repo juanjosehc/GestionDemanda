@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Handshake,
   LayoutDashboard,
+  ListChecks,
   PlayCircle,
   Settings,
   Users,
@@ -28,6 +29,13 @@ export const ROUTES = {
   declarations: '/declaraciones',
   /** Donde se invoca la generacion de un plan desde GLPI. La ruta no planifica: llama a la que ya existia. */
   planning: '/planificar',
+  /**
+   * Lo que el motor recibiria si se generara el plan ahora.
+   *
+   * Cuelga de `/planificar` porque es la misma pregunta un paso antes —y por eso el menu tiene que
+   * marcar las dos entradas con `end`: sin el, esta ruta, que es prefijo de la otra, resaltaria dos.
+   */
+  planningPreview: '/planificar/estado',
   renegotiations: '/renegociaciones',
   settings: '/configuracion',
   /** Plantilla del desglose de una metrica. Se construye con metricPath(). */
@@ -214,6 +222,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: ROUTES.planning,
     icon: PlayCircle,
     description: 'Generación del plan de un técnico a partir de lo que GLPI tiene asignado',
+  },
+  {
+    label: 'Estado del plan',
+    to: ROUTES.planningPreview,
+    icon: ListChecks,
+    description: 'Qué recibiría el motor si se generara el plan ahora',
   },
   {
     label: 'Renegociación',

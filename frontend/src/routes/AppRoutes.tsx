@@ -9,6 +9,7 @@ import { Incidents } from '@/pages/Incidents'
 import { MetricDetail } from '@/pages/MetricDetail'
 import { NotFound } from '@/pages/NotFound'
 import { Planning } from '@/pages/Planning'
+import { PlanningPreview } from '@/pages/PlanningPreview'
 import { Renegotiations } from '@/pages/Renegotiations'
 import { Resources } from '@/pages/Resources'
 import { Settings } from '@/pages/Settings'
@@ -27,6 +28,7 @@ export function AppRoutes() {
         <Route path={ROUTES.incidents} element={<Incidents />} />
         <Route path={ROUTES.declarations} element={<Declarations />} />
         <Route path={ROUTES.planning} element={<Planning />} />
+        <Route path={ROUTES.planningPreview} element={<PlanningPreview />} />
         <Route path={ROUTES.renegotiations} element={<Renegotiations />} />
         <Route path={ROUTES.metricDetail} element={<MetricDetail />} />
         <Route path={ROUTES.settings} element={<Settings />} />

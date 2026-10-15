@@ -37,8 +37,13 @@ function PlanningSkeleton() {
   )
 }
 
-/** Un número del resultado, con el rótulo encima. Se cuentan listas; no se recalcula nada. */
-function Figure({
+/**
+ * Un número del resultado, con el rótulo encima. Se cuentan listas; no se recalcula nada.
+ *
+ * Se exporta porque la vista previa del estado de entrada enseña sus cifras con el mismo átomo
+ * —rótulo, `data-slot` y pista—: es el mismo hecho pintado igual, no una copia.
+ */
+export function Figure({
   label,
   value,
   slot,
@@ -252,6 +257,18 @@ export function Planning() {
           {generate.isPending ? 'Generando…' : 'Generar plan'}
         </Button>
       </form>
+
+      {/*
+        La vista previa, un paso antes. Vive en su propia pantalla y no aquí dentro: esta se monta sin
+        consultar nada —abrirla no deja rastro—, y enseñar el estado de entrada exige una lectura por
+        persona. El enlace no sale a la red, así que no cambia nada de lo de arriba.
+      */}
+      <p className="text-xs text-muted-foreground">
+        <Link to={ROUTES.planningPreview} className="underline underline-offset-2 hover:text-foreground">
+          Ver el estado de entrada antes de generar →
+        </Link>{' '}
+        Qué tickets recibiría el motor, cuáles están bloqueados y por qué.
+      </p>
 
       {/*
         El error va antes que el resultado: una generación que falla deja en pie el plan de la anterior

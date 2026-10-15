@@ -5512,3 +5512,144 @@ GET  /api/planning-metadata/declarations/dev-001   ← la invalidación, con la 
 **Los cinco criterios de aceptación del brief se cumplen**: no cambia ninguna regla de negocio (1) —ni el motor, ni la validación, ni el formulario, ni el protocolo de escritura, ni una línea del backend—; no cambia `PlanningEngine` (2); **el número de pasos baja de nueve a cinco** (3), y los cuatro que se ahorran son justo los que exigían recordar el identificador del técnico y encontrar la fila a ojo; el flujo Incidentes → Declaración → Incidentes queda completo (4), con vuelta por enlace propio y sin pasar por el menú; y **las 370 pruebas del backend y las 166 del frontend pasan** (5).
 
 **Y lo que esta fase no tocó, dicho explícitamente**: ni `PlanningEngine`, ni los desplazamientos, ni las renegociaciones, ni una regla de negocio, ni la integración con GLPI, ni la lógica de declaración —`useDeclarations.ts`, `DeclarationForm.tsx` y `declarationsService.ts` están **sin una línea de diferencia**—, ni el backend. **La fase solo mejoró el acceso y la navegación**, que es exactamente lo que el brief acota.
+
+# Fase 36 — El estado de entrada del plan, antes de generarlo
+
+## Qué se hizo, en una frase
+
+Se construyó **`/planificar/estado`**, una pantalla que contesta **«¿qué pasará si genero el plan ahora?»** antes de pulsar el botón: lee **la misma entrada que el motor** —el padrón y la declaración de cada persona, las mismas lecturas que Incidentes y Recursos— y publica, por equipo y por persona, cuántos tickets son planificables, cuántos están bloqueados y por qué, **sin tocar una sola línea del backend ni cambiar `PlanningEngine`**.
+
+## El análisis obligatorio: cómo se genera hoy un plan y qué impide que salga útil
+
+### 1. Cómo se genera hoy un plan
+
+`POST /api/planning/from-glpi` (`PlanningController.java:138`) es **el único endpoint que calcula un plan desde GLPI**, y **escribe**. La cadena entera: `findUser` + `ticketsOf` → `GlpiPlanningRequestFactory.build()` → `PlanningRequest` → `PlanningEngine.plan()` (`PlanningEngine.java:78`) → el plan se guarda.
+
+### 2. Qué información necesita el motor
+
+`PlanningRequest(Developer, List<Incident>, List<Requirement>, PlanningRules)` (`domain/model/PlanningRequest.java:14`). **El motor no consulta nada**: sus únicas dependencias son `RescheduleLedger` y `Clock`, y todo lo demás le llega dentro del request. Cuando un elemento llega, la estimación y el compromiso **ya están resueltos** dentro del `Incident` o del `Requirement`.
+
+### 3. Qué información impide una planificación válida
+
+- **Los siete códigos de descarte** viven en la capa anticorrupción, no en el motor: `GlpiDiscardReason.java:24` — `SIN_IDENTIFICADOR_TICKET`, `TIPO_DESCONOCIDO`, `ESTADO_DESCONOCIDO`, `FECHA_CREACION_ILEGIBLE`, `SIN_ESTIMACION_DECLARADA`, `SIN_COMPROMISO_DECLARADO`, `TRADUCCION_FALLIDA`. Los emiten `GlpiTicketValidator.java:63-89` y `:115-131`.
+- **Hacen falta las dos cosas** —estimación **y** compromiso— (`GlpiTicketValidator.java:116-119`, decisión 124.1). Si falta una, su código; si faltan las dos, los dos.
+- `DeclarationStatus` (`DeclarationStatus.java:23`) es una **partición de cinco valores mutuamente excluyentes**, derivada de los códigos en **un solo sitio**: `GlpiPlanningRequestFactory.statusOf()` `:245-255`.
+- **La pantalla de declaración y el plan no pueden discrepar**: los dos leen el mismo `verdicts(...)` (`GlpiPlanningRequestFactory.java:192-197`), una sola lectura por lote, y `build()` recorre exactamente ese mismo método. **La cuenta de `PLANIFICABLE` es, por construcción, la entrada efectiva del motor** — es la decisión 143 otra vez.
+- **«No cabe» no es un descarte**: es un `PlanningConflict` con el texto «Sin capacidad en el horizonte de N dias» (`PlanningEngine.java:122-128`), y solo se conoce **después** de calcular.
+- **Exclusiones silenciosas, sin código**: `Incident.consumesCapacity()` (`Incident.java:47`) y `Requirement.isPlannable()` (`Requirement.java:35`) filtran en `PlanningEngine.java:267` y `:280`. **No muerden en el universo de esta pantalla**: el contrato mapea los estados 1-4 de GLPI a estados que los dos predicados aceptan, así que para tickets activos siempre dan verdadero; afectan a los cerrados, que la vista previa no ve. *Reverificado en esta fase contra `GlpiContract.REST_V1` `:137-154`, como el plan de la fase pedía antes de afirmarlo.*
+
+### 4. Qué métricas previas ya existen
+
+`GET /api/planning/metrics` (contadores **globales**), `GET /metrics/declared/{gap}`, `GET /metrics/displaced`, `GET /alerts`. **Ninguna contesta la pregunta**: todas leen el plan **persistido**, no la entrada **viva**; y el bloque `declared` cuenta **filas de `planning_metadata`, no tickets conocidos** (`PlanningOperationalMetricsResponse.java:63-66`) — un denominador distinto.
+
+**No existe** ningún endpoint de previsualización ni de resumen de entrada por persona, y **no se crea**: el brief prohíbe tocar el backend, y no hace falta — `GET /api/planning-metadata/declarations/{developerId}` ya devuelve, por persona, cada ticket activo con su `declarationStatus` y sus `discards` (código + motivo), que es **la clasificación exacta del motor**.
+
+### 5. La medición de partida
+
+Medido en vivo contra la instancia el 15/10/2026: **42 personas en el padrón, 18 operativas**, y entre las 18, **83 tickets activos**, de los cuales **82 en `SIN_DECLARACION` y 1 `PLANIFICABLE`** —el 68440, de `JoseGarc`—. **Cero `SIN_ESTIMACION` y cero `SIN_COMPROMISO`.** La instancia es de producción y **se mueve mientras se mira** (riesgo 149): la Fase 35 midió 83 filas con las 83 sin declarar, y hoy hay una declarada.
+
+## Las decisiones
+
+### 174. La vista previa enseña la entrada del motor, y no simula el plan
+
+#### 174.1 Por qué no se simula
+
+`POST /api/planning/simulate` existe y calcula sin guardar, pero **recibe un escenario entero** y está declarado temporal (decisiones 23 y 29). Construirle un cuerpo obligaría a **inventar las reglas** —umbral, horizonte, calendario—, que es exactamente lo que la decisión 87 prohíbe. Y no hace falta: la pregunta del brief es **qué recibirá el motor**, no qué hará con ello.
+
+#### 174.2 Por qué vive en su propia pantalla y no dentro de `/planificar`
+
+`/planificar` tiene un contrato fijado por **8 pruebas** (`Planning.test.tsx`) cuyo simulador **lanza** ante cualquier URL inesperada (`:104`) y que afirma `expect(fetchMock).not.toHaveBeenCalled()` al montar (`:181`) —«abrirla no deja rastro», decisión 166.2—. La vista previa necesita **1 + N lecturas al abrir**, así que montarlas ahí **rompe las ocho**. El brief dice «Mantener todas las pruebas existentes», y el precedente de la casa es el mismo: la Fase 35 creó `DeclarationFlow.test.tsx` aparte **para no aflojar** el simulador de `Incidents.test.tsx`. Con la pantalla aparte, `Planning.test.tsx` **no se toca ni una línea**: solo gana un `<Link>`, que no sale a la red.
+
+#### 174.3 La cuenta de planificables es, por construcción, la entrada efectiva del motor
+
+`build()` recorre el mismo `verdicts(...)` que sirve `GET /api/planning-metadata/declarations/{developerId}`. **No hay una segunda clasificación que pudiera discrepar.** Referencias: 143, 161.3, 172.
+
+#### 174.4 Las cinco cuentas particionan, al revés que el desglose de la Fase 35
+
+`DeclarationStatus` es mutuamente excluyente, así que `PLANIFICABLE + SIN_ESTIMACION + SIN_COMPROMISO + SIN_DECLARACION + NO_TRADUCIBLE = activos`. Es **lo contrario** del desglose de la Fase 35 (173.8), donde las cuentas se solapaban y hubo que advertirlo. Por eso **`declarationBreakdown` NO se reutiliza**: solapa por diseño y daría cifras que no cuadran con la tabla de al lado. **La cuarta prueba es la que discrimina.**
+
+#### 174.5 Los no planificables se abren en Incidentes, no en una segunda tabla de tickets
+
+La tabla por persona dice **quién** bloquea; cada fila enlaza con `incidentsPath(...)` (`routes/navigation.ts:64`, Fase 35) a `/incidentes?persona=X&declaracion=PENDIENTE`, que dice **qué**. Una tabla propia sería la séptima del repositorio y la tercera copia de `declarationSummary()`.
+
+#### 174.6 El veredicto se compone de hechos publicados y nombra su propio límite
+
+Las cuatro ramas se eligen con **longitudes de listas que el backend ya devolvió**; ninguna cifra se recalcula (decisiones 161.3 y 172) ni se inventa (166.4). Y la rama «planificable» dice, **en la misma frase**, que cuántos quepan y cuáles desplacen a cuáles lo decide el motor: la pantalla explica la **entrada**, no las reglas (riesgo 121).
+
+#### 174.7 La vista previa no lee las métricas
+
+Por tres motivos, y los tres apuntan al mismo sitio: `usePlanningMetrics` cuenta **filas de `planning_metadata`** y no tickets conocidos —otro denominador—; es el tablero, y el brief dice «No duplicar Dashboard»; y el simulador del fichero nuevo **también lanza**, así que la prueba lo fija en vez de confiar en la disciplina.
+
+#### 174.8 El encabezado y el menú resuelven por la coincidencia más larga, no por la primera
+
+La ruta nueva **cuelga de** `/planificar`, y las dos casan por prefijo. El `Sidebar` lo resolvía con `end` —que hoy no cambia nada, porque la entrada no tiene hijos— y el `Header` con `NAV_ITEMS.find(...)`, que devuelve **la primera** del array: con `/planificar` antes que `/planificar/estado`, la vista previa se titulaba «Planificación» y se describía como «Generación del plan de un técnico…». Se cambió el `find` por un `filter` + `reduce` que **se queda con la coincidencia más larga**, y el respaldo sigue siendo el tablero. **El defecto lo introdujo esta fase** —hasta ahora ninguna entrada del menú era prefijo de otra— y por eso se arregla aquí en vez de anotarse como riesgo ajeno. Ninguna prueba cubre el `Sidebar` ni el `Header` (verificado con `grep`).
+
+## Las pruebas
+
+**Las 166 existentes se mantienen sin editarlas.** En particular `Planning.test.tsx` **no se toca**: sus 8 pruebas siguen verdes porque el único cambio en `Planning.tsx` es un `<Link>`, que no sale a la red y no casa con ninguna de sus cuatro aserciones de enlace (comprobado con `grep` antes de escribirlo).
+
+**Fichero nuevo `pages/PlanningPreview.test.tsx`, 8 pruebas**, con su propio `serve()` que sirve `/api/team` y `/api/planning-metadata/declarations/*` y **lanza ante todo lo demás** —lo que fija que esta pantalla no pide métricas ni alertas—:
+
+| # | Caso del brief | Qué afirma |
+|---|---|---|
+| 1 | ticket planificable | cuenta en `PLANIFICABLE`, el veredicto lo dice, y esa fila **no** ofrece enlace de bloqueadores |
+| 2 | ticket sin estimación | cuenta en su cajón y **no** como planificable; el veredicto es `nada-planificable`; su enlace lleva `declaracion=PENDIENTE` |
+| 3 | ticket sin compromiso | `SIN_COMPROMISO === 1` y `SIN_ESTIMACION === 0` — **la prueba que fallaría si se reutilizara `declarationBreakdown`** |
+| 4 | desarrollador con mezcla de estados | los 5 cajones de esa fila suman `data-active`, sin solaparse |
+| 5 | resumen de equipo | la suma de los cajones del resumen = la suma de los `data-active` de las filas, y cuadra con el veredicto |
+| 6 | estado vacío | 3 personas leídas sin tickets → veredicto `sin-trabajo`, y **no** aparece el texto del fallo de lectura |
+| 7 | *(invariante)* no lee de más | el `serve` lanza: ninguna petición a `/api/planning/metrics`, y las cuatro que salen son `GET` |
+| 8 | *(invariante)* un fallo de lectura no borra a los demás | una declaración con `500` → banner «1 de las 3», la tabla con las otras 2, y la caída fuera de las cifras |
+
+**La octava prueba se escribió dos veces, y la segunda es la buena.** La primera afirmaba que las filas que quedan conservan el orden del padrón —`[ANA, CARLOS]`—; al correr salió **`[CARLOS, ANA]`**, porque la tabla ordena **por bloqueadores descendente** y Carlos es quien bloquea. No era un defecto: era la prueba afirmando un orden que la pantalla nunca prometió. Se cambió por el orden real **con un comentario que lo explica**, para que quien lo lea sepa que es deliberado y no una aserción acomodada.
+
+**Una cosa la cazó el navegador y no la prueba, y merece quedar dicho.** La primera versión de la frase decía «Hay 1 elemento planificable **listos** para el motor, **repartidos** entre 1 persona»: los adjetivos iban en plural fijo detrás de una cifra que en el caso normal de esta pantalla es **1**. La prueba no lo vio porque afirmaba sobre fragmentos —«1 elemento planificable», «repartidos entre 1 persona»— que seguían casando con la frase rota. Se corrigió concordando también los adjetivos y se ajustó la aserción. **Es el argumento de por qué la verificación con navegador es obligatoria y no ceremonial.**
+
+**Frontend: 166 → 174. Backend: 370 sin cambios**, ejecutadas igualmente para confirmarlo.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 159 | **1 + N lecturas al abrir** —18 por defecto, 42 en «Mostrar todo Desarrollo N2»—, y cada una son dos round trips a GLPI con su propia sesión | **Bajo: es el precio ya medido y aceptado por la decisión 172.1** | Medido en vivo: **20 peticiones al abrir**, de las cuales **18 son la declaración de cada persona** y **ninguna es de métricas**; la más lenta 2,1 s y **2,5 s de span total**. Comparte claves de caché con `/incidentes` y `/recursos`, así que visitar las tres no repite ninguna lectura, y el botón «Volver a leer» es explícito |
+| 160 | **La instancia es de producción y la cifra se mueve** mientras se mira | **Bajo, y es el riesgo 149 otra vez** | La pantalla fecha con el `generatedAt` del padrón y ofrece «Volver a leer». No promete estabilidad: promete **una lectura con su sello** |
+| 161 | **El total que GLPI entregó sigue sin publicarse** | **Bajo: es el riesgo 122** | La pantalla no distingue «GLPI devolvió poco» de «se descartó casi todo», y lo dice en el texto de la tarjeta en vez de enseñar una cifra que nadie publicó |
+| 162 | **La configuración viva —umbral, horizonte, calendario— sigue sin publicarse** | **Bajo: es el riesgo 121** | La frase del veredicto **nombra su propio límite** en la misma oración (174.6) |
+| 163 | **Los conflictos de capacidad solo se conocen después de calcular** | **Bajo: no hay endpoint que los anticipe** | La pantalla no promete que todo lo planificable quepa, y lo dice: «cuántos quepan en el horizonte … lo decide el motor» |
+| 164 | **Una persona cuya lectura falla desaparece de la tabla** y sus tickets no cuentan en las cifras | **Bajo: se ve, no se disimula** | Banner «No fue posible leer el trabajo de N de las K personas», «Personas de la vista: N de K», y el veredicto `sin-lectura` cuando no se leyó a nadie. **Un cero afirmaría que no tiene carga, y lo que pasó es que nadie pudo preguntarle** |
+| 165 | **`SIN_DECLARACION` junta «nunca declaró» con «declaró y retiró»** | **Bajo: es del backend, no de esta pantalla** | La pista lo dice —«sin fila, o con los dos valores retirados»—. Separarlos exigiría tocar el backend, que el brief prohíbe |
+| 166 | **Las ausencias y vacaciones no están modeladas** | **Bajo, y es preexistente** | La pantalla cuenta tickets activos, que es lo que GLPI sabe. Un ausente aparece con su carga intacta, y eso es un hecho, no un error de la vista |
+
+## Limitaciones
+
+**Es de solo lectura y no declara.** El enlace lleva a `/incidentes` → `/declaraciones`, que es donde se escribe. La fase explica la entrada; no la arregla desde aquí.
+
+**No se fecha por lectura.** El contrato de declaraciones **no publica sello**, así que la única fecha que se enseña es la del padrón, y se dice en el texto de la tarjeta.
+
+**Solo se puede enlazar a «pendiente», no a «sin estimación».** El filtro `declaracion` tiene dos valores (`lib/incidents.ts:150-151`), así que el enlace lleva a los pendientes de esa persona y allí se ve el motivo. Añadir un tercer valor tocaría `lib/incidents.ts`, `Incidents.tsx` y sus 24 pruebas, y el brief acota la fase a explicar la entrada.
+
+**No hay ordenación por columna.** El orden es bloqueadores descendente y después nombre —determinista, el papel que cumple `sortIncidents` en `/incidentes`—.
+
+**El conmutador de modo no persiste.** «Solo equipo operativo» es el valor por defecto y volver a la pantalla lo restablece.
+
+**La fase no toca el backend.** Ni una línea: ni `PlanningEngine`, ni los desplazamientos, ni las renegociaciones, ni la integración GLPI, ni la validación, ni el protocolo de escritura.
+
+## La verificación explícita: «¿Qué pasará si genero el plan ahora?»
+
+**Sí, y se hizo con la instancia real delante, con navegador real y sobre datos de producción.**
+
+**El punto de partida, medido contra la pantalla y contra el backend**: `18 de 18` personas leídas, **83 tickets activos**, **1 planificable**, **82 no planificables** —de los cuales **82 sin declaración**, **0 sin estimación**, **0 sin compromiso** y **0 no traducibles**—, **1** persona con trabajo listo y **14** que deben declarar. **El veredicto lo dice en una frase**: «Hay 1 elemento planificable listo para el motor, en 1 persona. Con eso producirá un plan. Cuántos quepan en el horizonte y cuáles desplacen a cuáles lo decide el motor con las reglas vigentes —umbral, horizonte y calendario—, que esta pantalla no publica.»
+
+**La fila que lo sostiene**, la de **Jose Luis Garces Gonzalez (`JoseGarc`)**: **8 activos · 1 planificable · 7 no planificables · 0 sin estimación · 0 sin compromiso · 7 sin declaración · 0 no traducible · 7 bloqueadores**. Los cinco cajones suman los activos, y la fila ofrece **«Ver los 7 tickets que bloquean a Jose Luis Garces Gonzalez»** → `/incidentes?persona=JoseGarc&declaracion=PENDIENTE`.
+
+**El caso que hoy no existía, y hubo que crearlo.** No había **ni un solo `SIN_ESTIMACION`** en toda la instancia —los 82 bloqueados lo estaban por no tener fila—, así que el brief no se podía demostrar sin fabricarlo: desde `/declaraciones?tecnico=JoseGarc&ticket=66666` se declaró **solo el compromiso** —fecha `2026-10-20`, estimación vacía— y la fila pasó a **`SIN_ESTIMACION`**, leyendo «sin estimación · 2026-10-20». De vuelta en la vista previa, y tras «Volver a leer»: **«Sin estimación» pasó de 0 a 1** y **«Sin declaración» de 82 a 81**, con el total de activos intacto en 83. **Y la fila de JoseGarc pasó a 8 · 1 · 7 · 1 · 0 · 6 · 0**, que es el caso «desarrollador con mezcla de estados» del brief sobre datos reales.
+
+**El residuo, declarado y no maquillado**: la declaración deja **una fila en `planning_metadata`** con sus entradas *append-only* en el historial, y **no existe endpoint `DELETE`** —es el riesgo 158, ya abierto por la Fase 35—. La estimación se dejó vacía **a propósito**, para que el caso fuera el que el brief pide; revertirlo exigiría escribir en la base por detrás de la aplicación, y no se hizo.
+
+**El encabezado y el menú, comprobados en la misma captura**: con la ruta nueva abierta, el menú resalta **una sola** entrada —«Estado del plan»— y el encabezado lee **«Estado del plan» / «Qué recibiría el motor si se generara el plan ahora»**. Es lo que confirma el arreglo 174.8: sin él, las dos entradas saldrían resaltadas y el título sería el de la pantalla de al lado.
+
+**Las evidencias visuales**, en `.playwright-mcp/`, que está en el `.gitignore` y **no se commitea** —el repositorio no tiene ni un PNG versionado y esta fase no cambia esa convención—: `f36-1-estado-entrada-completo.png` —el estado de partida, con **0 sin estimación**—, `f36-2-declaracion-solo-compromiso.png` —la declaración del 66666 con el compromiso puesto y la estimación vacía— y `f36-5-estado-entrada-final.png` —el estado ya corregido, con **«Sin estimación 1»** y la fila de JoseGarc con su mezcla—.
+
+**Los siete criterios de aceptación del brief se cumplen**: (1) **no cambia ninguna regla de negocio** —ni el motor, ni los desplazamientos, ni las renegociaciones, ni la integración GLPI, ni la validación, ni el protocolo de escritura—; (2) **`PlanningEngine` no se toca**, ni un fichero del backend; (3) la pantalla enseña **tickets activos, planificables, no planificables, sin estimación, sin compromiso y declaraciones completas**, por equipo y por persona; (4) contesta **las cuatro preguntas** —si se puede generar un plan útil, qué lo bloquea, quién tiene trabajo listo y quién debe declarar—; (5) **reutiliza los datos existentes** y no duplica el Dashboard ni Incidentes —cero lecturas de métricas, comprobado en la prueba y en la red—; (6) **las 370 pruebas del backend y las 174 del frontend pasan**, y las 166 anteriores no se editaron; (7) la demostración con navegador está hecha y capturada.
+
+**Y lo que esta fase no tocó, dicho explícitamente**: ni `PlanningEngine`, ni los desplazamientos, ni las renegociaciones, ni una regla de negocio, ni la integración con GLPI, ni el backend —**cero ficheros del backend con diferencia**—. El diff es enteramente del frontend: **cinco ficheros tocados** —`routes/navigation.ts`, `routes/AppRoutes.tsx`, `layouts/Sidebar.tsx`, `layouts/Header.tsx` y `pages/Planning.tsx`— y **tres nuevos** —`lib/planningPreview.ts`, `pages/PlanningPreview.tsx` y `pages/PlanningPreview.test.tsx`—.

@@ -41,7 +41,9 @@ export function Sidebar({ collapsed, mobileOpen, onNavigate }: SidebarProps) {
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === ROUTES.dashboard}
+            /* `end` tambien en Planificacion: «Estado del plan» cuelga de su ruta, asi que sin el
+               las dos entradas saldrian resaltadas a la vez al visitar la vista previa. */
+            end={item.to === ROUTES.dashboard || item.to === ROUTES.planning}
             onClick={onNavigate}
             title={collapsed ? item.label : undefined}
             className={({ isActive }) =>
