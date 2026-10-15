@@ -5141,3 +5141,173 @@ Buscar sin distinguirlas toleraría una clave que no es el login de nadie. El d�
 **La señal de que el filtro está mal puesto no apareció.** La pertenencia no cambia lo que se pide, solo lo que se enseña: la lista de peticiones es la misma con los dos modos puestos, así que el filtro está donde tiene que estar —en el cliente— y la columna de tickets sigue siendo del equipo y no de la vista. Es la comprobación que impide que esta fase deshaga la Fase 32.
 
 **El criterio de aceptación del brief se cumple entero**: GLPI sigue siendo la fuente principal y las personas las sigue enumerando él (1); `/recursos` puede enseñar solo el equipo operativo (2); puede enseñar todo Desarrollo N2 (3); **ninguna persona desaparece del catálogo** —las cuarenta y dos se publican y las cuarenta y tres filas se pueden ver— (4); una persona nueva en Desarrollo N2 sigue siendo visible por «Mostrar todos» (5); y **las 370 pruebas del backend y las 137 del frontend pasan** (6).
+
+# Fase 34 — Incidentes: el trabajo activo del equipo, ticket por ticket
+
+## Qué se hizo, en una frase
+
+`/incidentes` dejó de ser una tarjeta que prometía la pantalla para más adelante y pasó a ser **una tabla de ocho columnas que contesta, sin salir de ella, qué trabajo activo tiene hoy el equipo**: una fila por ticket activo y persona, con el tipo, el identificador, el título, el estado, la persona a la que GLPI se lo tiene asignado, la prioridad, la fecha que GLPI publica y el estado de declaración —y, cuando al ticket le falta algo para planificarse, el código de la regla que lo descarta y su motivo—. **No se estrenó ni un contrato**: la pantalla se arma cruzando dos lecturas que ya existían —el padrón del equipo y la declaración por persona— y **no se modificó ni una línea del backend**.
+
+## El análisis obligatorio: qué información de ticket existe ya, y de dónde sale
+
+### 1. Qué publica ya el contrato de la declaración
+
+`GET /api/planning-metadata/declarations/{developerId}` —la lectura de la Fase 23, la que consume `/declaraciones` y desde la Fase 32 la columna de tickets de `/recursos`— devuelve, por técnico, sus `items[]` **ya clasificados**. Cada ítem trae **siete de los ocho campos** que el brief enumera:
+
+| Columna del brief | Campo del contrato | De dónde sale |
+|---|---|---|
+| Tipo (Incidente / Requerimiento) | `type` | GLPI, opción 14, traducido por `GlpiContract` |
+| Id GLPI | `workItemId` | GLPI, el número del elemento |
+| Título | `title` | GLPI, opción 1 |
+| Estado | `status` | GLPI, opción 12, traducido al vocabulario del dominio |
+| **Persona asignada** | — | **no está dentro del ítem**: viene de la respuesta, porque cada respuesta es de una persona |
+| Prioridad | `priority` | GLPI, opción 3 |
+| Fecha publicada por GLPI | `createdAt` | GLPI, opción 15 |
+| Estado de declaración | `declarationStatus`, `declaration`, `discards[]` | **calculado por el backend** |
+
+**La única columna que el ítem no trae es de quién es el ticket, y no hace falta que la traiga**: la respuesta entera es la de alguien, así que emparejarla con su persona es lo único que falta para llenarla. Esa observación es la que decide la fase entera.
+
+### 2. Qué viene de GLPI y qué calcula el backend
+
+**De GLPI viene todo lo que describe el ticket** —tipo, estado, prioridad, título, fecha— y **el backend solo traduce**. La traducción importa más de lo que parece: el vocabulario del estado **cambia con el tipo** —una incidencia está `EN_ATENCION` y un requerimiento `EN_EJECUCION`, los dos desde el mismo estado 2 de GLPI—, y por eso el filtro de tipo y el de estado se usan juntos y por eso el catálogo de estados **no se escribe en la pantalla**: se deriva de lo que llegó.
+
+**Del backend viene el estado de declaración**, que es lo único que no existe en GLPI: `PLANIFICABLE` cuando al ticket no le falta nada para planificarse, y cuando le falta algo, un estado que lo nombra —`SIN_ESTIMACION`, `SIN_COMPROMISO`, `SIN_DECLARACION`, `NO_TRADUCIBLE`— más los `discards[]` con **el código de la regla y su motivo**. Ese detalle es lo que convierte «Pendiente» en «le falta la estimación declarada», y es lo que el brief pide cuando pide ver si al ticket «le falta» algo.
+
+**La regla crítica del brief ya se cumplía aguas arriba, y por partida doble.** El puerto pide a GLPI por el grupo de estados `12=1,2,3,4` —nuevo, asignado, planificado, pendiente— y **vuelve a filtrar en cliente** al recibir, con pruebas que lo fijan desde la Fase 31 (`elFiltroDeActivosNoPideLoResueltoNiLoCerrado`, `losQueNoEstanActivosNoCuentanAunqueVengan`). Ese es «el mismo criterio validado en la Fase 31» que el brief manda usar, y esta fase no lo reimplementa: lo hereda.
+
+### 3. Qué había en la pantalla de Incidentes
+
+Nada. `pages/Incidents.tsx` eran **diecinueve líneas** que renderizaban `ComingSoon`, una tarjeta que prometía la pantalla para más adelante. La ruta existía en el menú desde la Fase 1 y **no tenía fuente de datos propia**. `ComingSoon.tsx` se borró al final de esta fase, después de comprobar con un `grep` que `Incidents.tsx` era su único consumidor.
+
+### 4. Qué necesita realmente la pantalla
+
+Cuatro cosas, y ninguna es un contrato nuevo:
+
+1. **El padrón**, para saber quién es quién y quién es operativo → `useTeam()`, que existe desde la Fase 30.
+2. **El trabajo de cada persona visible** → `useTeamDeclarations(keys)`, el mismo hook con el que `/recursos` pregunta por el equipo entero, con **las mismas claves de caché**.
+3. **El nombre de cada persona**, que sale del padrón y no de la respuesta → `declarationKeysFor` y el emparejamiento **por posición** que `useQueries` garantiza.
+4. **La presentación** → `Card`, `Badge`, `Button`, `EmptyState`, `Skeleton`, `DECLARATION_VARIANTS`, `formatInstant`, `formatHours`: todo ya en el repositorio, nada nuevo.
+
+Y una cosa que **no** necesita: métricas ni alertas. Las cifras de negocio viven en el tablero y en `/alertas`, y esta pantalla responde otra pregunta —quién tiene qué—, así que no añade tarjetas ni tablas de las que ya existen. La prohibición del brief está traducida a una prueba que falla si algún día se piden.
+
+## Las decisiones
+
+### 172. El trabajo activo del equipo se lee persona a persona, y la pantalla no estrena contrato
+
+El brief pedía una pantalla, no un contrato, y esa lectura gobierna la fase entera: **`/incidentes` no añade nada al backend**. Lo que hacía falta —qué tickets activos tiene cada persona, ya clasificados— **ya lo publicaba el endpoint de declaraciones** desde la Fase 23. Lo único que faltaba era **cruzar esas respuestas con el padrón para saber de quién es cada ticket y pintarlas juntas**, y eso es una decisión de vista, no de integración.
+
+Lo que sí hubo que decidir fue **cómo se lee**, y se decidió con la instancia delante.
+
+#### 172.1 Por qué no hay endpoint agregado
+
+La alternativa era **una búsqueda agregada a GLPI**: los dieciocho técnicos operativos en un `OR` anidado sobre la opción 5, más el grupo de estados activos. **Se midió: 0,21 s, y funciona.** Se descartó por tres motivos, y el tercero es el que decide:
+
+1. **Exigiría vocabulario nuevo en la integración**: un criterio `OR` que hoy no existe en el adaptador, proyectar el técnico en la respuesta y parsear el caso de dos técnicos en el mismo campo.
+2. **Contradiría la decisión 170.3 sin necesidad**, porque la lectura por persona ya está escrita, ya tiene pruebas y ya comparte caché con `/recursos`.
+3. **Habría que inventar una regla para el ticket que pertenece a dos personas.** Medido contra la instancia: de los **83** tickets activos del equipo operativo, **uno está asignado a dos técnicos**. La lectura por persona da la columna «Persona asignada» **gratis y por construcción** —cada fila sabe de quién es porque viene de la respuesta de esa persona, y el ticket compartido aparece en las dos filas porque **las dos lo tienen como carga**—; la lectura agregada tendría que decidir de quién es, y cualquier respuesta que se inventara sería una regla de negocio nueva en una fase que prohíbe tocarlas.
+
+**El precio se dice con la cifra medida, no con un adjetivo**: la primera carga dispara **una petición por persona visible** —18 en la vista por defecto, 42 en «Mostrar todo Desarrollo N2»—, medidas en **~0,78 s cada una**, en paralelo, así que la primera vez son **~2,4 s** y **cero después**: las claves de caché son las mismas que usa `/recursos`, así que visitar las dos pantallas no repite ninguna lectura de GLPI. El camino medido de 0,21 s queda escrito aquí para el día que esa espera moleste, con su peaje declarado.
+
+#### 172.2 La lectura sigue a la vista, y es una divergencia deliberada de 170.3
+
+En `/recursos`, la decisión 170.3 fijó que el filtro de equipo operativo **no cambia lo que se pregunta**: la columna de tickets es del equipo entero y cambiar de modo no dispara ninguna lectura nueva. **Aquí no se puede hacer lo mismo, y no por comodidad: aquí las filas *son* los tickets.** Una fila existe porque alguien tiene un ticket, así que no hay tabla sin la lectura por persona, y el ámbito de la lectura y el de la vista **no se pueden separar**. Ampliar la vista es ampliar la lectura: pasar a «Mostrar todo Desarrollo N2» pide las veinticuatro personas que faltan.
+
+**El filtro se hace sobre la persona del padrón y no con `inOperationalTeam`.** Aquel predicado —decisión 171.4— existe para proteger una fila `PLAN`, que solo vive en el modelo de la tabla del equipo. Aquí no hay filas inventadas: hay personas del padrón, y `person.operational` es la respuesta entera. Reutilizar el predicado habría traído a esta pantalla una excepción que aquí no tiene nada que proteger.
+
+**Y el esqueleto de carga no tapa lo que ya está leído.** La espera se declara solo mientras no haya filas, con una condición explícita en la página; sin ella, ampliar la vista habría vaciado la pantalla para volver a llenarla, que es peor que esperar.
+
+#### 172.3 La exclusión se comprueba dos veces, y se dice quién es el dueño
+
+La regla crítica del brief —«solo deben aparecer tickets activos; **NO mostrar: Cerrado, Resuelto**»— **ya la cumple el backend**, y por partida doble: el puerto pide a GLPI por el grupo `12=1,2,3,4` y **vuelve a filtrar en cliente** al recibir, con un aviso en el registro si algo se coló. Ese es el criterio validado en la Fase 31.
+
+**Aun así la vista repite la comprobación, en dos líneas, y el motivo se escribe en el código**: el brief la fija como **garantía de pantalla** y no como confianza en la capa de abajo. Dos líneas cuestan menos que una lista de trabajo que un día enseñe trabajo terminado sin que nadie lo note, y la comprobación vive en una **función pura con su prueba propia** en vez de repartirse por el marcado, para que se pueda leer de una vez y no haya dos versiones de la misma regla.
+
+**El detalle que importa es qué hace la guarda con un estado nulo.** Un ticket cuyo tipo o estado no se pudieron traducir llega con `status: null`, y **no se descarta**: no saber si está cerrado no es saber que lo está, y descartarlo escondería trabajo real. Se pinta con el hueco declarado —`—`— en su celda, que es el mismo trato que el resto del repositorio da a un dato que falta.
+
+#### 172.4 El orden por defecto, y por qué la fecha va ascendente
+
+El brief pide evaluar un orden y **justificarlo**. Se implementa el que pide, con tres claves y el desempate que hace falta para que dos ordenaciones seguidas den exactamente lo mismo:
+
+1. **Incidentes antes que requerimientos.** Un incidente es trabajo que ya está pasando —algo dejó de funcionar— y un requerimiento es trabajo planificable, que espera a que alguien lo planifique. Es la distinción que el brief fija primero. **Un tipo que no se pudo traducir va al final**: no es ninguna de las dos cosas, y ponerlo arriba sería afirmar que es lo más urgente.
+2. **Prioridad descendente.** En la escala de GLPI el 5 es «muy alta», así que lo urgente queda arriba. **Una prioridad que GLPI no publica ordena como `-1` y cae al final, a la vista**, en vez de confundirse con una prioridad baja: no es lo mismo un ticket sin prioridad que uno de prioridad 1.
+3. **Fecha de apertura ascendente.** A igual tipo y prioridad, **lo que lleva más tiempo abierto es lo que más ha esperado**, y es el criterio que convierte la tabla en una lista de trabajo y no en un historial. Descendente enseñaría primero lo que acaba de entrar, que es justo lo que todavía no hay que mirar.
+
+**La prioridad cruda no se traduce a una severidad.** Se enseña el número de GLPI en su escala 1..5: normalizarlo a «Alta / Media / Baja» sería una segunda versión de una regla que el motor aplica en otro sitio, y en esta pantalla esa normalización todavía no ha ocurrido.
+
+## Las pruebas
+
+**Backend: sin cambios.** **370 pruebas, 0 fallos, 3 omitidas.** No se tocó ni un fichero, y se ejecutaron igualmente para confirmarlo.
+
+**Frontend: de 137 a 157, en 11 archivos, 0 fallos.** Veinte nuevas, y las que más importan no son las de los casos felices:
+
+- **La que fija que la pantalla no pide nada más.** El `serve` de la prueba **lanza** ante cualquier dirección que no sea el padrón o una declaración por persona, así que si algún día `/incidentes` pidiera las métricas o las alertas, la prueba fallaría **en vez de pasar enseñando una segunda copia del tablero**. Es la traducción a código de «no duplicar métricas ni alertas».
+- **Las dos que fijan la regla crítica desde dentro**: un ticket servido con estado `RESUELTO` y otro con `FINALIZADO` **no producen fila**, aunque el backend no debería haberlos publicado nunca. La garantía de pantalla se prueba como garantía y no como confianza.
+- **La del orden por defecto**, con cuatro tickets colocados para que las tres claves se contradigan entre sí —`['904','902','901','903']`, con el requerimiento de prioridad 5 cerrando la lista—, más la de la prioridad nula, que cae al final.
+- **La del ticket que no se pudo traducir**, que **no se descarta** y se enseña con su hueco.
+- **La del conmutador**, que comprueba además **que se piden las declaraciones de quien entra**: es exactamente la diferencia con 170.3, fijada por una prueba para que no se pierda.
+
+Los diez casos que el brief enumera están cubiertos uno a uno —incidente activo, requerimiento activo, resuelto excluido, cerrado excluido, desarrollador sin tickets, filtro por persona, filtro por estado de declaración, equipo operativo, «mostrar todo Desarrollo N2» y estado vacío—, y **ninguna prueba existente se borró ni se debilitó**: `Resources.test.tsx` y las demás no se tocaron.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 143 | **La primera carga pide una declaración por persona visible** —dieciocho en la vista por defecto y cuarenta y dos en «Mostrar todo Desarrollo N2» | **Bajo, y medido**: ~2,4 s la primera vez y **cero** después, porque comparte caché con `/recursos` | Es el precio explícito de la decisión 172.1, y el camino alternativo está medido y escrito allí: una búsqueda agregada de 0,21 s, con su regla para el ticket compartido. Se cambia el día que la espera moleste, no antes |
+| 144 | **La exclusión de resueltos y cerrados vive en dos sitios**: el puerto y la guarda de pantalla | **Bajo, y es deliberado** | Las dos capas dicen lo mismo y la de abajo es la dueña; la de arriba son dos líneas en una función pura con prueba propia (172.3). Si el backend cambiara el criterio, la pantalla seguiría sin enseñar trabajo terminado, que es el lado por el que conviene equivocarse |
+| 145 | **El cuarto `<select>` de filtro duplica a los otros tres** que ya existen en alertas, línea de tiempo y recursos | **Bajo: deuda de duplicación, no de comportamiento** | Se anota en vez de refactorizar tres ficheros con pruebas propias que el brief manda mantener verdes. El componente compartido es la mejora evidente el día que se toque cualquiera de las cuatro pantallas |
+| 146 | **Un ticket asignado a dos personas aparece dos veces**, una por fila | **No es un defecto, y se declara igual** | Es la verdad: las dos lo tienen como carga. La clave de fila es `persona-ticket` para que las dos convivan sin colisionar, y cada fila dice de quién es. Hoy hay uno así entre los 83 |
+| 147 | **La fecha que se enseña es la de apertura de GLPI**, la única que esta ruta publica | **Bajo, con un matiz que importa**: un ticket reabierto o tocado ayer se sigue viendo por su fecha original | Se declara como limitación en vez de disimularse. `date_mod` existe en la instancia, pero no lo lee nadie hoy y leerlo sería vocabulario nuevo en la integración —exactamente lo que 172.1 evitó— |
+| 148 | **La pantalla no permite declarar**: el estado se muestra y se filtra, pero se declara en `/declaraciones` | **Bajo: es alcance, no olvido** | El brief pide ocho columnas de lectura y ninguna acción. Añadir el formulario sería traer a esta pantalla la maquinaria de escritura que ya tiene la suya. La columna dice qué falta y con qué código, que es lo que hace falta para ir a declararlo |
+| 149 | **La cifra de la tabla no cuadra con una sonda tomada en otro momento.** Medido durante la verificación: la pantalla leyó **84** filas a las 15:16 y el backend devolvía **81** seis minutos después, porque **la instancia es de producción y el trabajo se mueve** —una persona pasó de 6 tickets a 3 mientras se medía— | **Medio para quien verifique, bajo para el sistema** | Se contrasta **persona a persona y en el mismo minuto**, no la cifra total contra una sonda vieja: recargada la pantalla, las dos dieron **81** y coincidieron las catorce personas. Es una advertencia de método, no un defecto de la fase |
+
+## Limitaciones
+
+**La fecha es la de apertura, y no hay más.** `createdAt` es la única fecha que la declaración publica: no se enseña la última modificación ni la fecha límite de GLPI, que existen en la instancia pero no viajan en este contrato.
+
+**La pantalla no escribe.** No se puede declarar una estimación ni un compromiso desde aquí: la columna de declaración dice qué falta y lo nombra con el código de la regla, y declararlo sigue siendo cosa de `/declaraciones`.
+
+**Un ticket compartido por dos personas cuenta dos veces en el recuento de la cabecera.** El resumen dice «N tickets activos» contando **filas**, y hoy hay uno compartido, así que la cifra es de cargas y no de elementos distintos. Se dice porque se lee como un total.
+
+**El estado de declaración depende de que la lectura por persona responda.** Una persona cuya declaración no llegó no aporta filas y se cuenta aparte en un aviso; no se le inventan ceros, pero tampoco se sabe si tiene trabajo. Es el mismo trato que `/recursos` da a la lectura caída.
+
+**Las opciones de tipo y estado salen de lo que hay en pantalla.** Es deliberado —el vocabulario del estado cambia con el tipo y un catálogo escrito a mano se quedaría corto—, pero significa que un tipo que hoy no tiene tickets no se puede filtrar, porque no está en la lista. Es el comportamiento que ya tienen los filtros de `/alertas`.
+
+**No hay paginación ni virtualización.** Con 81 filas en la vista por defecto y 96 en la completa se lee bien; una instancia con varios cientos pediría otra cosa, y no es el caso de hoy.
+
+## La verificación explícita: «¿Qué trabajo activo tiene hoy el equipo?»
+
+**La respuesta, medida contra GLPI y no contra la pantalla.** Una sonda de solo lectura —no escribe nada y no imprime ni el token ni la URL— replica el criterio del puerto: los dieciocho operativos, la pertenencia al grupo por «bajo» y el grupo de estados 1 a 4.
+
+| Lo que mide la sonda | Lo que sale |
+|---|---|
+| Miembros del grupo (pertenencia «bajo», no «igual a») | **41 personas** |
+| Los dieciocho logins del equipo operativo | **18 resueltos, 0 sin encontrar** |
+| Tickets activos del equipo operativo | **83**, repartidos entre **14 personas** |
+| Ticket compartido por dos técnicos | **1**, y por eso el reparto suma 84 cargas sobre 83 elementos |
+| Por tipo | **11 incidentes y 72 requerimientos** |
+| Por estado | **56 pendientes y 27 asignados** |
+
+**Y el reparto por persona, que es la cifra contra la que se contrasta fila a fila**: CesaGira 10, MaurMarm 9, AbraAran 8, JoseGarc 8, NilsCort 8, SilvCast 8, StelMedi 7, AlejPine 6, JoseGonz 6, AndrBelt 4, AndrEsco 4, FranZulu 3, AnalRuiz 2 y JhonAteh 1; **sin tickets, cuatro**: AndrGonza, DaniLope, JoseDiaz y NicoSuar.
+
+**Y la verificación en la pantalla, con la aplicación corriendo y navegador real**, sobre `http://localhost:5173/incidentes`:
+
+| Lo que se mira | Lo que sale |
+|---|---|
+| La vista por defecto | **81 filas**, y el backend devolvía **81** en el mismo minuto, con los recuentos **idénticos para las catorce personas** |
+| Tickets resueltos o cerrados | **Cero filas** con estado `RESUELTO` o `FINALIZADO`, y cero con estado nulo |
+| Las ocho columnas | Tipo, Id GLPI, Título, Estado, Persona asignada, Prioridad, Fecha publicada por GLPI y Estado de declaración, con títulos, identificadores, fechas e insignias reales |
+| «¿Qué tiene Abraham?» | Filtro `AbraAran` → **8 filas**: el incidente primero (68319) y después sus requerimientos |
+| «¿Qué tiene Alejandro?» | Filtro `AlejPine` → **6 filas** |
+| «¿Qué tiene Analy?» | Filtro `AnalRuiz` → **2 requerimientos** |
+| «¿Qué tickets necesitan declaración?» | `Declaración = Pendiente` → **81 filas**; `Declarado` → **0 filas** y el estado vacío de filtros, que no vacía la pantalla |
+| «Mostrar todo Desarrollo N2» | **96 filas**, **18 personas** con carga y **43 opciones** en el filtro de persona, con **cero estados prohibidos**; las quince filas de más son de cuatro personas de fuera del equipo operativo, y los recuentos de las catorce operativas **no cambiaron** |
+
+**Las cuatro preguntas del brief se contestan sin salir de la pantalla**, que era el criterio de experiencia: tres se contestan con el filtro de persona —y con la columna «Persona asignada», que dice de quién es cada fila aunque no se filtre— y la cuarta con el filtro de declaración, que es la razón por la que ese filtro existe y la razón por la que **no** se añadió una tarjeta con la cifra: la pregunta ya tiene su sitio.
+
+**El hallazgo que la fase no esperaba, y que se declara en vez de maquillarse: hoy ningún ticket activo tiene declaración.** Las 81 filas leen `SIN_DECLARACION`, con los dos descartes —`SIN_ESTIMACION_DECLARADA` y `SIN_COMPROMISO_DECLARADO`— y su motivo. Se comprobó que **es dato y no defecto de pintado** por dos vías independientes: pidiendo el endpoint directamente, que responde `SIN_DECLARACION` con `declaration: false`, y contando las dieciocho personas, que dan 81 de 81. La conclusión es del negocio y no de la pantalla —**el equipo tiene 83 tickets activos y ninguno declarado**—, y es exactamente el tipo de cosa que esta pantalla existía para hacer visible.
+
+**Las tres evidencias visuales.** `fase34-incidentes-equipo-operativo.png`, `fase34-incidentes-abraham.png` y `fase34-incidentes-todo-desarrollo-n2.png`, tomadas con Playwright sobre la aplicación en marcha —backend en el 8080 y frontend en el 5173—. Viven en `.playwright-mcp/`, que está en el `.gitignore`, y **no se commitean**: el repositorio no tiene ni un PNG versionado y esta fase no cambia esa convención.
+
+**Los nueve criterios de aceptación del brief se cumplen**: `/incidentes` deja de ser un placeholder (1); solo aparecen tickets activos, comprobado sobre el DOM y contra la sonda (2); incidentes y requerimientos se distinguen por columna, por estado y por orden (3); la persona asignada tiene su columna (4); el estado de declaración está, con lo que falta cuando falta (5); la vista por defecto es el equipo operativo, dieciocho personas (6); «Mostrar todo Desarrollo N2» las enseña todas (7); **las 370 pruebas del backend y las 157 del frontend pasan** (8); y Playwright lo demuestra visualmente (9).
+
+**Y lo que esta fase no tocó, dicho explícitamente**: ni `PlanningEngine`, ni una regla de negocio, ni la planificación, ni los desplazamientos, ni las renegociaciones, ni **una sola línea del backend**. La pantalla lee lo que ya existía.
