@@ -1,6 +1,9 @@
 package co.com.coltefinanciera.gestiondemanda.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -112,7 +115,9 @@ class PlanningDeclarationEndpointsTest {
     private void glpiResponde(GlpiTicket... tickets) {
         when(glpiPlanningSource.findUser(DEVELOPER))
                 .thenReturn(Optional.of(new GlpiUser(7, "ana", "Perez", "Ana")));
-        when(glpiPlanningSource.ticketsOf("7")).thenReturn(List.of(tickets));
+        // Activos y no todos: lo resuelto y lo cerrado no se declara, asi que esta lectura no los pide.
+        // El corte lo hace la busqueda del adaptador, y su prueba es la que lo fija.
+        when(glpiPlanningSource.activeTicketsOf("7")).thenReturn(List.of(tickets));
     }
 
     // --- Los cinco estados, por HTTP ---------------------------------------------------------
@@ -292,5 +297,39 @@ class PlanningDeclarationEndpointsTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.source.glpi").isNotEmpty())
                 .andExpect(jsonPath("$.source.declaration").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("Los tickets se piden activos: esta lectura no toca la de todos, que es la que planifica")
+    void losTicketsSePidenActivos() throws Exception {
+        glpiResponde(incidencia(501));
+
+        mockMvc.perform(get(RUTA + "/{developerId}", DEVELOPER))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1));
+
+        // Es lo que hace que un tecnico con mil doscientos sesenta y seis tickets cerrados deje de
+        // tener mil doscientos sesenta y seis: esta lectura no llega a pedirlos. `ticketsOf` es la del
+        // plan, y esa sigue viendo el historico entero.
+        verify(glpiPlanningSource).activeTicketsOf("7");
+        verify(glpiPlanningSource, never()).ticketsOf(anyString());
+    }
+
+    @Test
+    @DisplayName("El tecnico se puede pedir por su numero de GLPI, no solo por su login")
+    void elTecnicoSePuedePedirPorSuNumero() throws Exception {
+        declarar("501", "6", FECHA_COMPROMISO);
+        // Se teclea el numero, y el numero es lo que GLPI entiende por /User/7: la resolucion del
+        // identificador la hace el adaptador, y aqui solo se comprueba que la ruta lo admite.
+        when(glpiPlanningSource.findUser("7"))
+                .thenReturn(Optional.of(new GlpiUser(7, "ana", "Perez", "Ana")));
+        when(glpiPlanningSource.activeTicketsOf("7")).thenReturn(List.of(incidencia(501)));
+
+        mockMvc.perform(get(RUTA + "/{developerId}", "7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.developer.id").value("7"))
+                .andExpect(jsonPath("$.developer.name").value("Ana Perez"))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].declarationStatus").value("PLANIFICABLE"));
     }
 }

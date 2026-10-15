@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { remainingState } from '@/lib/capacity'
-import { personName, sortTeam } from '@/lib/team'
+import { inOperationalTeam, personName, sortTeam } from '@/lib/team'
 import type { SortDirection, TeamMember, TeamSortKey } from '@/lib/team'
 import { formatHours } from '@/lib/timeline'
 import { formatInstant } from '@/lib/format'
@@ -176,6 +176,7 @@ export function TeamTable({ members }: TeamTableProps) {
                 data-developer={member.developerId}
                 data-name={member.name ?? ''}
                 data-source={member.sourceType}
+                data-operational={inOperationalTeam(member) ? 'true' : 'false'}
                 data-remaining={remaining}
                 data-displaced={displaced ? 'true' : 'false'}
                 className="border-b border-border/60 align-top last:border-0"
@@ -192,6 +193,19 @@ export function TeamTable({ members }: TeamTableProps) {
                     {member.sourceType !== 'GLPI' && (
                       <Badge variant="outline" data-slot="team-origin">
                         {member.sourceType === 'EXCEPTION' ? 'Excepción' : 'Solo plan'}
+                      </Badge>
+                    )}
+
+                    {/*
+                      Quien no es del equipo operativo solo se puede estar viendo en «Mostrar todos», y
+                      decirlo es lo que hace utilizable ese modo: sin la marca, incluir a alguien exige
+                      adivinar quien estaba fuera. En el modo operativo no aparece nunca —todas las
+                      filas lo son—, asi que no es ruido en el caso normal. Va con el mismo predicado
+                      que el filtro, para que la marca y lo que se enseña no puedan discrepar.
+                    */}
+                    {!inOperationalTeam(member) && (
+                      <Badge variant="outline" data-slot="team-outside">
+                        Fuera del equipo operativo
                       </Badge>
                     )}
 

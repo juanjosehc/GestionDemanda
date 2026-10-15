@@ -46,6 +46,11 @@ import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiUser;
  * <p><strong>Devuelve {@code 404} si el tecnico no esta en GLPI</strong>, y no una lista vacia. Pedir
  * los tickets de un identificador equivocado no da «no tiene trabajo»: da que el identificador esta
  * mal, y las dos cosas se parecen demasiado como para dejarlas indistinguibles.
+ *
+ * <p><strong>Solo salen los tickets que siguen siendo carga.</strong> Lo que esta resuelto o cerrado
+ * no se declara —no queda trabajo que repartir— asi que no aparece: esta pantalla es la lista de lo
+ * que hay por declarar, y el historico de una persona no es su jornada. El corte lo hace la busqueda
+ * —{@code activeTicketsOf}— y no un descarte aqui, que seria traerse lo cerrado para tirarlo.
  */
 @Slf4j
 @Service
@@ -57,7 +62,7 @@ public class PlanningDeclarationService {
     private final Clock clock;
 
     /**
-     * Los tickets asignados al tecnico, clasificados.
+     * Los tickets activos del tecnico, clasificados.
      *
      * @param developerId identificador con el que se busca al usuario en GLPI
      */
@@ -66,7 +71,9 @@ public class PlanningDeclarationService {
                 .orElseThrow(() -> new GlpiDeveloperNotFoundException(
                         "GLPI no tiene un usuario con identificador " + developerId));
 
-        List<GlpiTicket> tickets = glpiPlanningSource.ticketsOf(String.valueOf(user.id()));
+        // Activos y no todos: lo resuelto y lo cerrado no se declara, y contarlo convertia el historico
+        // de una persona en su carga. El corte se le pide a la busqueda, no se hace aqui despues.
+        List<GlpiTicket> tickets = glpiPlanningSource.activeTicketsOf(String.valueOf(user.id()));
 
         // El vencimiento se mide con el reloj del servidor, el mismo que fecha los planes, para que no
         // dependa de cuando se ejecute la prueba ni de la hora del navegador.
@@ -78,7 +85,7 @@ public class PlanningDeclarationService {
 
         // Se cuentan tickets, no descartes: aqui cada ticket sale una vez, con los codigos que tenga.
         // El numero util para operar es cuantos quedan por declarar, y ese se lee en los estados.
-        log.info("Declaraciones de {}: {} tickets asignados, {} planificables, {} sin declaracion",
+        log.info("Declaraciones de {}: {} tickets activos, {} planificables, {} sin declaracion",
                 developerId, items.size(),
                 items.stream().filter(item -> item.declaration() != null).count(),
                 items.stream().filter(item -> item.discards().size() > 1).count());

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -212,10 +213,152 @@ class TeamCatalogServiceTest {
                 .containsExactly("AnaPerez");
     }
 
+    /*
+     * El equipo operativo. La marca de pertenencia no recorta el padron —eso lo comprueban todas las
+     * pruebas de arriba, que siguen viendo a todo el mundo— sino que añade un dato a cada fila que la
+     * pantalla usa para decidir a quien enseña por defecto. Lo que se afirma aqui es esa bandera y la
+     * lista de marcas que no alcanzaron a nadie.
+     */
+
+    @Test
+    @DisplayName("Sin marcar a nadie nadie pertenece al equipo operativo, y el padron sigue entero")
+    void sinMarcasNadieEsOperativo() {
+        grupo(
+                usuario(1071, "NicoSuar", "Nicolas Alejandro", "Suarez Florez", true),
+                usuario(1202, "AnaPerez", "Ana", "Perez", true));
+
+        TeamCatalogResponse catalogo = service(Map.of()).catalog();
+
+        // Las dos siguen: la pertenencia no saca a nadie del catalogo, solo decide quien se enseña.
+        assertThat(catalogo.people()).extracting(TeamCatalogResponse.Person::developerId)
+                .containsExactly("AnaPerez", "NicoSuar");
+        assertThat(catalogo.people()).noneMatch(TeamCatalogResponse.Person::operational);
+        assertThat(catalogo.unusedOperational()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Una persona marcada pertenece; una marcada en falso no, y las dos siguen en el padron")
+    void laMarcaDecideLaPertenencia() {
+        grupo(
+                usuario(1202, "AnaPerez", "Ana", "Perez", true),
+                usuario(1203, "CarlosRuiz", "Carlos", "Ruiz", true),
+                // Esta no esta en el grupo y no se ha marcado: no pertenece y tampoco aparece.
+                usuario(1204, "DianaLopez", "Diana", "Lopez", true));
+
+        TeamCatalogResponse catalogo = service(
+                Map.of(), Map.of("AnaPerez", true, "CarlosRuiz", false)).catalog();
+
+        assertThat(operativosDe(catalogo)).containsExactly("AnaPerez");
+        // El «false» no borra la fila: deja escrito que se decidio sacarla, que es un dato distinto de
+        // que nadie se haya acordado de ella.
+        assertThat(catalogo.people()).extracting(TeamCatalogResponse.Person::developerId)
+                .containsExactly("AnaPerez", "CarlosRuiz", "DianaLopez");
+    }
+
+    @Test
+    @DisplayName("Una persona nueva de GLPI aparece en el padron y no entra al equipo operativo")
+    void unaPersonaNuevaNoEntraSolaAlEquipoOperativo() {
+        grupo(usuario(1400, "RecienLlegado", "Recien", "Llegado", true));
+
+        TeamCatalogResponse catalogo = service(Map.of(), Map.of("AnaPerez", true)).catalog();
+
+        // El padron la publica —GLPI manda— y el equipo operativo no la incluye hasta que se la escriba.
+        assertThat(catalogo.people()).extracting(TeamCatalogResponse.Person::developerId)
+                .containsExactly("RecienLlegado");
+        assertThat(operativosDe(catalogo)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Una excepcion marcada pertenece, y su marca no se cuenta como sobrante")
+    void unaExcepcionMarcadaPertenece() {
+        grupo();
+
+        TeamCatalogResponse catalogo = service(
+                Map.of("NicoSuar", new TeamProperties.DeclaredException(
+                        "Nicolas Alejandro Suarez Florez", 1071, null)),
+                Map.of("NicoSuar", true)).catalog();
+
+        assertThat(operativosDe(catalogo)).containsExactly("NicoSuar");
+        assertThat(catalogo.people()).extracting(TeamCatalogResponse.Person::sourceType)
+                .containsExactly(TeamCatalogResponse.Person.EXCEPTION);
+        assertThat(catalogo.unusedOperational()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Una marca que no corresponde a nadie se publica en vez de quedarse callada")
+    void unaMarcaSinDestinatarioSePublica() {
+        grupo(usuario(1202, "AnaPerez", "Ana", "Perez", true));
+
+        // La primera es una errata de un login que existe; la segunda, alguien que ya no esta en GLPI ni
+        // declarado a mano. Ninguna alcanza a nadie, y por eso las dos se publican: una marca muerta no
+        // hace nada, y sin este aviso quien la escribio no se enteraria de que escribio mal.
+        TeamCatalogResponse catalogo = service(
+                Map.of(), Map.of("AnaPerezz", true, "NicoSuar", true)).catalog();
+
+        assertThat(catalogo.unusedOperational()).containsExactly("AnaPerezz", "NicoSuar");
+        // Y no inventa filas: una marca no es una persona.
+        assertThat(catalogo.people()).extracting(TeamCatalogResponse.Person::developerId)
+                .containsExactly("AnaPerez");
+    }
+
+    @Test
+    @DisplayName("Una marca sin valor se comporta como ausente: la persona no pertenece")
+    void unaMarcaSinValorSeDescarta() {
+        grupo(
+                usuario(1202, "AnaPerez", "Ana", "Perez", true),
+                usuario(1203, "CarlosRuiz", "Carlos", "Ruiz", true));
+
+        // «team.operational[AnaPerez]=» es una linea que se puede escribir. Un nulo no es ni un si ni un
+        // no, y decidir cual de los dos seria inventarse la respuesta: se descarta, y la persona queda
+        // fuera como si la linea no estuviera. Map.of no admite nulos, de ahi el mapa explicito.
+        Map<String, Boolean> conNulo = new LinkedHashMap<>();
+        conNulo.put("AnaPerez", null);
+        conNulo.put("CarlosRuiz", true);
+
+        TeamCatalogResponse catalogo = service(Map.of(), conNulo).catalog();
+
+        assertThat(operativosDe(catalogo)).containsExactly("CarlosRuiz");
+        assertThat(catalogo.people()).extracting(TeamCatalogResponse.Person::developerId)
+                .containsExactly("AnaPerez", "CarlosRuiz");
+    }
+
+    @Test
+    @DisplayName("La marca sobrevive a un GLPI caido: las excepciones conservan su pertenencia")
+    void laMarcaSobreviveAGlpiCaido() {
+        when(glpi.membersOfGroup("1"))
+                .thenThrow(new GlpiUnreachableException("Connection refused", null));
+
+        TeamCatalogResponse catalogo = service(
+                Map.of("NicoSuar", new TeamProperties.DeclaredException(
+                        "Nicolas Alejandro Suarez Florez", 1071, null)),
+                Map.of("NicoSuar", true)).catalog();
+
+        assertThat(catalogo.glpi().available()).isFalse();
+        assertThat(catalogo.glpi().detail()).isEqualTo("Connection refused");
+        // El equipo operativo no depende de que GLPI responda: es una decision escrita, no una lectura.
+        assertThat(operativosDe(catalogo)).containsExactly("NicoSuar");
+        // Y la marca no se declara sobrante por el hecho de que GLPI no respondiera.
+        assertThat(catalogo.unusedOperational()).isEmpty();
+    }
+
+    private static List<String> operativosDe(TeamCatalogResponse catalogo) {
+        return catalogo.people().stream()
+                .filter(TeamCatalogResponse.Person::operational)
+                .map(TeamCatalogResponse.Person::developerId)
+                .toList();
+    }
+
     private TeamCatalogService service(Map<String, TeamProperties.DeclaredException> excepciones) {
+        return service(excepciones, Map.of());
+    }
+
+    private TeamCatalogService service(
+            Map<String, TeamProperties.DeclaredException> excepciones,
+            Map<String, Boolean> operativos) {
+
         return new TeamCatalogService(
                 glpi,
-                new TeamProperties(1, "Desarrollo N2", excepciones),
+                new TeamProperties(1, "Desarrollo N2", excepciones, operativos),
                 Clock.fixed(SELLO, ZoneOffset.UTC));
     }
 

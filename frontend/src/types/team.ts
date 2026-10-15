@@ -26,6 +26,16 @@ export interface TeamPerson {
   /** Si su cuenta está vigente. */
   active: boolean
   sourceType: TeamPersonSource
+  /**
+   * Si forma parte del equipo operativo: con quien se trabaja a diario.
+   *
+   * **No es una segunda lista de personas.** GLPI sigue enumerando a todo el mundo y esta respuesta los
+   * publica a todos; lo que cambia es a quien enseña por defecto la vista del equipo. La pertenencia la
+   * decide la configuración local —`team.operational` en el backend—, y por eso una persona nueva en el
+   * grupo llega aquí con `false`: entra al padrón el día que GLPI la publique, y al equipo operativo el
+   * día que alguien la declare.
+   */
+  operational: boolean
 }
 
 /**
@@ -65,4 +75,13 @@ export interface TeamCatalogResponse {
    * la lee y no entiende para qué está.
    */
   unusedExceptions: string[]
+  /**
+   * Marcas de equipo operativo que no corresponden a ninguna persona del padrón.
+   *
+   * Existe por el mismo motivo que la lista de arriba, y aquí es además la única defensa contra una
+   * errata: la pertenencia se escribe a mano en la configuración, y un login mal escrito no saca a nadie
+   * de la vista por defecto —la persona marcada no está en el padrón y la que se quería marcar sigue
+   * fuera—. Sin publicarlas, ese error no haría nada y no avisaría.
+   */
+  unusedOperational: string[]
 }

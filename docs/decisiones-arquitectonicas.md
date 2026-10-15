@@ -4646,3 +4646,498 @@ Más dos que el brief no pedía y el contrato sí: `unaExcepcionRetiradaEntraMar
 **Y la regla que lo hace verificable: una excepción nunca puede quitar a nadie.** No es una convención ni una recomendación escrita en un comentario: `DeclaredException` no tiene un campo que exprese «quitar», y la fusión comprueba que el login no venga ya de GLPI **antes** de aplicar nada. La única dirección posible es añadir.
 
 **El criterio de aceptación del brief se cumple entero**: el grupo de Desarrollo N2 sigue siendo la fuente principal (1), se pueden añadir excepciones explícitas (2), ninguna persona vigente desaparece por un error de GLPI (3), `/recursos` representa el equipo real y no la parte con plan (4), las excepciones son visibles en la propia fila y auditables en el historial del archivo (5), y las **347 pruebas del backend y las 128 del frontend pasan** (6).
+
+# Fase 31 — La columna de tickets cuenta carga, no histórico
+
+## Qué se hizo, en una frase
+
+La Fase 29 puso una columna **Tickets** en `/recursos` y la Fase 30 la dejó donde estaba. El brief que abre esta fase la señala con un caso concreto: **Jose Alejandro Diaz Urrego aparece con 1266 tickets** mientras buena parte del equipo aparece con «Sin dato». Medido contra la instancia real, sus 1266 eran **los 1266 cerrados**, y su carga operativa era cero. Esta fase añade **una pregunta al puerto** —`activeTicketsOf`, «los tickets que siguen siendo carga»— y hace que la pantalla de declaración use esa en lugar de la que usa el plan. **No se tocó `PlanningEngine`, ni los desplazamientos, ni las renegociaciones, ni una regla del plan; y no se tocó la tabla, ni el hook, ni el contador del frontend**: lo que cambió es lo que el backend le pide a GLPI.
+
+## El análisis obligatorio: de dónde sale la columna de tickets
+
+El brief pedía documentar cuatro cosas antes de escribir una línea. Las cuatro, con lo que había y con lo que se midió.
+
+**1. De dónde sale el número, extremo a extremo.** La columna no consulta GLPI: lee `items.length` de la respuesta de `GET /api/planning-metadata/declarations/{developerId}`, y esa respuesta la arma `PlanningDeclarationService.declarationsFor`. El camino entero, en cuatro saltos: el adaptador pide `/search/Ticket` filtrando por técnico; `GlpiPlanningRequestFactory` clasifica cada ticket; el servicio hace una fila por ticket; `lib/team.ts` cuenta las filas. **El número es el número de tickets que GLPI devolvió**, y ahí estaba el defecto: en ninguno de los cuatro saltos se preguntaba por el estado.
+
+**2. Qué consulta se hacía a GLPI.** Exactamente esta, y su falta de estado es lo que hay que leer:
+
+```
+GET /search/Ticket?range=0-999
+    &criteria[0][field]=5&criteria[0][searchtype]=equals&criteria[0][value]=296
+    &forcedisplay[0..9]=1,2,3,10,11,12,14,15,18,45
+```
+
+Un solo criterio —el técnico— más la lista de campos a proyectar. `forcedisplay` no es un adorno: sin ella GLPI responde 500 cuando hay criterios, y sin ningún criterio devuelve la instancia entera en silencio (decisión 159).
+
+**3. Cómo se identifica al desarrollador.** Por el **número de usuario de GLPI**, y solo por él. Lo que se teclee —login o número— se resuelve antes con `findUser`, que devuelve un `GlpiUser` con su `id`, y la búsqueda usa ese `id`. La distinción no es cosmética: `field=5` con `equals jdoe` **no falla** —GLPI castea el valor a cero y devuelve los tickets del usuario cero, que no son de nadie—, así que el adaptador rechaza los identificadores no numéricos con una lista vacía y un aviso en lugar de preguntar (decisión 159).
+
+**4. Por qué aparecía 1266.** Porque los tenía, todos, y todos cerrados. La sonda de solo lectura contra la instancia, replicando el criterio tal como lo arma el código:
+
+| Consulta | Tickets |
+|---|---|
+| `field=5 equals 296` — el criterio del código, sin tocar | **1266** |
+| estado 1 Nuevo | 0 |
+| estado 2 Asignado | 0 |
+| estado 3 Planificado | 0 |
+| estado 4 Pendiente | 0 |
+| estado 5 Solucionado | 0 |
+| estado 6 Cerrado | **1266** |
+| los cuatro estados activos juntos | **0** |
+| sin criterios — la instancia entera (control) | 68273 |
+| técnico inexistente, `999999` (control) | 0 |
+
+**Los dos controles descartan las dos hipótesis con las que llegó el reporte.** No era un **recuento global**: la instancia tiene 68273 tickets y un técnico que no existe devuelve 0, así que el criterio del técnico sí se aplicaba —el número era suyo, no de todos—. Y no era una **mezcla de estados**: era lo contrario, un único estado, justo el que no cuenta. La causa exacta cabe en una frase: **la búsqueda no filtraba por estado, así que «cuántos tickets tiene» significaba «cuántos ha tenido nunca»**.
+
+**Y los «Sin dato» que también venían en el reporte no son el mismo defecto.** `Resources.tsx` pide declaraciones solo para quien tiene plan vigente, así que quien no lo tiene no tiene respuesta, y sin respuesta la celda dice «Sin dato». Eso es deliberado y está escrito en las limitaciones de la Fase 30: **nulo no es cero**, y una consulta que sí responde cero dice «Sin tickets». Comprobado extremo a extremo: con la respuesta en la mano, `items.length` vale 0 y la celda deja de decir «Sin dato». No se cambió nada de eso porque no había nada roto, y confundir las dos cosas habría llevado a «arreglar» en la tabla un problema que estaba en la consulta.
+
+## Las decisiones
+
+### 169. La columna de tickets cuenta carga, no histórico
+
+**La columna publicaba el historico entero de una persona, y el riesgo 109 lo decía desde la Fase 23 sin que nadie lo mirara.** La lectura de declaraciones pedía los tickets asignados y devolvía una fila por ticket, sin filtrar por estado, así que «cuántos tickets tiene» significaba, en la práctica, «cuántos ha tenido nunca». La medición contra la instancia real puso la cifra: el técnico `296` —Jose Alejandro Diaz Urrego, login `JoseDiaz`— acumulaba **1266 tickets y los 1266 estaban cerrados**. Su carga operativa era cero, y la pantalla decía 1266.
+
+**Lo medido, antes de tocar nada.** Sonda de solo lectura contra el API real, replicando el criterio que construye el adaptador:
+
+| Consulta | Tickets |
+|---|---|
+| `field=5 equals 296` — el criterio tal como lo arma el código | **1266** |
+| estado 1 Nuevo / 2 Asignado / 3 Planificado / 4 Pendiente | 0 / 0 / 0 / 0 |
+| estado 5 Resuelto | 0 |
+| estado 6 Cerrado | **1266** |
+| los cuatro estados activos juntos | **0** |
+| sin criterios — la instancia entera (control) | 68273 |
+| técnico inexistente, `999999` (control) | 0 |
+
+Los dos controles descartan las dos hipótesis con las que se reportó el defecto. **No era un recuento global**: la instancia tiene 68273 tickets y un técnico que no existe devuelve 0, así que el criterio del técnico sí se aplicaba. **Y no era una mezcla de estados**: era lo contrario, un único estado, justo el que no cuenta.
+
+#### 169.1 El corte son los estados 5 y 6, y se pide en positivo
+
+**Qué cuenta y qué no, según el contrato que ya existía.** No es un criterio nuevo: `GlpiContract.REST_V1` traduce los códigos de GLPI a los dos enums del dominio, y los dos últimos caen en el mismo sitio por los dos lados.
+
+| Código GLPI | Incidencia | Petición | Cuenta |
+|---|---|---|---|
+| 1 Nuevo | `ABIERTO` | `PLANIFICADO` | **Sí** |
+| 2 Asignado | `EN_ATENCION` | `EN_EJECUCION` | **Sí** |
+| 3 Planificado | `EN_ATENCION` | `EN_EJECUCION` | **Sí** |
+| 4 Pendiente | `EN_ATENCION` | `EN_EJECUCION` | **Sí** |
+| 5 Solucionado | `RESUELTO` | `FINALIZADO` | **No** |
+| 6 Cerrado | `RESUELTO` | `FINALIZADO` | **No** |
+
+El **3** se queda dentro aunque su nombre suene a terminado: planificado es trabajo acordado y todavía no ejecutado, y el dominio lo mapea a `EN_ATENCION` / `EN_EJECUCION`, no a un estado final. El **5** y el **6** son, en el dominio, el mismo estado: «dejó de competir por la jornada», que es literalmente lo que dice `Incident.consumesCapacity()` y `Requirement.isPlannable()` desde antes de esta fase. La regla no se inventa aquí: se lee del contrato.
+
+**En positivo, porque la negación miente en esta instancia.** La primera codificación probada fue la que se enuncia en castellano —«ni 5 ni 6»— y contra la instancia real devolvió **0 tickets activos para un técnico que tenía 16**: `notequals 5` devolvía 237, que es exactamente el recuento de `equals 5`, y `lessthan 5` devolvía lo mismo. Los dos operadores negativos se comportan como una igualdad, **sin fallar**, que es lo grave. Los cuatro códigos en positivo dan el número exacto, comprobado estado a estado en cuatro técnicos y sobre la instancia entera —504 activos de 68273—.
+
+**Los criterios van agrupados, no sueltos.** Cuatro criterios de estado al mismo nivel se leen como `tecnico AND estado1 OR estado2 OR ...`, y del segundo estado en adelante entrarían los tickets activos de cualquier otro técnico. El grupo anidado —la forma que GLPI documenta para agrupar— los deja en una sola condición.
+
+**Va en la búsqueda, y no en una pasada que traiga todo para tirarlo.** Traerse los 1266 para descartarlos aquí serían dos páginas de unos 160 KB en cada apertura de la pantalla y, peor, sin red: la paginación denuncia una lectura **corta**, no un exceso, así que traer de más no se nota hasta que el volumen revienta la lectura. Pidiéndolo al servidor, lo que llega es lo que se quiere.
+
+#### 169.2 Es una pregunta nueva del puerto, no un cambio en la que había
+
+**`ticketsOf` no se toca.** La misma operación alimenta el plan (`POST /api/planning/from-glpi`), y el brief prohíbe modificar las reglas del plan. El motor ya ignora lo cerrado por su cuenta —`PlanningEngine` filtra por `Incident::consumesCapacity()` y por `Requirement::isPlannable()`—, así que el **plan calculado** no cambiaría; lo que cambiaría es su **entrada**, la lista de descartes que publica y la instantánea que guarda. Nada de eso está en el alcance de este arreglo, y todo eso es plan.
+
+Así que el puerto gana **una pregunta más** —`activeTicketsOf`, «los que siguen siendo carga»— y cada lectura contesta la suya: el plan pregunta por el histórico, porque necesita poder decir por qué descarta lo que descarta; la pantalla pregunta por la carga, porque es lo que mide. Es el mismo movimiento que la Fase 30 hizo con `membersOfGroup`: una operación nueva en el puerto porque una pantalla necesitaba una pregunta que no existía.
+
+**La divergencia es deliberada, y se dice.** Desde esta fase, la pantalla de declaración y la de planificación **no ven lo mismo**: una lista lo que hay que declarar hoy, la otra lo que el motor hizo con todo lo que GLPI tiene. El nombre del método lo declara en el puerto, y las dos pruebas de endpoint lo fijan —`verify(activeTicketsOf)` y `never().ticketsOf(...)`— para que nadie las vuelva a juntar sin darse cuenta.
+
+**No se arregló en la tabla.** No se tocó `TeamTable.tsx` ni `lib/team.ts`, y no se ocultó ninguna fila: la columna sigue contando `items.length` y sigue diciendo «Sin tickets» cuando son cero. Lo que cambió es lo que el backend devuelve, que es donde estaba el defecto.
+
+#### 169.3 Se pide al servidor y se comprueba al volver
+
+**Una búsqueda que filtra mal no falla: contesta otra cosa.** Esta instancia lo demostró con los operadores de negación —`notequals 5` devolvía el recuento de `equals 5`— y ese es el fallo que hay que temer aquí, porque es indistinguible de un resultado correcto para quien solo mira el número. Así que la garantía son dos capas y ninguna es decorativa: el criterio de estado hace que lo cerrado **no viaje**, y al volver se comprueba que cada ticket que llegó esté entre los cuatro estados activos. Si alguno no lo está, se descarta y **se dice en el registro** —«GLPI devolvió N tickets que no están activos entre los M de la búsqueda»—, que es la única forma de que una deriva de la instancia se note en lugar de contarse.
+
+**El reparto de responsabilidades es deliberado.** La búsqueda es lo que hace que la lectura sea barata —los 1266 del 296 no salen de GLPI— y la comprobación es lo que hace que el método cumpla lo que promete. Quitar la primera serían dos páginas de unos 160 KB por apertura de pantalla; quitar la segunda dejaría el nombre del método dependiendo de la buena conducta del servidor. Y no hay contradicción con lo dicho arriba: el corte sigue estando en la consulta, y lo que se mira al volver es la lista que la consulta ya acotó, no el histórico entero.
+
+## Las pruebas
+
+**10 pruebas nuevas, y ninguna existente se tocó.** Ocho en el adaptador (`GlpiRestPlanningSourceTest`, que pasa de 15 a 23) y dos en el endpoint (`PlanningDeclarationEndpointsTest`, de 11 a 13).
+
+En el adaptador, lo que se prueba es **la ruta que se le pide a GLPI**, no solo lo que vuelve, porque ahí está la decisión: a un criterio mal formado el servidor no le contesta con un error, le contesta otra cosa. `losActivosSePidenPorEstado` fija la forma entera —los cuatro estados dentro del grupo, el `OR` entre ellos, el `AND` con el técnico en el segundo criterio—; `elFiltroDeActivosNoPideLoResueltoNiLoCerrado` fija lo que **no** puede aparecer, incluidos los dos operadores que mienten en esta instancia; `unTecnicoConTodoCerradoNoTieneActivos` es el caso medido —el 296 con sus 1266 cerrados— y comprueba las dos mitades, que la búsqueda no los pide y que el resultado es vacío; `losActivosTambienSeRecorrenPorPaginas` comprueba que el corte no rompió la paginación; `sinActivosEsUnaListaVacia` y `unIdentificadorNoNumericoNoBuscaActivos` fijan los dos bordes.
+
+Y dos para la comprobación al volver: `losQueNoEstanActivosNoCuentanAunqueVengan` —una lista mixta, un activo y dos que no lo son, devuelve uno— y `unTecnicoConSoloResueltosNoTieneActivos`, que separa el 5 del 6 en lugar de dar por hecho que se comportan igual.
+
+En el endpoint, `losTicketsSePidenActivos` es la prueba que impide que las dos lecturas se vuelvan a juntar: comprueba que la declaración llama a `activeTicketsOf` y que **nunca** llama a `ticketsOf`, que es la del plan. `elTecnicoSePuedePedirPorSuNumero` comprueba que la ruta admite el número de GLPI y no solo el login, que es el caso en que una implementación descuidada habría resuelto mal el identificador.
+
+**Los nueve casos límite del brief, cada uno con su prueba.** Ocho ya existían o son de capas que esta fase no toca; se dice cuál es cuál para que nadie los dé por cubiertos sin mirar:
+
+| Caso | Prueba | ¿Nueva? |
+|---|---|---|
+| Desarrollador sin tickets | `sinActivosEsUnaListaVacia` (adaptador) y `tecnicoSinTickets` (endpoint, 200 con lista vacía) | Una y una |
+| Solo cerrados | `unTecnicoConTodoCerradoNoTieneActivos` | Nueva |
+| Solo resueltos | `unTecnicoConSoloResueltosNoTieneActivos` | Nueva |
+| Activos y cerrados a la vez | `losQueNoEstanActivosNoCuentanAunqueVengan` | Nueva |
+| Identificado por login | `unIdentificadorNoNumericoNoBuscaActivos`: con un login **no se pregunta**, porque la búsqueda lo castearía a cero y devolvería los tickets de nadie | Nueva |
+| Identificado por número de GLPI | `elTecnicoSePuedePedirPorSuNumero` | Nueva |
+| Desde una excepción del catálogo | `tecnicoInexistente`: la persona declarada a mano cuyo login GLPI no publica responde 404 y la celda dice «Sin dato» | Previa |
+| Plan guardado por número | La declaración se pide por `developerId` y el número se resuelve con `findUser`; el plan no cambia | Previa |
+| Plan guardado por login | Igual: el login se resuelve antes de buscar, y esta fase no toca esa resolución | Previa |
+
+**Lo que las pruebas no pueden cubrir, y se dice.** El 1266 no lo produce ninguna prueba: lo produjo la instancia real. Lo que queda fijado es **la petición** que lo evita y el vacío cuando GLPI no devuelve nada; que la instancia conteste lo que se le pide es la parte que se verificó a mano, con la sonda, y cuyos números están en la tabla del análisis.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 131 | **La forma del criterio solo se ha medido en esta instancia** — el grupo anidado con `OR` por dentro funciona contra el GLPI de Coltefinanciera y está verificado técnico a técnico; otra instancia podría no aceptarlo | **Bajo**: se detecta al primer uso, y el fallo es visible —cero activos para todo el mundo— | Es la forma que GLPI documenta para agrupar, y la alternativa —cuatro criterios sueltos— se descartó porque el `OR` se leería contra el técnico. Si alguna vez falla, `losActivosSePidenPorEstado` dice exactamente qué forma se está pidiendo y contra qué se compara |
+| 132 | **La pantalla de declaración y la de planificación ya no ven lo mismo** — una enseña la carga y la otra el histórico entero | **Bajo, y deliberado**: las dos respuestas son correctas para su pregunta, pero quien las compare verá números distintos | Es la decisión 169.2, está escrita, y las dos pruebas de endpoint la fijan (`verify(activeTicketsOf)` y `never().ticketsOf(...)`). El nombre del método en el puerto declara la diferencia |
+| 133 | **Una deriva de GLPI se corrige sola pero se ve poco** — si la búsqueda dejara de excluir lo cerrado, el número seguiría siendo correcto y el único rastro sería una línea de `WARN` que nadie lee | **Bajo**: el dato que ve el líder es correcto en cualquier caso | El aviso nombra los dos números —cuántos llegaron y cuántos se descartaron—, así que dice el tamaño de la deriva, no solo que la hubo. Que la columna esté bien pase lo que pase es justamente lo que la comprobación compra |
+
+**Y un riesgo que esta fase cierra.** El **109** —«los tickets cerrados aparecen»— queda cerrado, y no por dejar de pintarlos: la lista que los traía dejó de pedirlos. Su texto se conserva porque describe el estado de la Fase 23, y su mitigación escrita —«filtrar por estado sigue siendo una decisión de negocio, y la pantalla no la toma a medias»— es exactamente la que se tomó: la decisión se tomó, y se tomó en el backend, con el contrato delante y no con la tabla delante.
+
+## Limitaciones
+
+**Sigue habiendo una lectura por persona.** El corte por estado no cambia el número de peticiones: sigue habiendo una por técnico en la declaración, y sigue habiendo una por técnico en el padrón. Lo que cambia es **cuánto viaja en cada una**: los 1266 cerrados del 296 ya no salen de GLPI. El coste por persona baja; el número de llamadas no.
+
+**Lo resuelto y lo cerrado siguen visibles donde importan.** Esta fase no borra el histórico: `ticketsOf` lo sigue devolviendo entero, el plan lo sigue leyendo, y la pantalla de planificación sigue enseñando por qué descarta lo que descarta. Lo único que dejó de contar es la columna que mide carga.
+
+**El umbral no es configurable.** Que la carga sean los estados 1 a 4 no se puede cambiar desde la configuración: es un mapeo del contrato, no un parámetro. El día que haya que declarar un quinto estado como carga, es un cambio de código y una decisión —que es lo que corresponde a una regla de negocio—.
+
+## La verificación explícita: «¿la columna de tickets mide la carga real?»
+
+**Sí, y eran tres preguntas distintas las que había que contestar.**
+
+| Pregunta | Respuesta | Cómo se comprueba |
+|---|---|---|
+| **¿Cuenta solo lo activo?** | Sí: los estados 1 a 4, pedidos a GLPI como criterio y comprobados al volver | Prueba del adaptador sobre la ruta y sobre una lista mixta, más la tabla medida contra la instancia |
+| **¿Cuenta solo lo del desarrollador?** | Sí: el criterio del técnico sigue ahí, en `AND` con el de estado, y nunca dejó de aplicarse | El control del técnico inexistente: 0 de 68273 |
+| **¿Queda algo del 1266?** | No: Jose Alejandro Diaz Urrego —login `JoseDiaz`, usuario **296**— pasa de **1266** a **0**, porque sus 1266 estaban cerrados | Sonda contra la instancia, antes y después; y la prueba del caso medido |
+
+**El caso obligatorio, con nombres y números.** **Jose Alejandro Diaz Urrego, usuario 296 de GLPI: antes 1266, después 0.** No bajó «un poco» ni se le restaron los cerrados de una lista: la búsqueda que produce su número **ya no pide lo cerrado**, y lo que le queda es lo que tiene abierto, que hoy es nada. Si mañana le asignan un ticket, aparecerá; y si tiene dieciséis activos entre mil doscientos cincuenta cerrados, dirá dieciséis —que es lo que la sonda midió en otros técnicos de la misma instancia: 6, 4 y 16 activos—.
+
+**Y la columna no se tocó.** La comprobación es el diff: `TeamTable.tsx`, `lib/team.ts`, `useDeclarations.ts` y `Resources.tsx` están **sin cambios**. El 1266 salía del backend y se corrigió en el backend; la tabla sigue contando `items.length` y sigue diciendo «Sin tickets» cuando son cero.
+
+**El criterio de aceptación del brief se cumple entero**: la columna representa los tickets activos (1), no hay recuento global (2), lo resuelto y lo cerrado quedan fuera (3), Jose Alejandro deja de mostrar 1266 (4), quien no tiene tickets muestra 0 y no «Sin dato» cuando la consulta respondió bien (5), y **las 357 pruebas del backend y las 128 del frontend pasan** (6).
+
+# Fase 32 — El catálogo encuentra a la persona, y el login la resuelve
+
+## Qué se hizo, en una frase
+
+La Fase 30 puso a todo el equipo en la tabla y la Fase 31 corrigió **qué** contaba la columna **Tickets**. El brief que abre esta fase llega con una captura: personas visibles, con su nombre y con «Sin dato» en esa columna, y la pregunta de por qué el catálogo sí encuentra a la persona y no consigue obtener sus tickets. **Eran dos defectos independientes y ninguno estaba en GLPI.** La pantalla pedía la declaración solo por quien tenía plan vigente —treinta y nueve de cuarenta y una personas no se preguntaban nunca—, y el adaptador resolvía todo identificador con `GET /User/{id}`, que con un login no devuelve una ficha sino la colección entera de usuarios. Esta fase arregla los dos donde están —`Resources.tsx` y `GlpiRestPlanningSource`— y deja la tabla, el contador y el hook **sin tocar**: la tabla sigue diciendo «Sin dato» cuando no hay dato, y ahora lo dice solo cuando de verdad no lo hay.
+
+## El análisis obligatorio: por qué el catálogo sí encuentra a la persona
+
+El brief pedía documentar cuatro cosas antes de escribir una línea. Las cuatro, con lo que había y con lo que se midió.
+
+### 1. Cómo se obtiene hoy la columna Tickets
+
+La columna no consulta GLPI. Lee `items.length` de `GET /api/planning-metadata/declarations/{developerId}`, y el camino entero tiene cinco saltos: `Resources.tsx` reúne los identificadores por los que preguntar, `useTeamDeclarations` dispara una consulta por cada uno, `PlanningDeclarationService.declarationsFor` resuelve al técnico con `findUser`, el adaptador pide `/search/Ticket` filtrando por técnico y por estado activo (Fase 31), y `lib/team.ts` cuenta las filas que volvieron. **El número es el número de tickets activos que GLPI devolvió para ese técnico**, y los dos sitios donde la cadena se podía cortar eran el primero y el cuarto.
+
+### 2. Cómo se resuelve el desarrollador
+
+Por lo que se teclee, y esa era la promesa del puerto. `findUser` dice «por su identificador», y a partir de ahí el adaptador hacía **una sola cosa con él**: concatenarlo a `/User/` y pedirlo. Medido contra la instancia real, con los cuatro logins del brief:
+
+```
+GET /User/AbraAran  -> HTTP 206  [{"id":2,"name":"Admin",...}, ...]
+GET /User/AlejPine  -> HTTP 206  [{"id":2,"name":"Admin",...}, ...]
+GET /User/AnalRuiz  -> HTTP 206  [{"id":2,"name":"Admin",...}, ...]
+GET /User/JoseDiaz  -> HTTP 206  [{"id":2,"name":"Admin",...}, ...]
+```
+
+**Un login no da un 404: da `206 Partial Content` con la colección de usuarios entera, empezando por el id 2.** El adaptador intenta leer eso como un `GlpiUser`, no puede, y lo convierte en `GlpiInvalidDataException` — un **502** en la ruta, no un 404. Así que la cadena `persona → login → glpiId → tickets` no se rompía al final: se rompía en el segundo paso, siempre, para todo el que llegara por el login. Los cuatro números, en cambio, contestan 200.
+
+**Y por qué el defecto no se había visto.** Los planes guardados hoy están pedidos por número —`13`, `296`—, así que la resolución del plan nunca pasó por el camino roto. El catálogo, en cambio, nombra a las personas por su login, que es justo lo que no funcionaba. El defecto solo podía aparecer en la pantalla que cruza las dos cosas, que es la que llegó en la captura.
+
+### 3. Cuándo la UI muestra 0, «Sin tickets» y «Sin dato»
+
+Los tres desenlaces están en `TeamTable.tsx`, y la distinción es deliberada desde la Fase 30:
+
+| Lo que se ve | Cuándo | Qué significa |
+|---|---|---|
+| **una cifra** | La declaración respondió y trae tickets activos | Ese es su número |
+| **Sin tickets** | La declaración respondió y no trae ninguno | **Cero es un hecho**: se preguntó y la respuesta fue que no tiene |
+| **Sin dato** | La declaración no respondió, o no se pidió | **No se sabe**, y decirlo es más honesto que afirmar un cero |
+
+`lib/team.ts` materializa la tercera con `tickets: null`, y el `null` viaja tal cual hasta la celda. **Ninguna de las tres es un valor por defecto de la tabla**: la tabla pinta lo que le llega, y quién decide qué llega es el cruce.
+
+### 4. La causa exacta, en dos mitades
+
+**La primera mitad: la pantalla no preguntaba.** `Resources.tsx` construía la lista de identificadores desde `current.byDeveloper` —los planes vigentes, no el padrón—, con un comentario que lo razonaba por coste: «con cuarenta personas en el equipo, pedir la declaración de todas serían cuarenta lecturas a GLPI en cada carga». Medido contra la instancia, `/api/planning/metrics` tiene **dos** planes y el grupo del equipo tiene **cuarenta y una** personas. Es decir: treinta y nueve filas visibles con `tickets: null` y «Sin dato» en una lectura que **nunca se intentó**. No era un fallo de lectura: era una lectura que no existía.
+
+**La segunda mitad: el adaptador no sabía traducir.** Aun preguntando por todos, el login no resuelve: los 502 de arriba. Es la mitad que el brief intuía al preguntar por el `glpiId`.
+
+**Las dos se refuerzan, y por eso la captura se veía así.** La primera explica por qué aparecen tantas filas sin dato; la segunda, por qué las pocas que sí se preguntaban tampoco habrían respondido si se hubieran preguntado por login. Arreglar solo una habría movido el problema: sin la primera, se pregunta por dos; sin la segunda, se pregunta por todas y fallan todas.
+
+### 5. La respuesta a la pregunta clave
+
+El brief pedía elegir entre cuatro opciones. **La respuesta es C: ambas, y esa es exactamente la causa.** El sistema nombra a las personas por su **login** —es el `developerId` que publica `/api/team` y con el que se las pide en todas las rutas— y GLPI solo sabe buscar un técnico por su **número**. La consulta de tickets se hace por número porque no hay otra forma, y el número solo se puede obtener resolviendo el login primero. Ese paso intermedio es el que faltaba.
+
+Lo que **no** era: no era A —preguntar por login directamente—, porque `field=5` con un login no falla, castea a cero y devuelve los tickets del usuario cero, que son de nadie (Fase 31, decisión 159). Y no era B —preguntar por `glpiId`—, porque el `glpiId` de una persona del catálogo está en la respuesta del padrón pero **no es lo que se teclea ni lo que viaja en las rutas**: quien pide la pantalla de declaración teclea un login, y para una excepción declarada no hay número que usar.
+
+## Las decisiones
+
+### 170. El identificador de una persona puede ser su login o su número, y traducirlo es responsabilidad del puerto
+
+**El puerto prometía «por su identificador» y el adaptador solo cumplía la mitad.** `findUser` resolvía números; para un login, el adaptador pedía la ruta del elemento, GLPI contestaba con la colección entera y la lectura moría en un 502. La decisión es que **la traducción es de quien implementa el puerto, no de quien llama**: el catálogo publica logins, los planes guardados que hay hoy usan números, y las dos formas llegan por el mismo método. Quien pregunta no tiene por qué saber cuál tiene entre manos.
+
+**Discriminar por la forma del identificador y no por el sitio desde donde se pide.** Un `numericId` decide: si es un número, la ruta del elemento; si no, la búsqueda. La alternativa —que cada ruta traduzca antes de llamar— reparte la misma regla por todos los llamantes y deja el puerto mintiendo: seguiría diciendo que acepta un identificador cuando en realidad acepta uno de los dos. Es también lo que hace que el arreglo sirva **para todas las rutas a la vez**: la pantalla de declaración, la de planificación y el plan comparten esta resolución, y ninguna tuvo que cambiar.
+
+#### 170.1 El login se resuelve por la búsqueda de usuarios, y no por la ruta del elemento
+
+La ruta del elemento no admite un login y **no lo dice**: contesta `206` con la colección entera. La única operación que sabe traducir un login a un número es la búsqueda de usuarios, sobre la opción 1 —«Login», que GLPI publica sobre `glpi_users.name`—, que es el mismo mecanismo con el que el catálogo ya enumera el grupo. Se reutiliza la paginación que ya existía y se comprueba al volver, igual que en las demás lecturas: la búsqueda acota, y la decisión se toma con las filas delante.
+
+**Un login que no existe sigue siendo `Optional.empty`**, que es el contrato del puerto, y sigue sin ser un fallo: la diferencia entre «no está» y «no se pudo leer» la decide quien llama, y la decide igual que antes.
+
+#### 170.2 La igualdad del login se comprueba en el código, porque `equals` miente en esta instancia
+
+**Medido: `criteria[field=1][searchtype=equals]` sobre un login que existe devuelve cero filas.** No un error: cero filas, que es la respuesta de «no hay nadie con ese login». Es el tercer operador de búsqueda de esta instancia que no hace lo que su nombre dice —los otros dos, `notequals` y `lessthan`, están documentados en la Fase 31—, así que la búsqueda se usa como un **filtro ancho** con `contains` y la igualdad se comprueba en el código, sobre las filas que llegaron.
+
+Eso deja un caso que antes no existía: `contains` trae de más —«jose» trae a `JoseDiaz` y a `JosePerez`—. La regla es que **solo vale el login exacto**, comparado sin distinguir mayúsculas porque GLPI tampoco las distingue. Una fila que contenga el login pero no sea ese login se descarta, y si no queda ninguna se devuelve vacío con su línea de registro. La alternativa —quedarse con la primera fila— habría dado los tickets de otra persona, que es peor que no dar ninguno.
+
+#### 170.3 La columna de tickets se pregunta por todo el padrón, y no solo por quien tiene plan
+
+**La columna es del equipo, no del plan.** Quien está en la tabla tiene derecho a que se le pregunte, tenga plan o no; atar la lectura a que hubiera plan era lo que dejaba treinta y nueve filas diciendo «Sin dato» sin haberlo intentado. Ahora la lista de identificadores sale del **padrón**, más los planes que el padrón no reclama —alguien a quien solo se conoce por su plan también tiene columna de tickets—, y se deduplica por las claves de cada persona para no pedir dos veces al mismo.
+
+**El coste, dicho en números.** Cuarenta y una lecturas a GLPI la primera vez que se abre la pantalla, y ninguna después: cada declaración se cachea por su identificador. El comentario que se retira razonaba lo contrario y no era falso —cuarenta lecturas son cuarenta lecturas—, pero **cambiaba una columna del equipo por una columna de los planes**, y una columna que miente a treinta y nueve de cuarenta y una personas no es más barata: es más barata de escribir y más cara de creer.
+
+**Y una consecuencia que se acepta a propósito.** La columna de tickets ya no se calla para quien no tiene plan, así que su lectura **no depende de la fotografía operativa**: si `/api/planning/metrics` se cae, la tabla pierde la capacidad y el plan, y sigue teniendo los tickets, porque son dos lecturas distintas de dos endpoints distintos. Antes, caída la fotografía, la columna entera quedaba sin dato.
+
+## Las pruebas
+
+**Siete pruebas nuevas —seis en el adaptador y una en la pantalla— y las existentes siguen pasando.** El backend pasa de 357 a **363** y el frontend de 128 a **129**.
+
+**En el adaptador**, que pasa de 23 a 29 pruebas, lo que se fija es que el login **no** pase por la ruta del elemento: `unLoginSeResuelvePorLaBusqueda` comprueba las dos mitades —que se pide `/search/User` con la opción 1 y `contains`, y que `GlpiUser.class` no se pide nunca—; `soloValeElLoginExacto` reproduce el caso de la contenencia de más, con `JosePerez` y `JoseDiaz` en la misma respuesta, y comprueba que gana el que se pidió y no el que llegó primero; `sinCoincidenciaExactaEsVacio` es el borde contrario; `elLoginSeComparaSinMayusculas` fija la comparación; `unIdentificadorVacioNoBusca` comprueba que un identificador en blanco no llega a abrir sesión; y `elNumeroNoPasaPorLaBusqueda` fija que la traducción va en un solo sentido: un número se resuelve por la ruta del elemento y **nunca** por la búsqueda.
+
+**Cuatro pruebas existentes cambiaron de significado, y se dice cuáles.** `unUsuarioInexistenteDevuelveVacio`, `unUsuarioExistenteSeDevuelve`, `autenticacionFallidaAlLeerDatos` y `unFalloAlCerrarNoInvalidaLaLectura` probaban la ruta del elemento con el login `jdoe`, que ahora significa otra cosa: se reapuntaron a un número para que sigan probando lo que probaban —la clasificación de fallos y el cierre de sesión— y no la resolución del identificador, que es lo que prueban las nuevas. **No se borró ninguna.**
+
+**En la pantalla**, `la captura: el equipo entero sin planes, y cada uno con su cifra de tickets` reproduce el escenario que abrió la fase: un equipo con cero planes vigentes —que es el caso extremo de lo que se veía en la captura—, comprueba que se pregunta por las tres personas, que las tres tienen cifra, y que «Sin dato» aparece **solo** en la que respondió con un 502. Es la prueba que falla si alguien vuelve a atar la columna al plan.
+
+**Y tres pruebas existentes se ampliaron sin cambiar de título ni de intención**: la de quien no tiene plan vigente ahora comprueba que **sí** se le piden sus tickets y que su celda trae su cifra; la del plan pedido por número comprueba que se pide por el login de la persona y que la clave del plan **no** se pide aparte —una lectura por persona, no dos—; y la del plan que el padrón no conoce comprueba que su fila también tiene tickets. Las tres tenían escrito lo contrario porque lo contrario era el comportamiento.
+
+**Los diez casos límite del brief, cada uno con su prueba.**
+
+| Caso | Dónde queda probado |
+|---|---|
+| Login válido y `glpiId` válido | `unLoginSeResuelvePorLaBusqueda` y las tres filas del catálogo en `la captura...` |
+| Login válido y `glpiId` ausente | La prueba de la excepción declarada: `AnaExcepcion` no tiene número, se le pide por su login y su celda dice «Sin tickets» |
+| Persona por excepción | La misma, con su insignia **Excepción** |
+| Persona de grupo | Las tres filas de `teamCatalogFixture`, que salen del padrón |
+| Con tickets activos | Cifra: `5` y `2` en las pruebas de la tabla |
+| Con cero activos | «Sin tickets», que es un hecho y no una falta |
+| Error de GLPI | «Sin dato»: el 502 de `la captura...` y el 404 de la prueba de los tres desenlaces |
+| Usuario ilegible | `sinCoincidenciaExactaEsVacio` en el adaptador; en la pantalla, el 502 |
+| Plan guardado por login | El caso normal: se pide por el `developerId` del padrón |
+| Plan guardado por número | La prueba de Nicolás: el plan por `1071`, los tickets por `NicoSuar` |
+
+**Lo que las pruebas no cubren, y se dice.** Que GLPI conteste con `206` y la colección entera a `/User/{login}` es un comportamiento de la instancia, no del código: la prueba fija que esa ruta **no se pide**, que es lo que el adaptador puede garantizar. La medición de los cuatro nombres está en la tabla del análisis y en la verificación, hecha con sonda de solo lectura contra el API real.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 134 | **Una lectura más por persona** — la columna de tickets se pregunta ahora por el padrón entero: cuarenta y una consultas a GLPI la primera vez que se abre la pantalla, contra las dos de antes | **Medio en la primera carga, bajo después**: cada declaración se cachea por su identificador y no se vuelve a pedir; el coste se paga una vez por sesión | Es la decisión 170.3 y es deliberada: la alternativa era una columna que decía «Sin dato» a treinta y nueve personas. Si el coste llega a molestar, el sitio donde arreglarlo es el backend —una lectura consolidada de conteos—, no la columna |
+| 135 | **La traducción del login depende de un operador que miente** — la igualdad exacta se comprueba en el código porque `equals` devuelve cero filas para un login que existe, y con `contains` la búsqueda trae de más | **Bajo**: lo que traiga de más se descarta comparando el login exacto, y si no coincide ninguno se devuelve vacío en vez de una fila equivocada | Es la decisión 170.2. La prueba `soloValeElLoginExacto` fija el caso con dos logins que se contienen, y el descarte deja una línea de registro con cuántas filas llegaron. Lo que no se puede es confiar en el operador: ya van tres que no hacen lo que dicen |
+| 136 | **El login se compara ignorando mayúsculas, que es una suposición sobre GLPI** — nada impide que la instancia tenga dos cuentas cuyos logins solo difieran en eso | **Bajo**: si existieran, ganaría la primera que devolviera la búsqueda, y las dos serían la misma persona mal dada de alta | GLPI no distingue mayúsculas en el login —es la razón por la que `equals` sobre la opción 1 se comporta como se comporta—, así que la comparación sigue al servidor en vez de contradecirlo. Dos cuentas así serían un problema de la instancia, y se vería en el padrón como dos filas del mismo nombre |
+| 137 | **La columna de tickets ya no depende solo de la fotografía** — al pedirse por el padrón, sobrevive a la caída de `/api/planning/metrics` | **Ninguno: es una mejora, y se anota para que no se lea como una regresión** | Antes, caída la fotografía, la lista de identificadores quedaba vacía y toda la columna decía «Sin dato». Ahora las dos lecturas son independientes y cada una declara su propio fallo. La tabla sigue enseñando las dos cosas a la vez |
+
+**Y un riesgo que esta fase cierra.** El **riesgo 109** ya se cerró en la Fase 31 por el lado del estado —«los tickets cerrados aparecen»—; lo que quedaba abierto era su otro lado, que era **no poder contar a quien no tiene plan**. La Fase 31 lo dejó escrito como comportamiento deliberado —«nulo no es cero»— y lo era; lo que no era deliberado es que se preguntara solo a dos de cuarenta y una personas. **Se cierra aquí, y la distinción de la Fase 31 se mantiene entera**: cero sigue diciendo «Sin tickets» y «Sin dato» sigue siendo solo para lo que no se pudo leer.
+
+## Limitaciones
+
+**Sigue habiendo una lectura por persona, y ahora son más.** La solución correcta sería una lectura consolidada de conteos por técnico, y no se hizo: añade superficie al puerto —un método nuevo, con su criterio y su comprobación— y una segunda forma de contar lo mismo, que es exactamente lo que la Fase 31 se preocupó de no tener. La propuesta que se evaluó y se descartó —una sola búsqueda agrupada proyectando la columna del técnico— funciona, y se descartó por dos motivos medidos: la columna del técnico llega como **lista de texto** cuando un ticket tiene varios (`"['1179', '1398']"`), así que contar sobre ella es contar sobre una columna de presentación; y no resuelve el caso de quien no tiene número, que es una de las excepciones declaradas. El día que cuarenta y una lecturas molesten de verdad, ese es el cambio —una lectura por equipo en el backend—, con su decisión y su medición delante.
+
+**La traducción va en un solo sentido.** Un login se resuelve a un número; un número no se resuelve a un nombre. No hace falta: quien pregunta por un número ya sabe de quién es —se lo dio el padrón—, y quien pregunta por un login recibe el usuario entero. Pero conviene decirlo, porque un `findUser("296")` devuelve un `GlpiUser` cuyo `name` es el login, y eso no es una traducción: es que la ficha del elemento también trae el login.
+
+**La resolución del login se apoya en la opción 1 de la búsqueda de usuarios.** Que la opción 1 sea «Login» sobre `glpi_users.name` está comprobado contra `GET /listSearchOptions/User` de esta instancia, igual que las otras cuatro que el catálogo ya usaba. En otra instancia habría que volver a comprobarlo, y el síntoma de que cambió sería una persona que deja de resolver, con su línea de registro.
+
+## La corrección de dos afirmaciones de la Fase 31
+
+El texto de la Fase 31 se conserva tal como se escribió, porque describe lo que se hizo y lo que se creía entonces. Dos de sus frases **no eran ciertas**, y esta fase las corrige:
+
+- **El punto 3 de su análisis**: «Lo que se teclee —login o número— se resuelve antes con `findUser`». La segunda mitad era falsa: un login no se resolvía, moría en un 502. La frase describía la intención del puerto, no lo que el adaptador hacía, y la medición de esta fase lo demuestra. **La decisión 170 es lo que hace que la frase sea cierta.**
+- **La fila «Plan guardado por login» de su tabla de casos límite**: «Igual: el login se resuelve antes de buscar, y esta fase no toca esa resolución». Ni se resolvía ni esta fase la dejó sin tocar. Es el caso 9 de la tabla de esta fase.
+
+**Y una tercera frase que quedó desactualizada sin ser falsa entonces**: en la decisión 167 se dice que «el puerto `GlpiPlanningSource` tiene exactamente dos métodos —`findUser` y `ticketsOf`—». Era cierto cuando se escribió y dejó de serlo en la Fase 30, que añadió `membersOfGroup`, y en la Fase 31, que añadió `activeTicketsOf`. **Hoy son cuatro**, y se anota aquí porque la restricción que esa frase sostenía —«no hay padrón de personas»— dejó de existir en la Fase 30.
+
+## La verificación explícita: «¿por qué el catálogo sí encuentra a la persona y no consigue obtener sus tickets?»
+
+**Porque eran dos preguntas distintas y solo la primera estaba resuelta.** El catálogo encuentra a la persona porque enumera el grupo con `membersOfGroup`, que desde la Fase 30 es una operación que lista. Los tickets no llegaban por dos motivos que no se parecen: **la pantalla no preguntaba** —solo por los dos planes vigentes de cuarenta y una personas— y **el adaptador no sabía traducir un login**, que es la forma en la que el catálogo nombra a todo el mundo.
+
+**Las cuatro personas del brief, con la cadena entera y medida contra la instancia.** El `login` lo publica el padrón, el `glpiId` sale de resolver ese login por la búsqueda de usuarios, y los tickets son lo que devuelve el criterio de la Fase 31 con ese número:
+
+| Persona | Login publicado | `glpiId` resuelto | Clave de `activeTicketsOf()` | Tickets activos |
+|---|---|---|---|---|
+| **Abraham Arana Aldana** | `AbraAran` | **1179** | `1179` | **10** |
+| **Alejandro Pineda Machado** | `AlejPine` | **583** | `583` | **6** |
+| **Analy Ruiz** | `AnalRuiz` | **36** | `36` | **2** |
+| **Jose Alejandro Diaz Urrego** | `JoseDiaz` | **296** | `296` | **0** |
+
+**Los cuatro logins, resueltos por la búsqueda, devuelven una sola fila y coinciden exactamente**; y los cuatro, por la ruta del elemento, devolvían `206` con la colección entera. Los tres primeros tienen carga y la columna dirá su cifra; el cuarto tiene cero activos —sus 1266 están cerrados, que es lo que la Fase 31 midió— y la columna dirá **«Sin tickets»**, que es un hecho, y no «Sin dato», que sería una falta de información que no existe.
+
+**La confirmación explícita que el brief pedía.** **Cero significa «no tiene tickets activos»**: la lectura se hizo, respondió, y la respuesta fue que no hay ninguno. **«Sin dato» significa únicamente «no se pudo obtener la información»**: la consulta no respondió, o no llegó a hacerse. Las dos frases siguen siendo ciertas después del cambio, y ahora lo son también para las treinta y nueve personas que antes caían en la segunda por no habérseles preguntado.
+
+**Y el arreglo está donde el brief pedía que estuviera.** La lógica no se movió a la tabla ni se parcheó en la celda: `TeamTable.tsx` sigue sin saber de dónde vienen los tickets y sigue distinguiendo nulo de cero. Lo que cambió está en **la capa que obtiene los tickets** —el adaptador, que ahora resuelve el login— y en **la capa que los pide** —la pantalla, que ahora pregunta por todo el equipo—. Ninguna de las dos es una capa de presentación.
+
+**El criterio de aceptación del brief se cumple entero**: una persona con tickets activos muestra su valor correcto (1), una sin tickets activos muestra 0 —«Sin tickets»— (2), «Sin dato» queda para los errores reales de lectura (3), las cuatro personas nombradas están verificadas una a una (4), y **las 363 pruebas del backend y las 129 del frontend pasan** (5).
+
+# Fase 33 — El equipo operativo: visibilidad sin sustituir a GLPI
+
+## Qué se hizo, en una frase
+
+La Fase 30 puso a todo Desarrollo N2 en la tabla y la Fase 32 hizo que la columna de tickets se preguntara por todos; el brief que abre esta fase mira el resultado y dice lo que falta: **la gestión diaria se hace con dieciocho personas y las otras veintitrés ocupan la tabla sin aportar**. Esta fase añade **una marca de pertenencia declarada** —`team.operational[<login>]` en `application.properties`— que no toca el padrón: GLPI sigue enumerando a todo el mundo, `/api/team` sigue publicando a las cuarenta y dos personas, y ninguna fila desaparece. Lo único que cambia es **qué se enseña por defecto**: la pantalla abre con el equipo operativo, dice cuántas personas quedan fuera, y un conmutador enseña el padrón entero y vuelve. **No se tocó `PlanningEngine`, ni una regla de negocio, ni la planificación, ni los desplazamientos, ni las renegociaciones; no se borró ninguna persona, ni se modificó ningún grupo de GLPI, ni se creó una segunda fuente de verdad.**
+
+## El análisis obligatorio: cómo se construye hoy el padrón, y quién aparece
+
+El brief pedía documentar cuatro cosas antes de escribir una línea. Las cuatro, con lo que había y con lo que se midió contra la instancia real.
+
+### 1. Cómo funciona hoy el catálogo híbrido del equipo
+
+Es una fusión de dos fuentes, y la fusión está sesgada a propósito. `TeamCatalogService.catalog()` lee el grupo configurado y **después** le suma las excepciones declaradas a mano. El orden importa y es la mitad del diseño: GLPI enumera primero, así que una excepción nunca puede reemplazar a alguien que GLPI sí entregó. Si el login ya vino del grupo, la excepción **sobra** y se declara en `unusedExceptions` en lugar de aplicarse en silencio. La regla está escrita así porque el sentido contrario —que una lista mantenida a mano mande sobre el sistema de origen— convierte un padrón en el que nadie confía en cuanto los dos discrepan.
+
+Medido contra la instancia, `GET /api/team` publica **cuarenta y dos personas**: **cuarenta y una del grupo** Desarrollo N2 y **una declarada** —Nicolas Alejandro Suarez Florez, `NicoSuar`, cuya cuenta existe y está activa pero tiene el grupo vacío, así que no aparece en ninguna lectura por grupo—. Las dos listas de sobrantes salen vacías, que es la comprobación de que lo escrito está bien escrito.
+
+### 2. De dónde sale el padrón: la lectura del grupo
+
+La fuente principal es `membersOfGroup`, que desde la Fase 30 es una operación que **lista** en vez de preguntar por alguien que ya se conoce. El paso tiene tres piezas y las tres importan para lo que esta fase decidió:
+
+- **La paginación.** No se pide «todos»: se pide por rangos y se comprueba al volver, porque esta instancia devuelve lecturas cortas sin avisar.
+- **La fusion por login.** Los logins se normalizan a minúsculas en un mapa aparte —`glpiLogins`, `TeamCatalogService.java:71`— **solo para saber si una excepción sobra**. El texto que se publica conserva la grafía real, porque ese es el identificador con el que se piden los tickets, las declaraciones y los planes.
+- **La degradación.** Si GLPI no responde, el catálogo contesta `200` con `glpi.available = false`, el motivo, y las excepciones. **No es un fallo silencioso**: el equipo que se ve entonces no es el equipo, y la respuesta lo dice.
+
+Quién es el dueño de las personas queda escrito en el contrato y no en un comentario: `DeclaredException` no tiene ningún campo que exprese «quitar», así que la única dirección posible es añadir o marcar. **GLPI puede añadir gente al padrón sin que la configuración se entere; la configuración no puede sacar a nadie.**
+
+### 3. Cómo se aplican las excepciones
+
+`properties.declaredExceptions()` se recorre después de GLPI y cada login que no venga del grupo entra con `sourceType = EXCEPTION`. Los tres casos que cubre son los tres motivos por los que una excepción existe: GLPI no la tiene en el grupo y debería, GLPI no la puede leer —un usuario sin permiso no aparece ni en el `totalcount`, así que la ausencia es silenciosa—, o no está en GLPI en absoluto. `active: false` retira a alguien sin borrar la fila, que es lo que hace auditable la excepción.
+
+### 4. Cómo se determina quién aparece en `/recursos` — y qué cambió aquí
+
+**Quién aparece lo decidía el padrón entero, sin ninguna noción de subconjunto.** La pantalla cruzaba el catálogo con tres lecturas más —la fotografía operativa, las declaraciones de tickets y las renegociaciones— y pintaba **una fila por persona del padrón**, más una fila al final por cada plan que el padrón no reclamaba. Cuarenta y una, cuarenta y dos con la excepción. **No existía ninguna forma de decir «estas dieciocho son mi equipo» sin romper las dos cosas que ya funcionaban**: que GLPI siga enumerando a todo el mundo y que nadie desaparezca del catálogo.
+
+Lo que esta fase construye es exactamente eso: una **pertenencia declarada** que la pantalla usa como filtro de vista, no como recorte de datos.
+
+## Las decisiones
+
+### 171. El equipo operativo es una marca sobre el padrón, no un catálogo paralelo
+
+**La distinción que decide el diseño entero: una lista de pertenencia no es una lista de personas.** `team.operational[AbraAran]=true` no enumera a nadie —nombra a alguien que GLPI ya enumera—, y esa diferencia es la que permite que la configuración local diga «estas dieciocho» sin ser una segunda fuente de verdad sobre quién existe. Un catálogo paralelo tendría que decir *quién* hay; esto solo dice *quién se enseña*, sobre una lista que no administra.
+
+**El brief dejaba abierto dónde vive la visibilidad y pedía justificarlo.** Se evaluaron las cuatro formas —`application.properties`, la excepción que ya existe, una configuración nueva, una tabla— y **se elige la configuración**, por tres motivos que se pueden comprobar en el repositorio:
+
+1. **Es lo que el brief pide de sí mismo**: «la configuración local únicamente decide quién se muestra». Una tabla de pertenencia con endpoints de escritura sería, literalmente, una segunda fuente de verdad sobre las personas.
+2. **Ya hay precedente, y está argumentado.** La decisión **168** eligió `team.exceptions` en `application.properties` en vez de una tabla, y el motivo medido sigue en pie: el esquema lo gobierna `ddl-auto` y este proyecto no usa Flyway (decisión 66), así que una tabla de configuración se crea sola y deriva sin control.
+3. **Es reversible y auditable.** Cambiar quién está en el equipo queda en el historial de git, que es donde el área ya mira para saber quién decidió qué.
+
+**Y una tercera vía que se descartó por lo que era, no por lo que costaba**: reutilizar `team.exceptions` para expresar la pertenencia. Se descartó porque las excepciones significan «esta persona debe estar en el padrón» y la pertenencia significa «esta persona se enseña por defecto» — son dos hechos independientes, y `NicoSuar` es la prueba: es una excepción **y** es operativo, y hay personas del grupo que son operativas sin ser excepción. Meterlas en el mismo mapa habría obligado a que toda excepción fuera operativa, que es decidir dos cosas con un solo dato.
+
+**Admite `false` aunque no cambie el comportamiento, y es deliberado.** Un `false` y un ausente se comportan igual; el `false` deja escrita una decisión («a esta persona se la sacó del equipo»), igual que `active=false` retira a alguien de las excepciones sin borrar la fila. La prueba del contrato usa precisamente un `false` —`team.operational[NicoSuar]=false`— para fijar que el valor ausente y el falso no son lo mismo de cara a quien lee el fichero.
+
+#### 171.1 La pertenencia se cambia en el fichero, y no hay botón que la guarde
+
+**Los botones por fila `[ Ocultar ]` / `[ Incluir en equipo ]` no se implementaron, y la razón es la misma decisión de arriba, no una falta de tiempo.** Persistir una pertenencia exige una escritura, y una escritura exige una tabla; si la tabla no existe, un botón que aparenta guardar y no guarda es peor que no tenerlo. La consecuencia se asume entera y se documenta en las limitaciones: **cambiar quién es operativo es editar `application.properties` y reiniciar.**
+
+**La UX que sí se implementó son dos modos de vista más una marca en la fila**, que es lo que se puede hacer sin escribir:
+
+- `[ Solo equipo operativo ]` / `[ Mostrar todos ]`, en la cabecera de la tarjeta de Personas, con dos `Button` que ya existen en el repositorio —no hay `Switch`, ni `Tabs`, ni `SegmentedControl`, y no se añade ninguno—.
+- Una insignia **Fuera del equipo operativo** en la fila, que solo aparece en «Mostrar todos». En el modo operativo no se ve nunca porque todas las filas pertenecen, así que no es ruido en el caso normal; y sin esa marca, incluir a alguien exigiría adivinar quién estaba fuera.
+
+#### 171.2 Un login ausente **no** pertenece
+
+**El equipo operativo es una lista de pertenencia, no de exclusión.** Quien entra, entra porque alguien lo escribió; y el que no aparece en el fichero tampoco entra. Se eligió así porque la alternativa —todo el mundo dentro salvo lo que alguien se acuerde de sacar— convierte el equipo operativo en un residuo del directorio: cualquiera que GLPI diera de alta entraría sin que nadie lo hubiera decidido, y el equipo de trabajo dejaría de ser una decisión para ser un accidente.
+
+**El precio se dice con el caso concreto, porque es el riesgo que esta decisión compra:** *una persona nueva en Desarrollo N2 no aparece en la vista por defecto hasta que alguien la declare.* Es exactamente el criterio 5 del brief —«los nuevos miembros siguen siendo visibles mediante *Mostrar todos*»—, y lo que lo hace llevadero es que se **ve** en vez de sufrirse: el contador «N fuera del equipo operativo» está siempre a la vista y «Mostrar todos» está a un clic.
+
+**Un valor sin escribir se descarta.** `team.operational[NicoSuar]=` sin valor es una línea que se puede teclear, y un nulo no es ni un «sí» ni un «no» —elegir por él sería inventarse la respuesta—, así que se comporta como ausente: no pertenece, que es el lado seguro del error. La prueba `unaMarcaSinValorSeDescarta` fija ese borde.
+
+#### 171.3 La marca se busca por el login exacto, y las mayúsculas distinguen
+
+**Es la misma regla que ya siguen las excepciones, y no la que usa la fusión contra GLPI — a propósito.** Contra GLPI, `glpiLogins` compara en minúsculas, porque el servidor no distingue mayúsculas en el login y la comparación sigue al servidor en vez de contradecirlo (riesgo 136). Aquí no: la clave de la configuración **es** el identificador con el que se pide todo lo demás, y ese sí distingue mayúsculas.
+
+Buscar sin distinguirlas toleraría una clave que no es el login de nadie. El día que esa clave hiciera falta para algo más que marcar a alguien, estaría mal y nadie lo habría notado. **La comprobación estricta es segura porque el error se publica**: un login mal escrito no se aplica y **aparece** en `unusedOperational`, junto al resto de marcas sin efecto. Por el mismo motivo, el orden de declaración del mapa se conserva —`LinkedHashMap` y no `Map.copyOf`—: un aviso que cambia de orden entre reinicios se lee como si hubiera cambiado algo.
+
+**El aviso de marcas sin efecto se añadió aunque el brief no lo pedía**, y es la única defensa que existe contra una errata: una marca que no alcanza a nadie no cambia nada visible —la persona sigue fuera y quien la escribió no se entera—. Va hermano de `unusedExceptions`, que existe por el mismo motivo desde la Fase 30.
+
+#### 171.4 Una fila que solo se conoce por su plan siempre entra
+
+**Este es el borde que la regla de arriba habría roto, y se resuelve en la vista.** Una fila `sourceType = PLAN` es alguien a quien el padrón no conoce y que aparece porque tiene un plan guardado. Su `developerId` puede ser el **número** de GLPI con el que se pidió el plan, así que **nunca** podría coincidir con una marca indexada por login: bajo «ausente = fuera», un plan ya guardado desaparecería de la pantalla por un filtro.
+
+**Eso contradiría la razón por la que esa fila existe.** Desde la Fase 29 la regla es que un plan guardado no puede desaparecer de la pantalla, y la fila `PLAN` está precisamente para cumplirla. La pertenencia del padrón decide sobre las personas del padrón, y a esta no la alcanza.
+
+**Se resuelve con un predicado exportado, y no con una condición escrita dos veces.** `inOperationalTeam(member)` vive en `lib/team.ts` y lo usan **los dos** sitios que necesitan saberlo: el filtro y la insignia. Con dos copias, la marca y lo que se enseña podrían discrepar, que es la única forma de que esta pantalla se contradiga a sí misma. La prueba `el filtro no cambia lo que se pregunta: la columna de tickets es del equipo, no de la vista` cubre la mitad del contrato; la fila `PLAN` con `operational: true` y su `inOperationalTeam` cubren la otra.
+
+**Y lo que el filtro no toca, que es lo que impide que esta fase deshaga la Fase 32:** el filtro es **del cliente**. El padrón se sigue leyendo entero, el contrato de `/api/team` no gana parámetros, y las declaraciones de tickets se siguen pidiendo por el padrón completo —decisión 170.3, no enmendada—. Si la columna de tickets siguiera a lo visible, cambiar de modo dispararía veinticuatro lecturas nuevas a GLPI, y la columna dejaría de ser del equipo para ser de la vista.
+
+## Las pruebas
+
+**Siete pruebas nuevas en el backend y ocho en el frontend, y ninguna existente se borró.** El backend pasa de 363 a **370** —tres omitidas, las mismas de siempre— y el frontend de 129 a **137**, con `Resources.test.tsx` en cuarenta.
+
+**En el servicio** —JUnit 5 con Mockito y `Clock.fixed`, sin contexto de Spring; el ayudante que construye `TeamProperties` es el único sitio que lo hace y por eso hereda nada de la configuración de producción— lo que se fija es la tabla de pertenencia entera:
+
+| Prueba | Lo que fija |
+|---|---|
+| `sinMarcasNadieEsOperativo` | Un padrón que la configuración no menciona sale entero y **sin ninguna persona operativa**: el caso extremo de «ausente = fuera» |
+| `laMarcaDecideLaPertenencia` | `true` entra y `false` no, y **los dos siguen en el catálogo** |
+| `unaPersonaNuevaNoEntraSoloAlEquipoOperativo` | El riesgo de la decisión 171.2, escrito como prueba: una persona que GLPI publica y el fichero no menciona aparece, y no es operativa |
+| `unaExcepcionMarcadaPertenece` | La excepción declarada a mano también puede ser operativa — el caso `NicoSuar` |
+| `unaMarcaSinDestinatarioSePublica` | Una marca que no alcanza a nadie sale en `unusedOperational` y **no inventa una fila** |
+| `unaMarcaSinValorSeDescarta` | El borde del valor nulo, con un `LinkedHashMap` explícito porque `Map.of` no admite nulos |
+| `laMarcaSobreviveAGlpiCaido` | Caída la lectura del grupo, las excepciones conservan su pertenencia: la marca **no** depende de GLPI |
+
+**En el contrato HTTP** —`TeamEndpointsTest`, con `@TestPropertySource`— se fijan `$.people[0].operational` y `$.people[1].operational` sobre dos marcas que la propia prueba declara, una `true` y una `false`, más la forma de `$.unusedOperational`.
+
+**Lo que esta prueba no puede afirmar, y por qué se dice.** El perfil de pruebas **complementa** `application.properties` en vez de sustituirlo, así que las dieciocho marcas de producción se cargan también aquí y `unusedOperational` llega no vacío. La prueba no puede afirmar «no hay sobrantes»; lo que sí afirma es que una marca declarada por ella tiene efecto y que el campo existe con la forma correcta. **El caso «ninguna marca alcanza a nadie» se prueba donde de verdad se puede**: en el servicio, que construye su configuración a mano. Está escrito en el javadoc de la clase y no escondido en un comentario.
+
+**En la pantalla**, ocho pruebas bajo `Resources · el equipo operativo`, y las que más importan no son las del filtro:
+
+- La que impide que esta fase deshaga la Fase 32: **el filtro no cambia lo que se pregunta**. Con el modo cambiado, la lista de peticiones a `/api/planning-metadata/declarations/*` es la misma.
+- La que comprueba que **volver no pide nada**: el número de peticiones antes y después de ir a «Mostrar todos» y volver es idéntico.
+- La que fija el **estado vacío**: un padrón con gente y **nadie** operativo no dice «No hay nadie en el equipo» —que sería mentira— sino «Nadie está en el equipo operativo», y el conmutador sigue alcanzable.
+- La del aviso `team-unused-operational`, la de la excepción operativa que sale en el modo por defecto, y las dos que cuentan las filas y las que quedan fuera.
+
+**Y una modificación que hay que declarar, porque es la que mantiene verde todo lo demás:** las tres personas de `teamCatalogFixture` pasan a `operational: true`. Con el modo por defecto filtrando, un fixture sin marcar dejaría la tabla vacía y rompería casi todas las pruebas que ya existían. **No se borró ninguna prueba y no se añadió una cuarta persona al fixture**: las que necesitan a alguien de fuera sobrescriben `people` con `teamWithOutsider()`, que es explícito en cada sitio donde hace falta.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 138 | **Una persona nueva en GLPI no entra en la vista por defecto** hasta que alguien la declare. Es la trampa de la lista de pertenencia, y es el precio exacto de la decisión 171.2 | **Medio**: se incorpora gente al equipo y su fila no aparece donde se la busca | Es el criterio 5 del brief, y lo que lo hace llevadero es que se ve: el contador «N fuera del equipo operativo» está siempre a la vista y «Mostrar todos» a un clic. La alternativa —ausente = dentro— haría que el equipo operativo fuera «todo Desarrollo N2 menos lo que alguien se acuerde de quitar» |
+| 139 | **Una errata en un login no hace nada en silencio**: deja fuera de la vista por defecto a quien se quería incluir | **Bajo, y es el riesgo que más fácil se sufre sin notarlo** | Es exactamente lo que `unusedOperational` publica y la pantalla enseña, y por eso se añadió aunque el brief no lo pidiera. La prueba `unaMarcaSinDestinatarioSePublica` lo fija. La comparación estricta de 171.3 es segura **porque** este aviso existe |
+| 140 | **La pertenencia no se puede cambiar desde la pantalla**: no hay botón, y cambiarla exige editar el fichero y reiniciar | **Bajo en frecuencia, alto en fricción ese día**: un hecho que cambia dos veces al año cuesta un despliegue | Es la consecuencia asumida de la decisión 171.1, y se documenta como limitación en vez de disimularse con un botón que no guarda. Si algún día hay que cambiarla desde la pantalla, lo que hace falta es la tabla —con su decisión delante—, no el botón |
+| 141 | **Un operativo que deja de estar en GLPI y no tiene excepción** desaparece del padrón, y su marca pasa a `unusedOperational` | **Bajo**: la persona sale de la tabla y la marca queda huérfana | Se ve en el aviso, que es la diferencia con antes: la fila se habría perdido sin decir nada. La recuperación es declarar la excepción, que es el mecanismo que ya existe para «GLPI no lo publica y debería» |
+| 142 | **El recuento de la tabla cuenta una fila que no es una persona del padrón.** Medido en ejecución real: el padrón tiene **42** personas y la tabla abre con **43** filas, porque un plan guardado está pedido con el **número** `13` de GLPI y esa clave no la reclama nadie, así que entra como fila `PLAN` | **Bajo, y es visible**: el recuento dice «19 de 43 personas» donde el padrón dice 42 | No es un defecto de esta fase —la fila existe desde la Fase 29 y por una razón escrita—, pero el conmutador la hace **contar**, y por eso se anota. Se eligió enseñarla antes que esconderla: un plan guardado que desaparece de la pantalla es peor que una cifra que no cuadra con el padrón. La fila se distingue por su insignia **Solo plan** y su columna de capacidad en «Sin plan» |
+
+**Y un riesgo que esta fase no añade pero conviene tener presente, porque el cambio lo hace más fácil de sufrir:** la lectura del grupo sigue siendo una lectura **completa**. La marca de pertenencia no la reduce —no se le pide a GLPI menos gente—, así que cuarenta y dos filas siguen llegando a la pantalla aunque se enseñen dieciocho. Reducir la lectura habría hecho que «Mostrar todos» fuera otra petición y que el padrón dependiera de una preferencia de vista, que es justo lo que la decisión 171 evita.
+
+## Limitaciones
+
+**Cambiar quién es operativo exige editar el fichero y reiniciar.** No hay edición en caliente y no la habrá mientras la pertenencia viva en la configuración. Es la limitación que la decisión 171.1 asume a cambio de no tener una segunda fuente de verdad.
+
+**En un contenedor, cambiar la pertenencia exige reconstruir la imagen.** El `docker-compose.yml` no pasa ninguna propiedad `team.*`, así que el fichero que se despliega es el del repositorio: la marca nueva no llega al contenedor por sí sola. Se anota porque el precio del reinicio, que en local es un minuto, en el contenedor es un despliegue.
+
+**La lista no está ordenada por nada, y el orden importa solo para leerla.** El mapa conserva el orden de declaración porque de ahí sale el orden del aviso de marcas sin efecto. No se ordena por nombre ni por antigüedad: es una lista de trabajo que se lee entera de un vistazo, y ordenarla sugeriría una jerarquía que no existe.
+
+**La marca no distingue por qué alguien está fuera.** Un `false` y un ausente se comportan igual, y la configuración no tiene dónde escribir un motivo —a diferencia de la renegociación, que desde la Fase 27 sí tiene un campo de texto—. Si hiciera falta saber *por qué* se sacó a alguien del equipo operativo, el sitio sería el historial de git del fichero, que en la práctica es donde se va a mirar.
+
+**Y no hay ninguna comprobación de que las dieciocho sean las correctas.** El sistema comprueba que cada marca alcance a alguien —`unusedOperational`—, y **no** que la lista sea la que el área quiere: marcar a la persona equivocada es indistinguible de marcarla bien. Es la misma confianza que se le da a las excepciones desde la Fase 30, y el sitio donde se corrige es el mismo fichero.
+
+## La verificación explícita: «Equipo operativo vs Desarrollo N2 completo»
+
+**Las dos cosas existen a la vez y se puede comprobar en una sola respuesta.** El padrón no se recortó: `GET /api/team`, medido en ejecución real tras reiniciar el backend, publica **cuarenta y dos personas** y **dieciocho operativas**, con `glpi.available: true`, `unusedExceptions: []` y `unusedOperational: []`. Las fuentes son **cuarenta y una de GLPI y una declarada**.
+
+**Los dos huecos vacíos son la comprobación de que los dieciocho logins están bien escritos**: una errata habría salido en `unusedOperational` en vez de aplicarse. Las dieciocho marcas del fichero, con el nombre con el que se las reconoce:
+
+| Nombre | Login | Nombre | Login |
+|---|---|---|---|
+| Abraham Arana Aldana | `AbraAran` | Jose Luis Garces Gonzalez | `JoseGarc` |
+| Alejandro Pineda Machado | `AlejPine` | Maury Marmolejo Din | `MaurMarm` |
+| Analy Ruiz | `AnalRuiz` | Nicolas Alejandro Suarez Florez | `NicoSuar` |
+| Andres Felipe Escobar Arango | `AndrEsco` | Nilson Cortes | `NilsCort` |
+| Andres Felipe Gonzalez Gonzalez | `AndrGonza` | Silvia Alejandra Castro Garcia | `SilvCast` |
+| Andres Steven Beltran Forero | `AndrBelt` | Stella Patricia Medina O. | `StelMedi` |
+| Cesar Giraldo Muñoz | `CesaGira` | Jose Alejandro Diaz Urrego | `JoseDiaz` |
+| Daniel Felipe Lopez Rendon | `DaniLope` | Jose Fabian Gonzalez Tavera | `JoseGonz` |
+| Francisco Javier Zuluaga A. | `FranZulu` | Jhonnatan Atehortua Alvarez | `JhonAteh` |
+
+**Y la verificación en la pantalla, con la aplicación corriendo y navegador real**, porque en este proyecto ya se pagó una vez por creerle a la suite —en la Fase 32 las pruebas pasaban y la pantalla mentía, porque el proceso del 8080 era más viejo que el código, así que aquí **se reinició el backend antes de medir nada**—:
+
+| Lo que se mira | Lo que sale |
+|---|---|
+| `/recursos` al abrir | **19 filas de 43** y el recuento «19 de 43 personas · 24 fuera del equipo operativo · 17 sin plan vigente» |
+| Las cuatro personas del brief | Abraham Arana Aldana **10** activos, Alejandro Pineda Machado **6**, Analy Ruiz **2**, Jose Alejandro Diaz Urrego **«Sin tickets»** — y **cero filas con «Sin dato»** |
+| `NicoSuar` en el modo operativo | Presente, con su nombre bien escrito y su insignia **Excepción** |
+| «Mostrar todos» | **43 filas**, con **24** marcadas `data-operational="false"` y sus 24 insignias «Fuera del equipo operativo» |
+| Volver a «solo equipo operativo» | **19 filas**, y las peticiones a `/api/planning-metadata/declarations/*` **idénticas** —cuarenta y tres antes y después— |
+
+**Las dos cifras que no coinciden, dichas en vez de escondidas.** El plan preveía «18 de 42» y la pantalla dice «19 de 43», y la diferencia es **una sola fila en cada número**: el padrón tiene cuarenta y dos personas —dieciocho operativas— y la tabla tiene cuarenta y tres miembros, porque un plan guardado está pedido con el número `13` de GLPI y esa clave no la reclama ninguna persona del padrón, así que entra como fila `PLAN` y —por la decisión 171.4— **siempre se enseña**. La fila se identifica sin ambigüedad: su `data-developer` es `13`, su origen es **Solo plan** y su columna de capacidad dice «Sin plan». No es un defecto de esta fase y no se corrigió aquí; queda como riesgo 142.
+
+**La señal de que el filtro está mal puesto no apareció.** La pertenencia no cambia lo que se pide, solo lo que se enseña: la lista de peticiones es la misma con los dos modos puestos, así que el filtro está donde tiene que estar —en el cliente— y la columna de tickets sigue siendo del equipo y no de la vista. Es la comprobación que impide que esta fase deshaga la Fase 32.
+
+**El criterio de aceptación del brief se cumple entero**: GLPI sigue siendo la fuente principal y las personas las sigue enumerando él (1); `/recursos` puede enseñar solo el equipo operativo (2); puede enseñar todo Desarrollo N2 (3); **ninguna persona desaparece del catálogo** —las cuarenta y dos se publican y las cuarenta y tres filas se pueden ver— (4); una persona nueva en Desarrollo N2 sigue siendo visible por «Mostrar todos» (5); y **las 370 pruebas del backend y las 137 del frontend pasan** (6).

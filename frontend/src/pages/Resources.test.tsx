@@ -49,8 +49,8 @@ const NICOLAS_GLPI_ID = 1071
  * Cuantos tickets tiene asignados cada persona del fixture.
  *
  * **El nombre ya no sale de aqui.** Lo publica el padron del equipo —`/api/team`—, que es la unica
- * lectura que enumera personas y responde por todas de una vez; la declaracion del tecnico se pide
- * solo por los tickets, y solo por quien tiene plan vigente.
+ * lectura que enumera personas y responde por todas de una vez; la declaracion del tecnico se pide por
+ * los tickets, y se pide por todo el que esta en la tabla, tenga plan o no.
  */
 const TICKETS: Record<string, number> = {
   [DEVELOPER_ID]: 5,
@@ -80,7 +80,7 @@ type Served = ReturnType<typeof okResponse> | ReturnType<typeof errorResponse>
  * Sirve las cinco lecturas por su direccion.
  *
  * La vista lee los cuatro endpoints de conjunto —el padron, la fotografia, las alertas y las
- * renegociaciones— y **una declaracion por persona con plan**, que es de donde salen los tickets. Las
+ * renegociaciones— y **una declaracion por persona de la tabla**, que es de donde salen los tickets. Las
  * pruebas tienen que poder mover una sin mover las otras: es lo que distingue «la vista se cae» de
  * «las renegociaciones se cayeron y la tabla sigue en pie».
  */
@@ -250,7 +250,7 @@ describe('Resources', () => {
     expect(fila.getAttribute('data-remaining')).toBe('ok')
   })
 
-  it('a quien no tiene plan vigente se le ve igual, pero no se le piden sus tickets', async () => {
+  it('a quien no tiene plan vigente se le ven sus tickets como a cualquier otro', async () => {
     // Solo uno de los tres tiene plan: los otros dos estan en el equipo, pero sin nada planificado.
     const soloUno = planningMetricsFixture()
     serve({
@@ -271,11 +271,12 @@ describe('Resources', () => {
     expect(cellOf(container, FULL_DEVELOPER_ID, 'team-displaced')).toBe('—')
     expect(rowOf(container, FULL_DEVELOPER_ID).getAttribute('data-remaining')).toBe('sin-plan')
 
-    // Los tickets, en cambio, si se piden solo por quien tiene plan: sin plan no hay fila que contar y
-    // la celda queda sin dato en vez de con un cero que afirmaria que no tiene ninguno.
-    expect(requestedUrls()).toContain(declarationsUrl(DEVELOPER_ID))
-    expect(requestedUrls()).not.toContain(declarationsUrl(FULL_DEVELOPER_ID))
-    expect(cellOf(container, FULL_DEVELOPER_ID, 'team-tickets')).toBe('Sin dato')
+    // Los tickets tampoco dependen del plan. La columna es del equipo, asi que se le pregunta a todo
+    // el que esta en la tabla: antes se pedia solo por quien tenia plan vigente y esta fila salia
+    // «Sin dato» sin que se hubiera intentado leer nunca —el defecto que esta prueba reproduce—.
+    expect(requestedUrls()).toContain(declarationsUrl(FULL_DEVELOPER_ID))
+    expect(requestedUrls()).toContain(declarationsUrl(OVER_DEVELOPER_ID))
+    expect(cellOf(container, FULL_DEVELOPER_ID, 'team-tickets')).toBe('2')
 
     // El recuento de la cabecera dice cuantas de las que se ven no tienen plan.
     expect(screen.getByText(/2 sin plan vigente/)).toBeInTheDocument()
@@ -311,6 +312,38 @@ describe('Resources', () => {
     expect(cellOf(container, FULL_DEVELOPER_ID, 'team-tickets')).toBe('Sin tickets')
     // Una lectura que no respondio no es cero: no se sabe cuantos tiene.
     expect(cellOf(container, OVER_DEVELOPER_ID, 'team-tickets')).toBe('Sin dato')
+  })
+
+  it('la captura: el equipo entero sin planes, y cada uno con su cifra de tickets', async () => {
+    // El escenario de la captura que abrio la fase: personas visibles en la tabla y «Sin dato» en la
+    // columna de tickets. La causa no estaba en GLPI sino aqui: la vista solo preguntaba por quien
+    // tenia plan vigente, asi que sin planes no preguntaba por nadie y nadie tenia dato que enseñar.
+    const sinPlanes = planningMetricsFixture()
+    serve({
+      metrics: okResponse({
+        ...sinPlanes,
+        current: { ...sinPlanes.current, byDeveloper: [] },
+      }),
+      declarations: (developerId) =>
+        developerId === DEVELOPER_ID
+          ? errorResponse(502, { message: 'GLPI no respondio' })
+          : declarationResponse(developerId),
+    })
+
+    const { container } = renderWithClient(<Resources />, { route: '/recursos' })
+    await tableRendered()
+    await screen.findByText('Ana Perez')
+
+    // Se pregunto por las tres, y las tres tienen su cifra: la columna ya no depende de que haya plan.
+    expect(teamRows(container)).toHaveLength(3)
+    expect(requestedUrls()).toContain(declarationsUrl(DEVELOPER_ID))
+    expect(requestedUrls()).toContain(declarationsUrl(FULL_DEVELOPER_ID))
+    expect(requestedUrls()).toContain(declarationsUrl(OVER_DEVELOPER_ID))
+    expect(cellOf(container, FULL_DEVELOPER_ID, 'team-tickets')).toBe('2')
+    expect(cellOf(container, OVER_DEVELOPER_ID, 'team-tickets')).toBe('3')
+
+    // Y «Sin dato» queda para lo unico que significa: una lectura que de verdad no se pudo hacer.
+    expect(cellOf(container, DEVELOPER_ID, 'team-tickets')).toBe('Sin dato')
   })
 
   it('los desplazamientos son los de cada persona, no la cifra del conjunto', async () => {
@@ -742,6 +775,7 @@ describe('Resources', () => {
               name: 'Nicolas Alejandro Suarez Flores',
               active: true,
               sourceType: 'EXCEPTION',
+              operational: true,
             },
           ],
         }),
@@ -773,10 +807,11 @@ describe('Resources', () => {
     expect(rowOf(container, NICOLAS_LOGIN).getAttribute('data-remaining')).toBe('ok')
     expect(cellOf(container, NICOLAS_LOGIN, 'team-displaced')).toBe('0')
 
-    // Los tickets se piden por la clave del plan —el numero, que fue lo que se tecleo— y no por el
-    // login. Lo que importa es que la respuesta vuelva a la persona y no se quede en el camino: si el
-    // cruce fuera solo por login, esta celda diria «sin dato» en una lectura que si respondio.
-    expect(requestedUrls()).toContain(declarationsUrl(String(NICOLAS_GLPI_ID)))
+    // Los tickets se piden por el login, que es como el sistema nombra a la persona y como la resuelve
+    // el backend. La clave del plan —el numero— no se pide aparte: es la misma persona, y preguntar por
+    // las dos serian dos lecturas a GLPI para un solo dato.
+    expect(requestedUrls()).toContain(declarationsUrl(NICOLAS_LOGIN))
+    expect(requestedUrls()).not.toContain(declarationsUrl(String(NICOLAS_GLPI_ID)))
     expect(cellOf(container, NICOLAS_LOGIN, 'team-tickets')).toBe('4')
   })
 
@@ -792,6 +827,7 @@ describe('Resources', () => {
               name: 'Ana Excepcion',
               active: true,
               sourceType: 'EXCEPTION',
+              operational: true,
             },
           ],
           unusedExceptions: ['AnaPerez'],
@@ -808,6 +844,12 @@ describe('Resources', () => {
     expect(
       rowOf(container, 'AnaExcepcion').querySelector('[data-slot="team-origin"]')?.textContent,
     ).toBe('Excepción')
+
+    // Y sus tickets se le piden como a cualquiera, por su login. No tiene numero de GLPI —la excepcion
+    // existe justo porque no hay cuenta que leer— y eso no puede dejar la columna sin dato: la lectura
+    // va por el login, que es lo unico que esta persona tiene.
+    expect(requestedUrls()).toContain(declarationsUrl('AnaExcepcion'))
+    expect(cellOf(container, 'AnaExcepcion', 'team-tickets')).toBe('Sin tickets')
 
     // Y una excepcion que GLPI ya entrega se declara en vez de callarse: es una decision de alguien
     // que quedo sin efecto.
@@ -836,6 +878,7 @@ describe('Resources', () => {
               name: 'Nicolas Alejandro Suarez Flores',
               active: true,
               sourceType: 'EXCEPTION',
+              operational: true,
             },
           ],
         }),
@@ -881,5 +924,196 @@ describe('Resources', () => {
     expect(fila.textContent).toContain('Solo se conoce por su plan')
     // Y su plan se sigue pudiendo abrir.
     expect(within(fila).getByText(PLAN_ID)).toBeInTheDocument()
+
+    // Su columna de tickets tambien se pregunta: la clave del plan es la unica forma de nombrar a esta
+    // persona, asi que es la que se pide cuando el padron no la reclama.
+    expect(requestedUrls()).toContain(declarationsUrl(DEVELOPER_ID))
+    expect(cellOf(container, DEVELOPER_ID, 'team-tickets')).toBe('5')
+  })
+})
+
+/**
+ * El equipo operativo: con quien se trabaja a diario.
+ *
+ * El padron sigue trayendo a todo el mundo y estas pruebas lo comprueban en cada caso —nadie desaparece
+ * del catalogo—; lo que cambia es a quien enseña la tabla por defecto. La cuarta persona del padron de
+ * abajo es el caso que el brief quiere cubrir: alguien que GLPI publica y que nadie ha declarado como
+ * equipo operativo, que es lo que pasa con cualquiera que se dé de alta mañana.
+ */
+const OUTSIDER_ID = 'dev-004'
+
+/** El padron del fixture mas alguien de GLPI a quien nadie ha declarado operativo. */
+function teamWithOutsider() {
+  return teamCatalogFixture({
+    people: [
+      ...teamCatalogFixture().people,
+      {
+        developerId: OUTSIDER_ID,
+        glpiId: 104,
+        name: 'Elena Fuera',
+        active: true,
+        sourceType: 'GLPI',
+        operational: false,
+      },
+    ],
+  })
+}
+
+/** Pulsa uno de los dos modos, como lo haria una persona. */
+function switchTo(label: 'Solo equipo operativo' | 'Mostrar todos') {
+  fireEvent.click(screen.getByRole('button', { name: label }))
+}
+
+/** El recuento de cabecera: cuantas personas hay, cuantas quedan fuera y cuantas sin plan. */
+function summary(container: HTMLElement): string {
+  return container.querySelector('[data-slot="team-summary"]')?.textContent ?? ''
+}
+
+describe('Resources · el equipo operativo', () => {
+  it('abre con el equipo operativo, y quien no esta declarado no ocupa la tabla', async () => {
+    serve({ team: okResponse(teamWithOutsider()) })
+
+    const { container } = renderWithClient(<Resources />, { route: '/recursos' })
+    await tableRendered()
+
+    expect(orderOf(container)).toEqual([DEVELOPER_ID, FULL_DEVELOPER_ID, OVER_DEVELOPER_ID])
+  })
+
+  it('dice cuantas personas quedan fuera, que es lo que hace visible el subconjunto', async () => {
+    serve({ team: okResponse(teamWithOutsider()) })
+
+    const { container } = renderWithClient(<Resources />, { route: '/recursos' })
+    await tableRendered()
+
+    expect(summary(container)).toContain('3 de 4 personas')
+    expect(summary(container)).toContain('1 fuera del equipo operativo')
+  })
+
+  it('«Mostrar todos» devuelve el padron entero y marca a quien esta fuera', async () => {
+    serve({ team: okResponse(teamWithOutsider()) })
+
+    const { container } = renderWithClient(<Resources />, { route: '/recursos' })
+    await tableRendered()
+
+    switchTo('Mostrar todos')
+
+    expect(orderOf(container)).toEqual([
+      DEVELOPER_ID,
+      FULL_DEVELOPER_ID,
+      OVER_DEVELOPER_ID,
+      OUTSIDER_ID,
+    ])
+    // La marca es lo unico que distingue, en este modo, a quien pertenece de quien no.
+    expect(rowOf(container, OUTSIDER_ID).getAttribute('data-operational')).toBe('false')
+    expect(
+      within(rowOf(container, OUTSIDER_ID)).getByText('Fuera del equipo operativo'),
+    ).toBeInTheDocument()
+    // Y quien si pertenece no la lleva: la insignia dice algo, no decora todas las filas.
+    expect(
+      within(rowOf(container, DEVELOPER_ID)).queryByText('Fuera del equipo operativo'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('se puede volver al equipo operativo, y volver no pide nada', async () => {
+    serve({ team: okResponse(teamWithOutsider()) })
+
+    const { container } = renderWithClient(<Resources />, { route: '/recursos' })
+    await tableRendered()
+
+    switchTo('Mostrar todos')
+    expect(teamRows(container)).toHaveLength(4)
+
+    const asked = requestedUrls().length
+    switchTo('Solo equipo operativo')
+
+    expect(orderOf(container)).toEqual([DEVELOPER_ID, FULL_DEVELOPER_ID, OVER_DEVELOPER_ID])
+    // El filtro es de la vista: cambiar de modo no vuelve a preguntar nada. Si aqui apareciera una
+    // peticion, el recorte estaria puesto antes de tiempo y cada cambio de modo costaria una lectura.
+    expect(requestedUrls()).toHaveLength(asked)
+  })
+
+  it('el filtro no cambia lo que se pregunta: la columna de tickets es del equipo, no de la vista', async () => {
+    serve({ team: okResponse(teamWithOutsider()) })
+
+    const { container } = renderWithClient(<Resources />, { route: '/recursos' })
+    await tableRendered()
+
+    // Se pregunta por los cuatro aunque solo se enseñen tres: es la decision de la fase anterior —la
+    // columna de tickets es del equipo— y este cambio no la enmienda.
+    expect(requestedUrls()).toContain(declarationsUrl(OUTSIDER_ID))
+    expect(cellOf(container, DEVELOPER_ID, 'team-tickets')).toBe('5')
+
+    switchTo('Mostrar todos')
+
+    // Y las cifras son las mismas en los dos modos: filtrar mueve filas, no recalcula nada.
+    expect(cellOf(container, DEVELOPER_ID, 'team-tickets')).toBe('5')
+  })
+
+  it('una persona declarada como excepcion y operativa sale en el modo por defecto', async () => {
+    serve({
+      team: okResponse(
+        teamCatalogFixture({
+          people: [
+            ...teamCatalogFixture().people,
+            {
+              developerId: NICOLAS_LOGIN,
+              glpiId: NICOLAS_GLPI_ID,
+              name: 'Nicolas Alejandro Suarez Flores',
+              active: true,
+              sourceType: 'EXCEPTION',
+              operational: true,
+            },
+          ],
+        }),
+      ),
+    })
+
+    const { container } = renderWithClient(<Resources />, { route: '/recursos' })
+    await tableRendered()
+
+    // La pertenencia no la decide el origen: una excepcion marcada es del equipo igual que quien viene
+    // del grupo, y su insignia de origen sigue diciendo de donde salio.
+    expect(orderOf(container)).toContain(NICOLAS_LOGIN)
+    expect(
+      within(rowOf(container, NICOLAS_LOGIN)).getByText('Excepción'),
+    ).toBeInTheDocument()
+  })
+
+  it('avisa de las marcas de equipo operativo que no corresponden a nadie', async () => {
+    serve({
+      team: okResponse(teamCatalogFixture({ unusedOperational: ['AnaPerezz', 'NicoSuar'] })),
+    })
+
+    renderWithClient(<Resources />, { route: '/recursos' })
+    await tableRendered()
+
+    // Una errata en un login no saca a nadie de la vista y no avisa por su cuenta: este es el unico
+    // sitio donde se ve, y por eso se publica.
+    expect(screen.getByText(/marcas de equipo operativo que no corresponden a nadie/)).toBeVisible()
+    expect(screen.getByText(/AnaPerezz, NicoSuar/)).toBeVisible()
+  })
+
+  it('con el padron lleno y nadie operativo no dice que no hay equipo', async () => {
+    serve({
+      team: okResponse(
+        teamCatalogFixture({
+          people: teamCatalogFixture().people.map((person) => ({ ...person, operational: false })),
+        }),
+      ),
+    })
+
+    const { container } = renderWithClient(<Resources />, { route: '/recursos' })
+    await tableRendered()
+
+    // Hay tres personas y ninguna es del equipo operativo: es un estado distinto de «no hay equipo», y
+    // decirla mal mandaria a buscar el problema en GLPI, que es justo donde no esta.
+    expect(teamRows(container)).toHaveLength(0)
+    expect(screen.queryByText('No hay nadie en el equipo')).not.toBeInTheDocument()
+    expect(screen.getByText('Nadie está en el equipo operativo')).toBeVisible()
+
+    // Y el conmutador sigue a mano: es la unica salida que hay en la pantalla.
+    switchTo('Mostrar todos')
+
+    expect(orderOf(container)).toEqual([DEVELOPER_ID, FULL_DEVELOPER_ID, OVER_DEVELOPER_ID])
   })
 })

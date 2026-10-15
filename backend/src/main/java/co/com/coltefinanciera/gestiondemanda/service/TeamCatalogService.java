@@ -45,6 +45,13 @@ import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiUser;
  * de autenticacion, de contrato o de lectura corta significan lo mismo desde aqui —no se pudo leer— y
  * se degrada. Un {@code NullPointerException} no: eso es un error de este codigo, y esconderlo detras de
  * «GLPI no responde» dejaria la pantalla diciendo que el problema esta en otro sitio.
+ *
+ * <p><strong>Quien es operativo no cambia el padron: cambia lo que se enseña por defecto.</strong> El
+ * catalogo sigue publicando a todo el mundo —GLPI enumera y esa lista no se recorta— y cada persona
+ * lleva ademas si pertenece al equipo operativo. La marca se resuelve aqui, al construir la fila, y no
+ * filtra nada: quien decide que se enseña es la pantalla, que para eso tiene los dos modos. Recortar la
+ * lista desde aqui habria hecho que «mostrar todos» fuera otra peticion y que el padron dependiera de
+ * una preferencia de vista.
  */
 @Slf4j
 @Service
@@ -85,12 +92,29 @@ public class TeamCatalogService {
             log.warn("Excepciones del equipo que GLPI ya entrega y por tanto no se aplican: {}", unused);
         }
 
+        // Las marcas de pertenencia que no alcanzan a nadie. Se publican por el mismo motivo que las
+        // excepciones sobrantes: la lista del equipo operativo se escribe a mano, y una errata en un
+        // login no cambia nada visible —la persona sigue fuera y quien la escribio no se entera—.
+        List<String> marcasSinEfecto = properties.operational().keySet().stream()
+                .filter(login -> people.keySet().stream()
+                        .noneMatch(publicado -> publicado.equals(login)))
+                .sorted()
+                .toList();
+
+        if (!marcasSinEfecto.isEmpty()) {
+            log.warn("Marcas del equipo operativo que no corresponden a nadie del padron: {}",
+                    marcasSinEfecto);
+        }
+
         List<TeamCatalogResponse.Person> catalog = people.values().stream()
                 .sorted(Comparator.comparing(TeamCatalogResponse.Person::developerId))
                 .toList();
 
-        log.info("Catalogo del equipo: {} personas ({} de GLPI, {} declaradas), grupo {} legible: {}",
-                catalog.size(), reading.members().size(), unused.size(),
+        long operativos = catalog.stream().filter(TeamCatalogResponse.Person::operational).count();
+
+        log.info("Catalogo del equipo: {} personas ({} de GLPI, {} declaradas), {} operativas, "
+                        + "grupo {} legible: {}",
+                catalog.size(), reading.members().size(), unused.size(), operativos,
                 properties.groupId(), reading.glpi().available());
 
         return new TeamCatalogResponse(
@@ -99,7 +123,8 @@ public class TeamCatalogService {
                         TeamCatalogResponse.Source.GLPI, TeamCatalogResponse.Source.EXCEPTIONS),
                 reading.glpi(),
                 catalog,
-                unused);
+                unused,
+                marcasSinEfecto);
     }
 
     /**
@@ -110,14 +135,15 @@ public class TeamCatalogService {
      * en lugar de publicarse con un identificador inventado —el numero— que haria que el sistema la
      * tratara como a otra persona distinta de la que GLPI conoce.
      */
-    private static TeamCatalogResponse.Person fromGlpi(GlpiUser user) {
+    private TeamCatalogResponse.Person fromGlpi(GlpiUser user) {
         String login = user.name() == null ? null : user.name().trim();
         if (login == null || login.isEmpty()) {
             log.warn("GLPI devolvio un usuario del grupo sin login (id {}): no entra al catalogo", user.id());
             return null;
         }
         return new TeamCatalogResponse.Person(
-                login, user.id(), user.displayName(), user.isActive(), TeamCatalogResponse.Person.GLPI);
+                login, user.id(), user.displayName(), user.isActive(), TeamCatalogResponse.Person.GLPI,
+                properties.isOperational(login));
     }
 
     /**
@@ -128,12 +154,12 @@ public class TeamCatalogService {
      * un dato —una excepcion declarada solo para que alguien aparezca y pueda colgarle un plan— y no un
      * hueco que haya que rellenar.
      */
-    private static TeamCatalogResponse.Person fromException(
+    private TeamCatalogResponse.Person fromException(
             String login, TeamProperties.DeclaredException declared) {
 
         return new TeamCatalogResponse.Person(
                 login, declared.glpiId(), declared.name(), declared.isActive(),
-                TeamCatalogResponse.Person.EXCEPTION);
+                TeamCatalogResponse.Person.EXCEPTION, properties.isOperational(login));
     }
 
     /**

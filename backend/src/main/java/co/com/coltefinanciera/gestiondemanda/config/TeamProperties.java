@@ -1,5 +1,6 @@
 package co.com.coltefinanciera.gestiondemanda.config;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -37,18 +38,72 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *                   «Desarrollo N2», con sus tres subgrupos.
  * @param groupName  como se llama ese grupo, para que el catalogo y la pantalla puedan decir de donde
  *                   salen las personas sin que nadie tenga que adivinar que es el 1.
- * @param exceptions las personas declaradas a mano, indexadas por su login en GLPI —el mismo texto que
- *                   el catalogo publica como {@code developerId}, porque es la clave con la que se
- *                   piden los tickets, las declaraciones y los planes—.
+ * @param exceptions  las personas declaradas a mano, indexadas por su login en GLPI —el mismo texto que
+ *                    el catalogo publica como {@code developerId}, porque es la clave con la que se
+ *                    piden los tickets, las declaraciones y los planes—.
+ * @param operational quien forma parte del equipo operativo, indexado por ese mismo login. Es lo que
+ *                    decide a quien enseña por defecto la pantalla del equipo, y no toca el padron:
+ *                    {@code true} entra, {@code false} se dejo fuera a proposito, y un login que no
+ *                    aparece aqui tampoco entra. Ver {@link #isOperational(String)}.
  */
 @ConfigurationProperties(prefix = "team")
 public record TeamProperties(
         @DefaultValue("1") Integer groupId,
         @DefaultValue("Desarrollo N2") String groupName,
-        @DefaultValue Map<String, DeclaredException> exceptions) {
+        @DefaultValue Map<String, DeclaredException> exceptions,
+        @DefaultValue Map<String, Boolean> operational) {
 
     public TeamProperties {
         exceptions = exceptions == null ? Map.of() : Map.copyOf(exceptions);
+        operational = ordenadoSinNulos(operational);
+    }
+
+    /**
+     * El mapa de pertenencia, normalizado y en orden de declaracion.
+     *
+     * <p>Los valores nulos se descartan en vez de guardarse: {@code team.operational[NicoSuar]=} sin
+     * valor es una linea que se puede escribir, y un nulo no es ni un «si» ni un «no» —decidir cual de
+     * los dos seria inventarse la respuesta—. Una marca sin valor se comporta entonces como una marca
+     * ausente: la persona no pertenece, que es el lado seguro del error.
+     *
+     * <p><strong>El orden de declaracion se conserva</strong> —de ahi el {@link LinkedHashMap} y no un
+     * {@code Map.copyOf}— porque de aqui sale tambien el orden en el que se publican las marcas sin
+     * efecto, y un aviso que cambia de orden entre reinicios se lee como si hubiera cambiado algo.
+     */
+    private static Map<String, Boolean> ordenadoSinNulos(Map<String, Boolean> declarado) {
+        if (declarado == null) {
+            return Map.of();
+        }
+
+        Map<String, Boolean> pertenencia = new LinkedHashMap<>();
+        declarado.forEach((login, pertenece) -> {
+            if (login != null && !login.isBlank() && pertenece != null) {
+                pertenencia.put(login.trim(), pertenece);
+            }
+        });
+
+        return Collections.unmodifiableMap(pertenencia);
+    }
+
+    /**
+     * Si esta persona forma parte del equipo operativo.
+     *
+     * <p><strong>Se compara el login tal como se escribio, distinguiendo mayusculas.</strong> Es la
+     * misma regla que sigue {@link #declaredExceptions()}: la clave de la configuracion <em>es</em> el
+     * identificador con el que se pide todo lo demas, y ese distingue mayusculas. Buscar sin
+     * distinguirlas toleraria una clave que no es el login de nadie —el dia que hiciera falta para algo
+     * mas que marcar a alguien, esa clave estaria mal y nadie lo habria notado—. Un login mal escrito no
+     * se aplica y **se ve**: aparece en {@code unusedOperational} con el resto de marcas sin efecto, que
+     * es justo lo que hace que la comprobacion estricta sea seguro.
+     *
+     * <p><strong>Un login ausente no pertenece.</strong> El equipo operativo es una lista de
+     * pertenencia, no una de exclusion: quien entra al equipo entra porque alguien lo escribio aqui.
+     * Cuesta que una persona recien dada de alta en GLPI no aparezca en la vista por defecto hasta que
+     * se la declare, y se acepta: la alternativa —todo el mundo dentro salvo lo que alguien se acuerde
+     * de sacar— convierte el equipo operativo en un residuo del directorio en vez de en una decision.
+     */
+    public boolean isOperational(String login) {
+        return login != null && Boolean.TRUE.equals(operational.get(login.trim()));
     }
 
     /**

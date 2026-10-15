@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -147,6 +148,21 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
     /** Opcion de busqueda 12: el estado. */
     private static final int FIELD_STATUS = 12;
 
+    /**
+     * Los estados de GLPI que siguen siendo carga operativa: los cuatro primeros.
+     *
+     * <p>Solucionado (5) y cerrado (6) quedan fuera, y los dos son el mismo estado del dominio:
+     * {@code GlpiContract.REST_V1} los traduce a {@code RESUELTO} si el ticket es una incidencia y a
+     * {@code FINALIZADO} si es una peticion, que es lo mismo que decir que dejaron de competir por la
+     * jornada. El 3 —planificado— se queda dentro: el trabajo esta acordado y todavia no hecho.
+     *
+     * <p><strong>Se declaran en positivo, y no es estilo.</strong> Medido contra la instancia real:
+     * {@code notequals 5} devuelve 237, que es exactamente el recuento de {@code equals 5} —los que si
+     * estan en cinco—, y {@code lessthan 5} devuelve lo mismo; los dos operadores se comportan como una
+     * igualdad. Una lista de lo que sobra seria, en esta instancia, una lista de lo que hay.
+     */
+    private static final List<Integer> ACTIVE_STATUSES = List.of(1, 2, 3, 4);
+
     /** Opcion de busqueda 14: el tipo, que separa incidencia de peticion. */
     private static final int FIELD_TYPE = 14;
 
@@ -206,9 +222,30 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
     private final GlpiClient glpiClient;
     private final GlpiProperties properties;
 
+    /**
+     * El usuario, por numero o por login segun lo que haya llegado.
+     *
+     * <p><strong>Las dos rutas son distintas porque GLPI las tiene distintas.</strong> Por numero se
+     * pregunta por el elemento —{@code /User/296}— y contesta una ficha. Por login no hay ruta de
+     * elemento que valga: {@code /User/JoseDiaz} no da un 404, contesta 206 con la coleccion entera de
+     * usuarios empezando por el id 2, que no se puede leer como una ficha. La medicion esta en las
+     * decisiones de la fase; lo que importa aqui es que un login y un numero no son la misma pregunta y
+     * no pueden compartir el mismo camino.
+     *
+     * <p>Discriminar por la forma del identificador y no por quien llama es deliberado: el catalogo
+     * publica logins, los planes guardados que hay hoy usan numeros, y las dos cosas llegan por aqui.
+     * Si esto adivinara por el sitio desde donde se pide, cada ruta nueva tendria que acordarse de
+     * traducir antes, que es exactamente el fallo que esta fase corrige.
+     */
     @Override
     public Optional<GlpiUser> findUser(String userId) {
-        String path = PATH_USER + UriUtils.encodePathSegment(userId, StandardCharsets.UTF_8);
+        Integer id = numericId(userId);
+        return id == null ? userOfLogin(userId) : userOfId(id);
+    }
+
+    /** El usuario por su numero: la ruta del elemento, que es lo que GLPI sabe contestar. */
+    private Optional<GlpiUser> userOfId(int id) {
+        String path = PATH_USER + id;
         Duration timeout = properties.timeout();
 
         String sessionToken = glpiClient.initSession().block(timeout);
@@ -218,8 +255,50 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
             return Optional.ofNullable(user);
 
         } catch (GlpiItemNotFoundException ex) {
-            log.info("GLPI no tiene el usuario {}: {}", userId, ex.getMessage());
+            log.info("GLPI no tiene el usuario {}: {}", id, ex.getMessage());
             return Optional.empty();
+
+        } finally {
+            closeQuietly(sessionToken);
+        }
+    }
+
+    /**
+     * El usuario por su login, que es como el sistema nombra a las personas.
+     *
+     * <p>Se resuelve por la busqueda de usuarios sobre la opcion 1 —Login, sobre
+     * {@code glpi_users.name}—, que es lo unico que sabe traducir un login a un numero.
+     *
+     * <p><strong>El operador es {@code contains} y la igualdad se comprueba aqui, y no por gusto.</strong>
+     * Con {@code equals} sobre esa misma opcion la instancia medida devuelve cero filas para un login
+     * que existe: contesta que no hay nadie. Es el tercer operador de esta instancia que no hace lo que
+     * dice —ver los estados de {@link #activeTicketsOf}—, asi que la busqueda se usa como un filtro
+     * ancho y la decision de si es el usuario que se pidio se toma con las filas delante. Lo que
+     * {@code contains} pueda traer de mas —«jose» trae a JoseDiaz y a JosePerez— se descarta aqui.
+     */
+    private Optional<GlpiUser> userOfLogin(String login) {
+        String wanted = login == null ? "" : login.trim();
+        if (wanted.isEmpty()) {
+            log.warn("No se puede resolver un usuario de GLPI con un identificador vacio");
+            return Optional.empty();
+        }
+
+        Duration timeout = properties.timeout();
+        String sessionToken = glpiClient.initSession().block(timeout);
+        try {
+            List<GlpiUser> found = paginate("usuarios con el login " + wanted, sessionToken, timeout,
+                    from -> userSearchPath(FIELD_USER_LOGIN, "contains", wanted, from),
+                    GlpiRestPlanningSource::toUser);
+
+            Optional<GlpiUser> exact = found.stream()
+                    .filter(user -> wanted.equalsIgnoreCase(user.name()))
+                    .findFirst();
+
+            if (exact.isEmpty()) {
+                log.info("GLPI no tiene el usuario con login {}: la busqueda por contenencia devolvio {} "
+                        + "y ninguno es ese login", wanted, found.size());
+            }
+            return exact;
 
         } finally {
             closeQuietly(sessionToken);
@@ -231,9 +310,62 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
      *
      * <p>El filtro lo hace el servidor, asi que lo que se devuelve es lo que GLPI dijo y nada mas: no
      * hay una segunda pasada que pueda quedarse corta ni un techo de mil tickets que nadie vea.
+     *
+     * <p>Son todos, cerrados incluidos: es el historico que el plan necesita para poder decir por que
+     * descarta lo que descarta. Para lo que sigue siendo trabajo esta {@link #activeTicketsOf(String)}.
      */
     @Override
     public List<GlpiTicket> ticketsOf(String glpiUserId) {
+        return readTickets(glpiUserId, "tickets asignados al usuario ",
+                GlpiRestPlanningSource::searchPath);
+    }
+
+    /**
+     * Los tickets asignados al tecnico que todavia son carga operativa: ni resueltos ni cerrados.
+     *
+     * <p>Es la lectura que mide trabajo por hacer, y por eso no sirve {@link #ticketsOf}: un ticket
+     * cerrado sigue asignado al tecnico y ya no es trabajo de nadie. La instancia medida tiene quien
+     * acumula mil doscientos sesenta y seis, y los mil doscientos sesenta y seis estan cerrados;
+     * contarlos convierte el historico de una persona en su jornada.
+     *
+     * <p><strong>El corte va en la busqueda y se comprueba al volver.</strong> Traerse el historico
+     * entero para descartarlo aqui no seria solo lento: la paginacion denuncia una lectura corta y no
+     * un exceso, asi que traer de mas no se nota hasta que el volumen revienta la lectura. Por eso lo
+     * excluye el servidor; y por eso mismo se vuelve a mirar el estado de lo que llega, porque una
+     * busqueda que filtra mal no falla —contesta otra cosa— y este metodo promete activos.
+     */
+    @Override
+    public List<GlpiTicket> activeTicketsOf(String glpiUserId) {
+        List<GlpiTicket> said = readTickets(glpiUserId, "tickets activos del usuario ",
+                GlpiRestPlanningSource::activeSearchPath);
+
+        // El criterio ya los excluye, y esto no lo repite por gusto: en esta instancia un operador de
+        // busqueda contesto al reves sin fallar (ver ACTIVE_STATUSES), asi que lo que el servidor
+        // devuelve no se toma como una promesa. Si manda otra cosa, se dice en el registro y no se
+        // cuenta: la columna mide carga, y un cerrado no es carga ni aunque venga en la lista.
+        List<GlpiTicket> active = said.stream()
+                .filter(ticket -> ACTIVE_STATUSES.contains(ticket.status()))
+                .toList();
+        if (active.size() != said.size()) {
+            log.warn("GLPI devolvio {} tickets que no estan activos entre los {} de la busqueda: el "
+                    + "criterio de estado no los excluyo y se descartan aqui",
+                    said.size() - active.size(), said.size());
+        }
+        return active;
+    }
+
+    /**
+     * Lo que comparten las dos busquedas de tickets: resolver el tecnico, abrir sesion y recorrer.
+     *
+     * <p>Se escribe una vez porque lo unico que las distingue es la ruta, y dos copias del ciclo de
+     * sesion serian dos sitios donde olvidarse de cerrarla.
+     *
+     * @param what   que se esta leyendo, para el registro y para el mensaje del fallo
+     * @param pathAt la ruta de la pagina, por tecnico y fila inicial
+     */
+    private List<GlpiTicket> readTickets(String glpiUserId, String what,
+            BiFunction<Integer, Integer, String> pathAt) {
+
         Integer technician = numericId(glpiUserId);
         if (technician == null) {
             // La busqueda solo sabe comparar por identificador numerico. Con un login, GLPI no falla:
@@ -247,7 +379,8 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
         Duration timeout = properties.timeout();
         String sessionToken = glpiClient.initSession().block(timeout);
         try {
-            return search(technician, sessionToken, timeout);
+            return search(what + technician, from -> pathAt.apply(technician, from),
+                    sessionToken, timeout);
 
         } finally {
             closeQuietly(sessionToken);
@@ -279,7 +412,7 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
         String sessionToken = glpiClient.initSession().block(timeout);
         try {
             return paginate("miembros del grupo " + group, sessionToken, timeout,
-                    from -> userSearchPath(group, from),
+                    from -> userSearchPath(FIELD_GROUP, "under", group, from),
                     GlpiRestPlanningSource::toUser);
 
         } finally {
@@ -296,12 +429,13 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
      * de los que hay produce un plan que parece completo y no lo esta, y ese es el fallo que esta clase
      * acaba de dejar atras.
      */
-    private List<GlpiTicket> search(int technician, String sessionToken, Duration timeout) {
-        List<GlpiTicket> found = paginate("tickets asignados al usuario " + technician,
-                sessionToken, timeout, from -> searchPath(technician, from),
+    private List<GlpiTicket> search(String what, IntFunction<String> pathAt,
+            String sessionToken, Duration timeout) {
+
+        List<GlpiTicket> found = paginate(what, sessionToken, timeout, pathAt,
                 GlpiRestPlanningSource::toTicket);
 
-        log.info("GLPI devolvio {} tickets asignados al usuario {}", found.size(), technician);
+        log.info("GLPI devolvio {} {}", found.size(), what);
         return found;
     }
 
@@ -354,18 +488,39 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
     }
 
     /**
-     * La ruta de una pagina de la busqueda.
-     *
-     * <p>El criterio es obligatorio y va explicito: sin el, la busqueda no falla, devuelve la instancia
-     * entera —mas de sesenta mil tickets en la instancia medida—, que es un fallo silencioso bastante
-     * peor que un error.
+     * La ruta de una pagina de la busqueda: todos los tickets del tecnico.
      */
     private static String searchPath(int technician, int from) {
+        return ticketSearchPath(technician, from, null);
+    }
+
+    /**
+     * La ruta de una pagina de la busqueda: solo los tickets que siguen siendo carga.
+     */
+    private static String activeSearchPath(int technician, int from) {
+        return ticketSearchPath(technician, from, ACTIVE_STATUSES);
+    }
+
+    /**
+     * La ruta de una pagina de la busqueda de tickets de un tecnico.
+     *
+     * <p>El criterio del tecnico es obligatorio y va explicito: sin el, la busqueda no falla, devuelve
+     * la instancia entera —mas de sesenta mil tickets en la instancia medida—, que es un fallo
+     * silencioso bastante peor que un error.
+     *
+     * @param statuses los estados que se piden, o {@code null} para no filtrar por estado
+     */
+    private static String ticketSearchPath(int technician, int from, List<Integer> statuses) {
         StringBuilder path = new StringBuilder(PATH_SEARCH_TICKETS)
-                .append("?range=").append(from).append('-').append(from + PAGE_SIZE - 1)
-                .append("&criteria[0][field]=").append(FIELD_TECHNICIAN)
-                .append("&criteria[0][searchtype]=equals")
-                .append("&criteria[0][value]=").append(technician);
+                .append("?range=").append(from).append('-').append(from + PAGE_SIZE - 1);
+
+        if (statuses == null) {
+            appendTechnicianCriteria(path, 0, technician);
+        } else {
+            appendStatusGroup(path, statuses);
+            path.append("&criteria[0][link]=AND");
+            appendTechnicianCriteria(path, 1, technician);
+        }
 
         for (int i = 0; i < DISPLAYED_FIELDS.size(); i++) {
             path.append("&forcedisplay[").append(i).append("]=").append(DISPLAYED_FIELDS.get(i));
@@ -373,23 +528,48 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
         return path.toString();
     }
 
+    /** El criterio del tecnico, en la posicion de la lista que le toque. */
+    private static void appendTechnicianCriteria(StringBuilder path, int index, int technician) {
+        path.append("&criteria[").append(index).append("][field]=").append(FIELD_TECHNICIAN)
+                .append("&criteria[").append(index).append("][searchtype]=equals")
+                .append("&criteria[").append(index).append("][value]=").append(technician);
+    }
+
     /**
-     * Una fila de la busqueda pasada al DTO.
+     * El grupo de los estados que si cuentan, anidado como un solo criterio con un OR por dentro.
      *
-     * <p>Es la traduccion que no cabe en {@link GlpiTicket}, porque los dos lados no hablan el mismo
-     * idioma: la fila viene indexada por numero de opcion y el DTO por nombre de campo. Se hace aqui
-     * porque aqui estan los numeros, y se hace en un solo sitio para que el dia que GLPI renombre una
-     * columna haya una unica funcion que mirar.
-     *
-     * <p>Un valor ausente queda nulo, que es lo que el DTO promete: en GLPI un ticket sin prioridad es
-     * un ticket valido, y quien decide si eso lo descalifica es el validador, no esta conversion.
+     * <p><strong>Anidado y no suelto.</strong> Cuatro criterios de estado al mismo nivel se leen como
+     * {@code tecnico AND estado1 OR estado2 OR ...}, que es otra pregunta: a partir del segundo estado
+     * entrarian los tickets activos de cualquier otro tecnico. El grupo obliga a que los cuatro sean una
+     * sola condicion, y es la forma que GLPI documenta para agrupar criterios.
      */
-    private static String userSearchPath(String group, int from) {
+    private static void appendStatusGroup(StringBuilder path, List<Integer> statuses) {
+        for (int i = 0; i < statuses.size(); i++) {
+            if (i > 0) {
+                path.append("&criteria[0][criteria][").append(i).append("][link]=OR");
+            }
+            path.append("&criteria[0][criteria][").append(i).append("][field]=").append(FIELD_STATUS)
+                    .append("&criteria[0][criteria][").append(i).append("][searchtype]=equals")
+                    .append("&criteria[0][criteria][").append(i).append("][value]=")
+                    .append(statuses.get(i));
+        }
+    }
+
+    /**
+     * La ruta de una pagina de la busqueda de usuarios: un criterio suelto y las columnas de siempre.
+     *
+     * <p>Los dos usos que tiene son el grupo del catalogo —opcion 13, «bajo» el grupo, para que entren
+     * los subgrupos— y el login de la persona —opcion 1, por contenencia y con la igualdad comprobada
+     * al volver—. Se escribe una vez porque lo unico que cambia es la terna, y porque el
+     * {@code forcedisplay} tiene que ir en las dos o la fila llega con otras claves y el nombre de la
+     * persona sale nulo sin que nada falle.
+     */
+    private static String userSearchPath(int field, String searchtype, String value, int from) {
         StringBuilder path = new StringBuilder(PATH_SEARCH_USERS)
                 .append("?range=").append(from).append('-').append(from + PAGE_SIZE - 1)
-                .append("&criteria[0][field]=").append(FIELD_GROUP)
-                .append("&criteria[0][searchtype]=under")
-                .append("&criteria[0][value]=").append(UriUtils.encodeQueryParam(group, StandardCharsets.UTF_8));
+                .append("&criteria[0][field]=").append(field)
+                .append("&criteria[0][searchtype]=").append(searchtype)
+                .append("&criteria[0][value]=").append(UriUtils.encodeQueryParam(value, StandardCharsets.UTF_8));
 
         for (int i = 0; i < DISPLAYED_USER_FIELDS.size(); i++) {
             path.append("&forcedisplay[").append(i).append("]=").append(DISPLAYED_USER_FIELDS.get(i));
@@ -424,6 +604,17 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
         return value == null ? null : value != 0;
     }
 
+    /**
+     * Una fila de la busqueda de tickets pasada al DTO.
+     *
+     * <p>Es la traduccion que no cabe en {@link GlpiTicket}, porque los dos lados no hablan el mismo
+     * idioma: la fila viene indexada por numero de opcion y el DTO por nombre de campo. Se hace aqui
+     * porque aqui estan los numeros, y se hace en un solo sitio para que el dia que GLPI renombre una
+     * columna haya una unica funcion que mirar.
+     *
+     * <p>Un valor ausente queda nulo, que es lo que el DTO promete: en GLPI un ticket sin prioridad es
+     * un ticket valido, y quien decide si eso lo descalifica es el validador, no esta conversion.
+     */
     private static GlpiTicket toTicket(Map<String, Object> row) {
         return new GlpiTicket(
                 integer(row, FIELD_ID),

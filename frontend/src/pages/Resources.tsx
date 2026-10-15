@@ -1,4 +1,5 @@
 import { Activity, AlertTriangle, BellRing, CheckCircle2, Gauge, Timer, Users } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { StatCard } from '@/components/dashboard/StatCard'
@@ -15,9 +16,22 @@ import { useRenegotiations } from '@/hooks/useRenegotiations'
 import { useTeam } from '@/hooks/useTeam'
 import { SEVERITY_VARIANTS } from '@/lib/alerts'
 import { formatInstant } from '@/lib/format'
-import { knownTickets, toTeamMembers } from '@/lib/team'
+import { declarationKeysFor, inOperationalTeam, knownTickets, toTeamMembers } from '@/lib/team'
 import { formatHours } from '@/lib/timeline'
 import { ROUTES } from '@/routes/navigation'
+
+/**
+ * Los dos modos de la tabla del equipo.
+ *
+ * Son dos modos de **mirar**, no dos equipos: el padrón es el mismo y se lee entero en los dos. Lo que
+ * cambia es a quién se enseña.
+ *
+ * `operativo` es el de partida porque es el trabajo de todos los días: la gestión de la demanda se hace
+ * con un subconjunto de Desarrollo N2, y el resto ocupaba la tabla sin aportar a lo que se mira a diario.
+ * `todos` devuelve el padrón completo —las personas de GLPI y las declaradas—, que es de donde se saca a
+ * quién incluir.
+ */
+type TeamViewMode = 'operativo' | 'todos'
 
 /** Esqueleto de la carga: la misma forma que el contenido, para que no haya salto de altura. */
 function TeamSkeleton() {
@@ -59,6 +73,26 @@ function EmptyTeam({ withDetail }: { withDetail: boolean }) {
 }
 
 /**
+ * El padrón trae gente y ninguna es del equipo operativo.
+ *
+ * Es un estado distinto de «no hay equipo» y no se puede decir con la misma frase: aquí **sí** hay
+ * personas —GLPI las publica y están en el padrón—, lo que falta es la marca de pertenencia. Decirlo mal
+ * mandaría a buscar el problema en GLPI, que es justo donde no está.
+ *
+ * El conmutador sigue arriba, en la cabecera de la tarjeta, y por eso este estado no es un callejón: con
+ * «Mostrar todos» se ve a todo el mundo desde aquí mismo.
+ */
+function EmptyOperationalTeam({ total }: { total: number }) {
+  return (
+    <EmptyState
+      icon={Users}
+      title="Nadie está en el equipo operativo"
+      detail={`El padrón trae ${total} ${total === 1 ? 'persona' : 'personas'}, pero ninguna está declarada como equipo operativo. Suele ser una configuración sin estrenar —team.operational en el backend— y no un problema de GLPI: usa «Mostrar todos» para verlas, o declara a quién pertenece el equipo.`}
+    />
+  )
+}
+
+/**
  * El equipo de hoy: quién es cada persona, qué carga tiene y qué le está pasando.
  *
  * **Responde «¿cómo está el equipo hoy?» sin abrir ninguna otra pantalla.** Cada fila es una persona
@@ -93,24 +127,32 @@ export function Resources() {
   const alerts = useAlerts()
   const renegotiations = useRenegotiations()
 
+  // El filtro vive en la vista y no viaja al backend: se abre con el equipo operativo y «Mostrar todos»
+  // es una decision de quien mira, no un dato que haya que recordar entre sesiones. Se pierde al
+  // recargar, y esta bien que se pierda —volver a abrir en el equipo de trabajo es lo esperado—.
+  const [mode, setMode] = useState<TeamViewMode>('operativo')
+
   // El padron decide quien esta en la tabla. Si su lectura se cae, la lista queda vacia y las filas
   // salen de los planes que ya existen —abajo—, que es la degradacion correcta: un plan guardado no
   // desaparece de la pantalla porque el padron no haya respondido.
   const people = team.data?.people ?? []
   const byDeveloper = data?.current.byDeveloper ?? []
 
-  // Los tickets se piden solo por quien tiene plan vigente, que es para quien la tabla los enseña. La
-  // lista de identificadores es la de los planes y no la del padron: con cuarenta personas en el
-  // equipo, pedir la declaracion de todas serian cuarenta lecturas a GLPI en cada carga.
-  const plannedIds = byDeveloper.map((developer) => developer.developerId)
+  // Los tickets son una columna del equipo, asi que se piden por **todo el padron** y no solo por
+  // quien tiene plan vigente: atar la columna a que hubiera plan dejaba a las personas sin plan con
+  // «Sin dato» en una lectura que nunca se intento. Se pide por el login, que es como el sistema
+  // nombra a la persona, y los planes guardados con otra clave —hoy los hay pedidos por numero— se
+  // suman a la lista para que su fila tambien tenga el dato. Son cuarenta y una lecturas a GLPI la
+  // primera vez y ninguna despues: cada declaracion se cachea por su identificador.
+  const declarationKeys = declarationKeysFor(people, byDeveloper)
 
-  const declarations = useTeamDeclarations(plannedIds)
+  const declarations = useTeamDeclarations(declarationKeys)
 
   const members = toTeamMembers(
     people,
     byDeveloper,
     knownTickets(
-      plannedIds,
+      declarationKeys,
       declarations.map((declaration) => declaration.data),
     ),
     // Nulo mientras la lista no haya llegado, y nulo si su lectura fallo: en los dos casos el
@@ -118,7 +160,12 @@ export function Resources() {
     renegotiations.data ? renegotiations.data.items : null,
   )
 
-  const withPlan = members.filter((member) => member.plan).length
+  // Lo que se enseña, y lo que se queda fuera por no ser del equipo operativo. Se calcula sobre las
+  // filas y no sobre el padron porque una fila `PLAN` —alguien a quien solo se conoce por su plan— no
+  // esta en el padron y aun asi tiene que verse: su plan guardado no puede desaparecer por un filtro.
+  const outside = members.filter((member) => !inOperationalTeam(member))
+  const shown = mode === 'operativo' ? members.filter(inOperationalTeam) : members
+  const shownWithPlan = shown.filter((member) => member.plan).length
 
   // La pantalla espera a las dos respuestas de las que sale la tabla: sin el padron no se sabe quien
   // esta, y sin la fotografia no se sabe como esta.
@@ -152,7 +199,7 @@ export function Resources() {
 
   return (
     <div className="space-y-6">
-      <p className="text-xs text-muted-foreground">
+      <p data-slot="team-summary" className="text-xs text-muted-foreground">
         Una fila por persona del equipo, con la fotografía generada el{' '}
         <time dateTime={data.generatedAt}>{formatInstant(data.generatedAt)}</time>
         {current.from && current.to && (
@@ -161,9 +208,21 @@ export function Resources() {
             · ventana del {current.from} al {current.to}
           </>
         )}{' '}
-        · {members.length} {members.length === 1 ? 'persona' : 'personas'}
-        {withPlan < members.length && (
-          <> · {members.length - withPlan} sin plan vigente</>
+        {/* Con el filtro puesto se dice «N de M»; sin el, el «N de N» sobra y solo se dice cuantas hay. */}
+        ·{' '}
+        {shown.length === members.length
+          ? `${members.length} ${members.length === 1 ? 'persona' : 'personas'}`
+          : `${shown.length} de ${members.length} personas`}
+        {/*
+          Cuantas quedan fuera del equipo operativo, en los dos modos: es el numero que hace visible que
+          el equipo de trabajo es un subconjunto, y en «Mostrar todos» es lo unico que distingue una fila
+          que pertenece de una que no.
+        */}
+        {outside.length > 0 && (
+          <> · {outside.length} fuera del equipo operativo</>
+        )}
+        {shownWithPlan < shown.length && (
+          <> · {shown.length - shownWithPlan} sin plan vigente</>
         )}
       </p>
 
@@ -192,8 +251,9 @@ export function Resources() {
         >
           GLPI no respondió al leer el grupo{team.data.glpi.groupName
             ? ` ${team.data.glpi.groupName}`
-            : ''}, así que el equipo que se ve son solo las excepciones declaradas y los planes ya
-          guardados.{team.data.glpi.detail ? ` ${team.data.glpi.detail}` : ''}
+            : ''}, así que el padrón trae solo las excepciones declaradas —y la tabla, además, solo
+          enseña las que sean del equipo operativo y los planes ya guardados.
+          {team.data.glpi.detail ? ` ${team.data.glpi.detail}` : ''}
         </p>
       )}
 
@@ -206,6 +266,25 @@ export function Resources() {
           {team.data.unusedExceptions.length === 1 ? 'excepción' : 'excepciones'} que GLPI ya entrega y
           que por tanto no se aplican:{' '}
           <span className="font-mono">{team.data.unusedExceptions.join(', ')}</span>.
+        </p>
+      )}
+
+      {/*
+        La pertenencia al equipo operativo se escribe a mano, y un login mal escrito no hace nada: saca
+        de la vista por defecto a quien se queria incluir y no lo dice. Este aviso es lo unico que lo
+        delata, y por eso se publica aunque el brief no lo pidiera.
+      */}
+      {team.data && team.data.unusedOperational.length > 0 && (
+        <p
+          data-slot="team-unused-operational"
+          className="text-xs text-muted-foreground"
+        >
+          Hay {team.data.unusedOperational.length}{' '}
+          {team.data.unusedOperational.length === 1
+            ? 'marca de equipo operativo que no corresponde a nadie'
+            : 'marcas de equipo operativo que no corresponden a nadie'}{' '}
+          del padrón y que por tanto no hacen nada:{' '}
+          <span className="font-mono">{team.data.unusedOperational.join(', ')}</span>.
         </p>
       )}
 
@@ -252,20 +331,63 @@ export function Resources() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Personas
-              </CardTitle>
-              <CardDescription>
-                Todo el equipo, tenga plan o no. Ordena por cualquier columna: la cabecera es un botón
-                y el orden de partida es el que entregó el backend, por identificador. Ordenar mueve
-                filas; no recalcula ninguna cifra. Quien no tiene plan vigente aparece con su columna
-                de capacidad en «sin plan», y quien está en el equipo por una excepción declarada o
-                solo por su plan lo dice en su nombre.
-              </CardDescription>
+              {/*
+                El conmutador vive en la cabecera y no junto a la tabla porque tiene que seguir siendo
+                alcanzable cuando el filtro deja la tabla sin filas: en el estado «nadie es del equipo
+                operativo» es la unica salida que hay en la pantalla.
+              */}
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1.5">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Personas
+                  </CardTitle>
+                  <CardDescription>
+                    Todo el equipo, tenga plan o no. Ordena por cualquier columna: la cabecera es un
+                    botón y el orden de partida es el que entregó el backend, por identificador. Ordenar
+                    mueve filas; no recalcula ninguna cifra. Quien no tiene plan vigente aparece con su
+                    columna de capacidad en «sin plan», y quien está en el equipo por una excepción
+                    declarada o solo por su plan lo dice en su nombre.
+                    <br />
+                    El conmutador decide qué se enseña, no qué se pregunta: el padrón se lee entero y
+                    cambiar de modo no vuelve a consultar nada. Quien no es del equipo operativo lo dice
+                    en su nombre, y sale del equipo operativo quien no esté declarado en la
+                    configuración del backend.
+                  </CardDescription>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2" data-slot="team-mode-switch">
+                  <Button
+                    variant={mode === 'operativo' ? 'secondary' : 'outline'}
+                    size="sm"
+                    aria-pressed={mode === 'operativo'}
+                    onClick={() => setMode('operativo')}
+                  >
+                    Solo equipo operativo
+                  </Button>
+
+                  <Button
+                    variant={mode === 'todos' ? 'secondary' : 'outline'}
+                    size="sm"
+                    aria-pressed={mode === 'todos'}
+                    onClick={() => setMode('todos')}
+                  >
+                    Mostrar todos
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
 
             <CardContent className="space-y-3">
-              <TeamTable members={members} />
+              {/*
+                El estado vacio se decide con el padron **sin filtrar**: que no quede ninguna fila que
+                enseñar es otra cosa —el padron tiene gente y ninguna es operativa— y decirla con la
+                frase de «no hay equipo» mandaria a buscar el problema en GLPI.
+              */}
+              {shown.length === 0 ? (
+                <EmptyOperationalTeam total={members.length} />
+              ) : (
+                <TeamTable members={shown} />
+              )}
 
               {/*
                 El fallo de las renegociaciones se declara donde se ve su efecto —la columna que se
@@ -292,9 +414,10 @@ export function Resources() {
           </CardTitle>
           <CardDescription>
             Las condiciones que hoy se cumplen, tal como las publica el backend. Las dos de capacidad
-            y la de desplazamientos se desglosan por persona en la tabla de arriba: sus contadores son
-            exactamente las filas que las producen. Las de declaración se evalúan sobre lo declarado y
-            no sobre un plan, así que son del conjunto y no se reparten por persona.
+            y la de desplazamientos se desglosan por persona en la tabla de arriba: sus contadores
+            cuentan sobre el equipo entero, no sobre lo que la tabla esté enseñando, así que el
+            conmutador no los cambia. Las de declaración se evalúan sobre lo declarado y no sobre un
+            plan, así que son del conjunto y no se reparten por persona.
           </CardDescription>
         </CardHeader>
 

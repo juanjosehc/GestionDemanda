@@ -23,26 +23,33 @@ import java.util.List;
  * solo afecta a una de las dos fuentes. Lo que no se hace en ningun caso es omitir el fallo: quien lea
  * la respuesta tiene que poder distinguir «el grupo tiene estas personas» de «no se pudo preguntar».
  *
- * @param generatedAt      cuando se armo el catalogo. Es lo unico que depende del reloj.
- * @param source           de donde sale cada mitad del padron, declarado dentro del propio payload.
- * @param glpi             como fue la lectura del grupo: si respondio, cual se leyo y que dijo si no.
- * @param people           las personas del equipo, ordenadas por identificador.
- * @param unusedExceptions logins declarados como excepcion que ya vinieron de GLPI. Van en la respuesta
- *                         para que se puedan ver: una excepcion que no hace nada es una decision de
- *                         alguien que quedo sin efecto, y callarla deja el padron con una entrada
- *                         muerta que solo se descubre el dia que alguien la lee y no entiende para que
- *                         esta.
+ * @param generatedAt       cuando se armo el catalogo. Es lo unico que depende del reloj.
+ * @param source            de donde sale cada mitad del padron, declarado dentro del propio payload.
+ * @param glpi              como fue la lectura del grupo: si respondio, cual se leyo y que dijo si no.
+ * @param people            las personas del equipo, ordenadas por identificador.
+ * @param unusedExceptions  logins declarados como excepcion que ya vinieron de GLPI. Van en la respuesta
+ *                          para que se puedan ver: una excepcion que no hace nada es una decision de
+ *                          alguien que quedo sin efecto, y callarla deja el padron con una entrada
+ *                          muerta que solo se descubre el dia que alguien la lee y no entiende para que
+ *                          esta.
+ * @param unusedOperational logins marcados como parte del equipo operativo que no corresponden a nadie
+ *                          del padron. Van por el mismo motivo que los anteriores y por uno propio: la
+ *                          marca de pertenencia se escribe a mano y **no se aplica sola**, asi que una
+ *                          errata no cambiaria nada visible —la persona seguiria fuera y nadie sabria
+ *                          por que—. Publicarla es lo unico que convierte ese silencio en un aviso.
  */
 public record TeamCatalogResponse(
         Instant generatedAt,
         Source source,
         Glpi glpi,
         List<Person> people,
-        List<String> unusedExceptions) {
+        List<String> unusedExceptions,
+        List<String> unusedOperational) {
 
     public TeamCatalogResponse {
         people = people == null ? List.of() : List.copyOf(people);
         unusedExceptions = unusedExceptions == null ? List.of() : List.copyOf(unusedExceptions);
+        unusedOperational = unusedOperational == null ? List.of() : List.copyOf(unusedOperational);
     }
 
     /**
@@ -91,18 +98,28 @@ public record TeamCatalogResponse(
      * porque hace falta para dos cosas concretas —pedir sus tickets, que solo se buscan por numero, y
      * enlazar un plan que se calculo tecleando el numero en vez del login— y para nada mas.
      *
+     * <p><strong>La pertenencia al equipo operativo viaja en la persona y no en una lista aparte.</strong>
+     * {@code operational} es una marca sobre una fila que ya existe, no un catalogo paralelo: el padron
+     * lo sigue publicando GLPI entero —nadie desaparece de aqui porque no sea operativo— y esta bandera
+     * es lo unico que decide quien se enseña por defecto. Va en la persona porque es un dato de la
+     * persona, y una lista de logins aparte obligaria a la pantalla a cruzar dos estructuras para
+     * responder una pregunta que se hace fila a fila.
+     *
      * @param developerId el login con el que el sistema nombra a esta persona
      * @param glpiId      su identificador numerico en GLPI, o {@code null} si no tiene cuenta
      * @param name        su nombre legible, o {@code null} si GLPI no publica ninguno utilizable
      * @param active      si su cuenta esta vigente
      * @param sourceType  de donde salio esta fila: {@link #GLPI} o {@link #EXCEPTION}
+     * @param operational si forma parte del equipo operativo, segun {@code team.operational} de la
+     *                    configuracion. Se decide por su login, que es como esta indexada la marca.
      */
     public record Person(
             String developerId,
             Integer glpiId,
             String name,
             boolean active,
-            String sourceType) {
+            String sourceType,
+            boolean operational) {
 
         /** La persona vino del grupo de GLPI, que es la fuente principal. */
         public static final String GLPI = "GLPI";

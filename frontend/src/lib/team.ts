@@ -41,6 +41,14 @@ export interface TeamMember {
   /** Si el padrón la da por vigente. */
   active: boolean
   sourceType: TeamMemberSource
+  /**
+   * Si forma parte del equipo operativo.
+   *
+   * Viene del padrón, que es quien lo sabe. Una fila `PLAN` —alguien a quien solo se conoce por su plan—
+   * llega con `true`: no está en el padrón, así que nadie la ha declarado fuera, y su plan guardado no
+   * puede desaparecer de la pantalla por un filtro. Ver {@link inOperationalTeam}.
+   */
+  operational: boolean
   /** Su plan vigente, o nulo si hoy no tiene ninguno. */
   plan: DeveloperPlanningMetrics | null
   /** Tickets que GLPI tiene asignados, o nulo si esa lectura no se pidió o no respondió. */
@@ -64,10 +72,39 @@ export function personName(member: TeamMember): string {
  *
  * El sistema la nombra por su login, pero un plan se guarda con **lo que se tecleó al pedirlo**, y eso
  * puede haber sido su número de GLPI. Cruzar por las dos es lo que evita que una misma persona aparezca
- * dos veces —una fila por clave— o que se quede sin sus tickets por haberlos pedido con la otra.
+ * dos veces —una fila por clave— o que se quede sin su plan por haberlo pedido con la otra.
  */
 function keysOf(person: TeamPerson): string[] {
   return person.glpiId === null ? [person.developerId] : [person.developerId, String(person.glpiId)]
+}
+
+/**
+ * Por quiénes hay que preguntar la declaración de tickets.
+ *
+ * **Son todas las personas del padrón, no solo las que tienen plan.** La columna de tickets es una
+ * columna del equipo: quien está en la tabla tiene derecho a que se le pregunte, tenga plan o no. Antes
+ * se preguntaba solo por los planes vigentes, así que treinta y nueve de cuarenta y una personas salían
+ * con «Sin dato» en una lectura que nunca se intentó —el defecto que esta fase corrige—.
+ *
+ * Se pide por el login, que es como el sistema nombra a la persona y como la resuelve ahora el backend.
+ * Un plan guardado con una clave que no es el login de nadie —hoy los hay pedidos por número— se sigue
+ * pidiendo, porque su fila también está en la tabla; lo que no se repite es la lectura de alguien a
+ * quien ya se le pidió por su login, que daría el mismo dato dos veces.
+ *
+ * El orden importa y es el de esta lista: `useQueries` empareja respuestas por posición.
+ */
+export function declarationKeysFor(
+  people: readonly TeamPerson[],
+  byDeveloper: readonly DeveloperPlanningMetrics[],
+): string[] {
+  const covered = new Set(people.flatMap(keysOf))
+
+  return [
+    ...people.map((person) => person.developerId),
+    ...byDeveloper
+      .map((developer) => developer.developerId)
+      .filter((developerId) => !covered.has(developerId)),
+  ]
 }
 
 /**
@@ -81,8 +118,7 @@ function keysOf(person: TeamPerson): string[] {
  * mapa, y quien la lea la verá como «sin dato». Meterla con ceros afirmaría que no tiene tickets.
  *
  * **El nombre no se toma de aquí.** Lo publica el padrón, que es la lectura del equipo entero y
- * responde por todas las personas; la declaración solo se pide por los tickets, y solo por quienes
- * tienen plan vigente.
+ * responde por todas las personas; la declaración solo se pide por los tickets.
  */
 export function knownTickets(
   developerIds: readonly string[],
@@ -131,9 +167,16 @@ function countPending(renegotiations: readonly RenegotiationItem[] | null): Reco
  * `PLAN`, que es exactamente lo que son —alguien a quien solo se conoce por su plan—, y quedan al
  * final para que no se confundan con el equipo que GLPI sí publica.
  *
+ * **Los tickets se buscan por el identificador de la persona, no por la clave de su plan.** Es lo que
+ * cambió: antes se buscaban por la clave del plan porque solo se preguntaba por quien tenía uno, y eso
+ * ataba una lectura del equipo —la columna de tickets— a que hubiera un plan. Ahora la declaración se
+ * pide por la persona, y su login es la clave con la que se pidió.
+ *
  * Las pendientes se cuentan aquí sobre la lista entera, que es **una sola respuesta** con el
  * `developerId` en cada fila: agrupar es leer un campo que ya viaja, no pedir una lista por técnico
- * ni volver a decidir qué significa «pendiente» —eso lo decidió el backend y viaja en `status`—.
+ * ni volver a decidir qué significa «pendiente» —eso lo decidió el backend y viaja en `status`—. Las
+ * renegociaciones sí se siguen buscando por la clave del plan: el backend las publica con el
+ * identificador con el que se guardó el plan, no con el login de la persona.
  *
  * La lista en nulo significa que no se pudo leer, y entonces el pendiente de todos queda sin dato.
  * Una lista vacía es otra cosa: significa que no hay ninguna renegociación abierta.
@@ -165,20 +208,17 @@ export function toTeamMembers(
       claimed.add(plan.developerId)
     }
 
-    // Los tickets y las renegociaciones se pidieron y se guardaron con **la clave del plan**, no con el
-    // login: preguntarlos por el login de alguien cuyo plan se pidió por su número daría «sin dato» en
-    // una lectura que sí respondió. Sin plan no se preguntó nada, y la clave propia da lo mismo.
-    const key = plan?.developerId ?? person.developerId
-
     return {
       developerId: person.developerId,
       glpiId: person.glpiId,
       name: person.name,
       active: person.active,
       sourceType: person.sourceType,
+      operational: person.operational,
       plan,
-      tickets: known[key] ?? null,
-      pendingRenegotiations: renegotiations === null ? null : (pending[key] ?? 0),
+      tickets: known[person.developerId] ?? null,
+      pendingRenegotiations:
+        renegotiations === null ? null : (pending[plan?.developerId ?? person.developerId] ?? 0),
     }
   })
 
@@ -191,12 +231,32 @@ export function toTeamMembers(
       // El padrón no dijo nada de esta persona; no hay nada que marcar como retirado.
       active: true,
       sourceType: 'PLAN' as const,
+      // Tampoco dijo que estuviera fuera: nadie la ha declarado fuera del equipo operativo, y su plan
+      // guardado no puede desaparecer de la pantalla por un filtro.
+      operational: true,
       plan: developer,
-      tickets: null,
+      // Su fila también tiene columna de tickets, así que también se preguntó por ella.
+      tickets: known[developer.developerId] ?? null,
       pendingRenegotiations: renegotiations === null ? null : (pending[developer.developerId] ?? 0),
     }))
 
   return [...fromCatalog, ...fromPlanOnly]
+}
+
+/**
+ * Si esta fila entra en el equipo operativo: lo que enseña la vista por defecto.
+ *
+ * **Una fila `PLAN` siempre entra**, y no es un descarte. Esa fila no está en el padrón —solo se la
+ * conoce por un plan guardado—, así que nadie la ha declarado fuera del equipo operativo, y esconderla
+ * por un filtro contradiría la razón por la que existe: un plan guardado no puede desaparecer de la
+ * pantalla. La pertenencia del padrón decide sobre las personas del padrón, y a esta no la alcanza.
+ *
+ * Vive aquí y no en la página porque la usan dos sitios —el filtro y la insignia que marca a quien está
+ * fuera— y con dos copias la marca y el filtro podrían discrepar, que es la única forma de que esta
+ * pantalla se contradiga a sí misma.
+ */
+export function inOperationalTeam(member: TeamMember): boolean {
+  return member.sourceType === 'PLAN' || member.operational
 }
 
 /** Columnas por las que se puede ordenar la tabla del equipo. */

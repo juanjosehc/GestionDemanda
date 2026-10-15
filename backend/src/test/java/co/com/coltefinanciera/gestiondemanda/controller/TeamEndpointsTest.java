@@ -35,6 +35,14 @@ import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiUser;
  *
  * <p>Las excepciones se declaran por propiedad y no en {@code application-test.properties} para que se
  * lean en la propia prueba: lo que se afirma depende de quien esta declarado.
+ *
+ * <p><strong>Lo que esta prueba no puede afirmar, y por que.</strong> El perfil de pruebas no sustituye
+ * a {@code application.properties}: lo complementa, asi que las dieciocho marcas de equipo operativo de
+ * produccion se cargan tambien aqui, y {@code unusedOperational} llega lleno de logins que no existen en
+ * el grupo falseado. Afirmar que esa lista esta vacia seria afirmar algo sobre la configuracion de
+ * produccion desde una prueba. Por eso lo que se afirma es **la bandera de una persona concreta**, que
+ * se controla declarando su marca aqui, y el caso de la marca sin destinatario se prueba en
+ * {@code TeamCatalogServiceTest}, que construye la configuracion a mano y no hereda nada.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -43,6 +51,11 @@ import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiUser;
         "team.exceptions[NicoSuar].name=Nicolas Alejandro Suarez Flores",
         "team.exceptions[NicoSuar].glpi-id=1071",
         "team.exceptions[AnaPerez].name=Ana Perez, declarada por error",
+        // La pertenencia se declara aqui por el mismo motivo que las excepciones, y ademas porque el
+        // perfil de pruebas no sustituye a la configuracion de produccion: sin estas dos lineas, los dos
+        // valores vendrian de alli y la prueba afirmaria lo que diga el fichero de produccion.
+        "team.operational[AnaPerez]=true",
+        "team.operational[NicoSuar]=false",
 })
 class TeamEndpointsTest {
 
@@ -75,12 +88,21 @@ class TeamEndpointsTest {
                 .andExpect(jsonPath("$.people[0].name").value("Ana Perez"))
                 .andExpect(jsonPath("$.people[0].active").value(true))
                 .andExpect(jsonPath("$.people[0].sourceType").value("GLPI"))
+                // La pertenencia viaja con la persona, y las dos filas siguen aqui: marcar no recorta.
+                .andExpect(jsonPath("$.people[0].operational").value(true))
                 .andExpect(jsonPath("$.people[1].developerId").value("NicoSuar"))
                 .andExpect(jsonPath("$.people[1].glpiId").value(1071))
                 .andExpect(jsonPath("$.people[1].name").value("Nicolas Alejandro Suarez Flores"))
                 .andExpect(jsonPath("$.people[1].sourceType").value("EXCEPTION"))
+                // El «false» de la configuracion se lee como lo que es: fuera del equipo operativo, y en
+                // el padron igual. Es lo que distingue una decision escrita de un olvido.
+                .andExpect(jsonPath("$.people[1].operational").value(false))
                 // La excepcion de Ana no se aplico —GLPI la entrega— y el padron lo dice.
-                .andExpect(jsonPath("$.unusedExceptions", contains("AnaPerez")));
+                .andExpect(jsonPath("$.unusedExceptions", contains("AnaPerez")))
+                // El campo viaja siempre; aqui llega lleno porque el perfil de pruebas no sustituye a
+                // la configuracion de produccion (ver el javadoc de la clase). Lo que se afirma es su
+                // forma, no su contenido: afirmar el contenido seria afirmar el fichero de produccion.
+                .andExpect(jsonPath("$.unusedOperational").isArray());
     }
 
     @Test
@@ -95,6 +117,10 @@ class TeamEndpointsTest {
                 .andExpect(jsonPath("$.glpi.detail").value("Connection refused"))
                 .andExpect(jsonPath("$.people", hasSize(2)))
                 .andExpect(jsonPath("$.people[*].sourceType", contains("EXCEPTION", "EXCEPTION")))
+                // La pertenencia no depende de que GLPI responda: es una decision escrita, no una
+                // lectura, y sobrevive a que el grupo no se pueda leer.
+                .andExpect(jsonPath("$.people[0].operational").value(true))
+                .andExpect(jsonPath("$.people[1].operational").value(false))
                 .andExpect(jsonPath("$.unusedExceptions", empty()));
     }
 

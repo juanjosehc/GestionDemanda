@@ -786,6 +786,10 @@ export function teamCatalogFixture(
         name: 'Ana Perez',
         active: true,
         sourceType: 'GLPI',
+        // Las tres son del equipo operativo: es el estado normal de la vista por defecto, y un fixture
+        // con alguien fuera dejaria la tabla a medias en todas las pruebas que ya existen. Las que
+        // necesitan a alguien fuera lo piden por `overrides` en vez de darlo por supuesto.
+        operational: true,
       },
       {
         developerId: FULL_DEVELOPER_ID,
@@ -793,6 +797,7 @@ export function teamCatalogFixture(
         name: 'Carlos Ruiz',
         active: true,
         sourceType: 'GLPI',
+        operational: true,
       },
       {
         developerId: OVER_DEVELOPER_ID,
@@ -800,9 +805,11 @@ export function teamCatalogFixture(
         name: 'Diana Lopez',
         active: true,
         sourceType: 'GLPI',
+        operational: true,
       },
     ],
     unusedExceptions: [],
+    unusedOperational: [],
     ...overrides,
   }
 }

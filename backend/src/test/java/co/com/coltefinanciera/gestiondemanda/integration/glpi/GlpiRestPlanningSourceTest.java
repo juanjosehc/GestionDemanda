@@ -117,7 +117,7 @@ class GlpiRestPlanningSourceTest {
                 .thenReturn(Mono.error(new GlpiItemNotFoundException(
                         "GLPI respondio HTTP 400: [\"ERROR_ITEM_NOT_FOUND\"]")));
 
-        assertThat(source.findUser("nadie")).isEmpty();
+        assertThat(source.findUser("999")).isEmpty();
         verify(glpiClient).killSession(SESSION);
     }
 
@@ -126,9 +126,111 @@ class GlpiRestPlanningSourceTest {
     void unUsuarioExistenteSeDevuelve() {
         sessionOpens();
         GlpiUser user = new GlpiUser(7, "jdoe", "Doe", "Jane");
-        when(glpiClient.get("/User/jdoe", SESSION, GlpiUser.class)).thenReturn(Mono.just(user));
+        when(glpiClient.get("/User/7", SESSION, GlpiUser.class)).thenReturn(Mono.just(user));
 
-        assertThat(source.findUser("jdoe")).contains(user);
+        assertThat(source.findUser("7")).contains(user);
+    }
+
+    // --- El login: la traduccion que el sistema necesita y GLPI no tiene ------------------------
+
+    /**
+     * El login resuelto contra la instancia.
+     *
+     * <p>Estas pruebas existen porque el catalogo publica logins y el plan se pide por ellos, mientras
+     * que GLPI solo sabe buscar un tecnico por numero: {@code /User/{login}} no da un 404, contesta 206
+     * con la coleccion entera de usuarios. Sin esta traduccion, la cadena persona → login → glpiId →
+     * tickets se corta en el segundo paso y lo que se ve es «sin dato», que es lo que la fase corrige.
+     */
+
+    /** Una fila de {@code /search/User} con la forma real: claves por numero de opcion. */
+    private static Map<String, Object> userRow(int id, String login, String realname, String firstname,
+            int active) {
+        Map<String, Object> row = new HashMap<>();
+        row.put("1", login);
+        row.put("2", id);
+        row.put("8", active);
+        row.put("9", firstname);
+        row.put("34", realname);
+        return row;
+    }
+
+    @Test
+    @DisplayName("Un login se resuelve por la busqueda de usuarios, no por la ruta del elemento")
+    void unLoginSeResuelvePorLaBusqueda() {
+        sessionOpens();
+        searchReturns(new GlpiSearchPage(1, List.of(userRow(1179, "AbraAran", "Arana Aldana", "Abraham", 1))));
+
+        assertThat(source.findUser("AbraAran"))
+                .map(GlpiUser::id)
+                .contains(1179);
+
+        // La ruta del elemento no se pide para un login: es la que contesta la coleccion entera.
+        verify(glpiClient, never()).get(anyString(), anyString(), eq(GlpiUser.class));
+
+        String path = searchedPath();
+        assertThat(path)
+                .startsWith("/search/User")
+                .contains("criteria[0][field]=1")
+                .contains("criteria[0][value]=AbraAran")
+                // Medido: con `equals` sobre la opcion 1 la instancia devuelve cero filas para un login
+                // que existe, asi que la igualdad se comprueba con las filas delante.
+                .contains("criteria[0][searchtype]=contains");
+    }
+
+    @Test
+    @DisplayName("De lo que la contenencia traiga de mas solo vale el login exacto")
+    void soloValeElLoginExacto() {
+        // «jose» trae a JoseDiaz y a JosePerez; el segundo no es el usuario que se pidio.
+        sessionOpens();
+        searchReturns(new GlpiSearchPage(2, List.of(
+                userRow(31, "JosePerez", "Perez", "Jose", 1),
+                userRow(296, "JoseDiaz", "Diaz Urrego", "Jose Alejandro", 1))));
+
+        assertThat(source.findUser("JoseDiaz"))
+                .map(GlpiUser::id)
+                .contains(296);
+        assertThat(source.findUser("JoseDiaz"))
+                .map(GlpiUser::name)
+                .contains("JoseDiaz");
+    }
+
+    @Test
+    @DisplayName("Un login que no coincide con ninguna fila es vacio, no la primera que aparezca")
+    void sinCoincidenciaExactaEsVacio() {
+        sessionOpens();
+        searchReturns(new GlpiSearchPage(2, List.of(
+                userRow(31, "JosePerez", "Perez", "Jose", 1),
+                userRow(296, "JoseDiaz", "Diaz Urrego", "Jose Alejandro", 1))));
+
+        assertThat(source.findUser("JoseQuintero")).isEmpty();
+        verify(glpiClient).killSession(SESSION);
+    }
+
+    @Test
+    @DisplayName("El login se compara sin distinguir mayusculas, porque GLPI no las distingue")
+    void elLoginSeComparaSinMayusculas() {
+        sessionOpens();
+        searchReturns(new GlpiSearchPage(1, List.of(userRow(36, "AnalRuiz", "Ruiz", "Analy", 1))));
+
+        assertThat(source.findUser("analruiz")).map(GlpiUser::id).contains(36);
+    }
+
+    @Test
+    @DisplayName("Un identificador vacio no llega a abrir sesion")
+    void unIdentificadorVacioNoBusca() {
+        assertThat(source.findUser("   ")).isEmpty();
+        verifyNoInteractions(glpiClient);
+    }
+
+    @Test
+    @DisplayName("El numero no pasa por la busqueda: la traduccion solo va en un sentido")
+    void elNumeroNoPasaPorLaBusqueda() {
+        sessionOpens();
+        when(glpiClient.get("/User/296", SESSION, GlpiUser.class))
+                .thenReturn(Mono.just(new GlpiUser(296, "JoseDiaz", "Diaz Urrego", "Jose Alejandro")));
+
+        assertThat(source.findUser("296")).map(GlpiUser::id).contains(296);
+        verify(glpiClient, never()).get(anyString(), anyString(), eq(GlpiSearchPage.class));
     }
 
     @Test
@@ -249,7 +351,7 @@ class GlpiRestPlanningSourceTest {
         when(glpiClient.get(anyString(), eq(SESSION), eq(GlpiUser.class)))
                 .thenReturn(Mono.error(new GlpiAuthenticationException("HTTP 403")));
 
-        assertThatThrownBy(() -> source.findUser("jdoe"))
+        assertThatThrownBy(() -> source.findUser("7"))
                 .isInstanceOf(GlpiAuthenticationException.class);
         verify(glpiClient).killSession(SESSION);
     }
@@ -298,7 +400,7 @@ class GlpiRestPlanningSourceTest {
         when(glpiClient.killSession(SESSION)).thenReturn(
                 Mono.error(new GlpiConnectionException("no se pudo cerrar")));
 
-        assertThat(source.findUser("jdoe")).isPresent();
+        assertThat(source.findUser("7")).isPresent();
     }
 
     @Test
@@ -310,5 +412,131 @@ class GlpiRestPlanningSourceTest {
         assertThatThrownBy(() -> source.ticketsOf("13"))
                 .isInstanceOf(GlpiAuthenticationException.class);
         verify(glpiClient, never()).get(anyString(), anyString(), eq(GlpiSearchPage.class));
+    }
+
+    // --- Los tickets activos: el estado va en la busqueda ------------------------------------
+
+    /**
+     * El filtro de activos, que es lo que separa «su historico» de «su carga».
+     *
+     * <p>Estas pruebas miran la ruta que se le pide a GLPI y no solo lo que vuelve, porque ahi esta la
+     * decision: lo que se devuelve es lo que GLPI dijo, y si el criterio estuviera mal el adaptador no
+     * tendria como notarlo —una busqueda que filtra mal no falla, contesta otra cosa—.
+     */
+
+    @Test
+    @DisplayName("Los activos se piden por estado, como un grupo con OR por dentro, y no se descartan despues")
+    void losActivosSePidenPorEstado() {
+        sessionOpens();
+        searchReturns(new GlpiSearchPage(0, List.of()));
+
+        source.activeTicketsOf("13");
+
+        String path = searchedPath();
+        assertThat(path)
+                .startsWith("/search/Ticket")
+                // Los cuatro estados que siguen siendo carga, dentro de un mismo criterio: agrupados, no
+                // sueltos. Sueltos se leeria «tecnico AND estado1 OR estado2 OR ...» y a partir del
+                // segundo estado entrarian los tickets activos de cualquier otro tecnico.
+                .contains("criteria[0][criteria][0][field]=12", "criteria[0][criteria][0][value]=1")
+                .contains("criteria[0][criteria][1][link]=OR", "criteria[0][criteria][1][value]=2")
+                .contains("criteria[0][criteria][2][value]=3")
+                .contains("criteria[0][criteria][3][value]=4")
+                // Y el grupo es una condicion mas del tecnico, no una alternativa.
+                .contains("criteria[0][link]=AND")
+                .contains("criteria[1][field]=5", "criteria[1][searchtype]=equals",
+                        "criteria[1][value]=13");
+    }
+
+    @Test
+    @DisplayName("El filtro de activos no pide lo resuelto ni lo cerrado, ni usa los operadores que mienten")
+    void elFiltroDeActivosNoPideLoResueltoNiLoCerrado() {
+        sessionOpens();
+        searchReturns(new GlpiSearchPage(0, List.of()));
+
+        source.activeTicketsOf("13");
+
+        // Medido contra la instancia: `notequals 5` devuelve 237, que es el recuento de `equals 5`, y
+        // `lessthan 5` devuelve lo mismo. Los dos operadores se comportan como una igualdad, asi que
+        // excluir por negacion contaba cero tickets activos para un tecnico que tenia dieciseis.
+        assertThat(searchedPath())
+                .doesNotContain("notequals", "lessthan")
+                .doesNotContain("[value]=5", "[value]=6");
+    }
+
+    @Test
+    @DisplayName("El caso medido: un tecnico con mil doscientos sesenta y seis tickets y todos cerrados")
+    void unTecnicoConTodoCerradoNoTieneActivos() {
+        // El 296 de la instancia real: 1266 tickets asignados, los 1266 en estado 6. `ticketsOf` los
+        // devuelve todos —es el historico, y el plan lo necesita para poder decir por que descarta— y
+        // `activeTicketsOf` no devuelve ninguno, porque la busqueda no llega a pedirlos.
+        sessionOpens();
+        searchReturns(new GlpiSearchPage(0, null));
+
+        assertThat(source.activeTicketsOf("296")).isEmpty();
+        assertThat(searchedPath())
+                .contains("criteria[0][criteria][0][value]=1", "criteria[0][criteria][3][value]=4")
+                .contains("criteria[1][value]=296");
+        verify(glpiClient).killSession(SESSION);
+    }
+
+    @Test
+    @DisplayName("Los activos de mas de una pagina se recorren enteros")
+    void losActivosTambienSeRecorrenPorPaginas() {
+        sessionOpens();
+        searchReturns(
+                new GlpiSearchPage(3, List.of(row(1), row(2))),
+                new GlpiSearchPage(3, List.of(row(3))));
+
+        assertThat(source.activeTicketsOf("13")).extracting(GlpiTicket::id).containsExactly(1, 2, 3);
+
+        ArgumentCaptor<String> paths = ArgumentCaptor.forClass(String.class);
+        verify(glpiClient, times(2)).get(paths.capture(), eq(SESSION), eq(GlpiSearchPage.class));
+        assertThat(paths.getAllValues().get(0)).contains("range=0-999");
+        assertThat(paths.getAllValues().get(1)).contains("range=1000-1999");
+    }
+
+    @Test
+    @DisplayName("Sin activos no hay fallo: una lista vacia es la respuesta")
+    void sinActivosEsUnaListaVacia() {
+        sessionOpens();
+        searchReturns(new GlpiSearchPage(0, List.of()));
+
+        assertThat(source.activeTicketsOf("13")).isEmpty();
+        verify(glpiClient).killSession(SESSION);
+    }
+
+    @Test
+    @DisplayName("Lo que no esta activo no se cuenta aunque la busqueda lo devuelva")
+    void losQueNoEstanActivosNoCuentanAunqueVengan() {
+        // El criterio de estado ya los excluye, asi que esto no deberia ocurrir; se prueba porque en
+        // esta instancia un operador de busqueda contesto al reves sin fallar, y una lista mixta —unos
+        // activos y otros no— es exactamente la forma que tendria ese fallo si volviera por aqui.
+        sessionOpens();
+        searchReturns(new GlpiSearchPage(3, List.of(
+                row(1, "Falla en produccion", 1, GlpiTicket.TYPE_INCIDENT, "2026-10-05 09:00:00"),
+                row(2, "Solucionado", 5, GlpiTicket.TYPE_INCIDENT, "2026-10-05 09:00:00"),
+                row(3, "Eliminacion de usuario", 6, GlpiTicket.TYPE_REQUEST, "2026-10-05 09:00:00"))));
+
+        assertThat(source.activeTicketsOf("13")).extracting(GlpiTicket::id).containsExactly(1);
+    }
+
+    @Test
+    @DisplayName("Un tecnico con todo solucionado no tiene carga, y no es lo mismo que todo cerrado")
+    void unTecnicoConSoloResueltosNoTieneActivos() {
+        sessionOpens();
+        searchReturns(new GlpiSearchPage(2, List.of(
+                row(1, "Solucionado", 5, GlpiTicket.TYPE_INCIDENT, "2026-10-05 09:00:00"),
+                row(2, "Solucionado", 5, GlpiTicket.TYPE_REQUEST, "2026-10-05 09:00:00"))));
+
+        assertThat(source.activeTicketsOf("13")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Un identificador no numerico tampoco busca activos")
+    void unIdentificadorNoNumericoNoBuscaActivos() {
+        assertThat(source.activeTicketsOf("jdoe")).isEmpty();
+
+        verifyNoInteractions(glpiClient);
     }
 }
