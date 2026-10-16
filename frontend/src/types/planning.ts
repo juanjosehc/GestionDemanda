@@ -1,5 +1,6 @@
 /**
- * Lo que esta pantalla lee de `POST /api/planning/from-glpi`, y nada mas.
+ * Lo que las pantallas de planificacion leen del plan: el que se acaba de generar y el que ya estaba
+ * guardado.
  *
  * **El contrato entero no se copia aqui.** `plan` es la simulacion completa —asignaciones, bloques,
  * desplazamientos, eventos, conflictos, politicas de incidencia, calendario y vencimientos—, y de todo
@@ -8,8 +9,16 @@
  * tiene dueño, que es `types/timeline` y el tablero, y cada uno declara la parte que consume.
  *
  * Lo que si se declara con nombre propio es lo que se afirma en voz alta: el plan, su fecha y sus
- * descartes.
+ * descartes —y, para un plan guardado, su sello, sus conflictos, sus desplazamientos y la foto de la
+ * entrada.
+ *
+ * **Dos formas se reutilizan en vez de redeclararse**: la asignacion es la del timeline y el evento de
+ * reprogramacion es el de las metricas. Son literalmente la misma fila que el backend publica por dos
+ * rutas, y dos declaraciones de la misma forma acaban divergiendo.
  */
+
+import type { RescheduleEvent } from '@/types/planningMetrics'
+import type { IncidentSeverity, TimelineAllocation, WorkItemType } from '@/types/timeline'
 
 /** Respuesta de POST /api/planning/from-glpi. `201` cuando el plan se calculo y se guardo. */
 export interface PlanningFromGlpiResponse {
@@ -60,4 +69,84 @@ export interface DiscardedTicket {
   code: string
   /** El motivo que redacto el backend. Es el texto que se enseña, no el codigo. */
   reason: string
+}
+
+/** Un conflicto de capacidad: el trabajo que no cupo en el horizonte, con el motivo del motor. */
+export interface PlanConflict {
+  workItemId: string
+  workItemType: WorkItemType
+  /** La frase que redacto el motor. Se pinta tal cual: la vista no la traduce ni la reescribe. */
+  reason: string
+}
+
+/**
+ * Respuesta de `GET /api/planning/{planId}`: un plan guardado, releido.
+ *
+ * Es la lectura que el frontend nunca habia hecho, y la unica que publica **los conflictos**. El
+ * timeline no los trae, y no es un olvido: un requerimiento que no cupo no tiene tramo, asi que no
+ * tiene item de agenda.
+ *
+ * **Declara la parte que se consume, no el contrato entero.** `blocks` viaja en la respuesta y no se
+ * declara aqui: el timeline ya publica los mismos tramos enriquecidos —con su estimacion, su fecha
+ * compromiso y su estado—, y copiarlos seria una segunda forma de la misma fila.
+ */
+export interface PlanSnapshotResponse {
+  planId: string
+  developerId: string
+  /** Cuando el motor calculo el plan. Es la fecha de generacion que el resumen enseña. */
+  createdAt: string
+  /** Lo comprometido por elemento y dia. Misma forma que en el timeline: es la misma fila. */
+  allocations: readonly TimelineAllocation[]
+  /** La auditoria de cada desplazamiento, con la regla aplicada y el motivo. */
+  rescheduleEvents: readonly RescheduleEvent[]
+  /** Lo que no cupo en el horizonte, con el motivo. **Solo esta lectura lo publica.** */
+  conflicts: readonly PlanConflict[]
+}
+
+/**
+ * Respuesta de `GET /api/planning/{planId}/input`: los datos exactos que recibio el motor.
+ *
+ * Responde lo que el resultado no responde. `GET /{planId}` dice que salio; esto dice con que se
+ * entro. **No es el total que GLPI entrego**: es la foto de lo que llego al motor despues de validar,
+ * y las dos cifras son distintas (riesgo 122).
+ *
+ * Se devuelven **todos** los elementos recibidos, incluidos los que el motor descarto por estar
+ * resueltos o finalizados: la foto es de lo que entro, no de lo que se uso. Por eso es la unica
+ * lectura que permite nombrar a los excluidos.
+ *
+ * `404` en los planes anteriores a la Fase 8: no hay foto, y eso **no significa que la entrada
+ * estuviera vacia**.
+ */
+export interface PlanningInputResponse {
+  planId: string
+  developerId: string
+  incidents: readonly PlanInputIncident[]
+  requirements: readonly PlanInputRequirement[]
+  /** Quien puso la foto: `GLPI` cuando vino de la extraccion, `HTTP` en las entradas a mano. */
+  source: string
+  /** Cuando se extrajo. Nulo en las entradas HTTP: no hubo extraccion que fechar. */
+  extractedAt: string | null
+}
+
+/**
+ * Un incidente tal como entro al motor.
+ *
+ * `status` viaja como texto y se pinta tal cual, sin traducir: es el estado que el motor leyo, y es lo
+ * unico que explica por que un elemento que entro no aparece en el resultado.
+ */
+export interface PlanInputIncident {
+  id: string
+  estimatedHours: number
+  status: string
+  /** Nula en los incidentes anteriores a la priorizacion por severidad. El nulo no se disfraza. */
+  severity: IncidentSeverity | null
+}
+
+/** Un requerimiento tal como entro al motor, con la fecha en que se comprometio. */
+export interface PlanInputRequirement {
+  id: string
+  estimatedHours: number
+  /** Fecha compromiso de la foto. */
+  plannedDate: string
+  status: string
 }

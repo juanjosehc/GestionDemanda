@@ -15,7 +15,7 @@ import type { TeamViewMode } from '@/lib/incidents'
 import { entrySummary, personEntries, verdictOf } from '@/lib/planningPreview'
 import type { EntrySummary, PersonEntry } from '@/lib/planningPreview'
 import { declarationKeysFor } from '@/lib/team'
-import { Figure } from '@/pages/Planning'
+import { Figure } from '@/components/ui/figure'
 import { declarationPath, incidentsPath, planningPreviewPath } from '@/routes/navigation'
 import type { DeclarationStatus } from '@/types/declarations'
 

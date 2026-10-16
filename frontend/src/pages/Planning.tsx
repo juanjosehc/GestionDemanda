@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Figure } from '@/components/ui/figure'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePlanGeneration } from '@/hooks/usePlanGeneration'
 import { formatInstant } from '@/lib/format'
@@ -34,34 +35,6 @@ function PlanningSkeleton() {
         <Skeleton className="h-9 w-72" />
       </CardContent>
     </Card>
-  )
-}
-
-/**
- * Un número del resultado, con el rótulo encima. Se cuentan listas; no se recalcula nada.
- *
- * Se exporta porque la vista previa del estado de entrada enseña sus cifras con el mismo átomo
- * —rótulo, `data-slot` y pista—: es el mismo hecho pintado igual, no una copia.
- */
-export function Figure({
-  label,
-  value,
-  slot,
-  hint,
-}: {
-  label: string
-  value: number | string
-  slot: string
-  hint?: string
-}) {
-  return (
-    <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd data-slot={slot} className="tabular-nums">
-        {value}
-      </dd>
-      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
-    </div>
   )
 }
 

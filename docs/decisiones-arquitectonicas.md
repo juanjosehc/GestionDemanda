@@ -5786,3 +5786,198 @@ Tres bloques nuevos: **el selector de persona** —el agrupado y su orden, que n
 **Las evidencias visuales**, en `.playwright-mcp/` —que sí está en el `.gitignore`— y en **trece copias de la raíz que quedan sin versionar**, no se commitean ni unas ni otras —el repositorio no tiene ni un PNG versionado y esta fase no cambia esa convención—: `f37-01-recursos-origen.png` y `f37-02-recursos-a-declaracion.png`; `f37-03-incidentes-origen.png` y `f37-04-incidentes-a-declaracion.png`; `f37-05-declaracion-pendiente.png` y `f37-06-declaracion-guardada.png`; `f37-07-siguiente-pendiente.png` y `f37-08-siguiente-avanza.png`; `f37-09-estado-origen.png`, `f37-10-estado-a-declaracion.png` y `f37-11-retorno-estado.png`; `f37-12-menu-directo.png` y `f37-13-selector-consulta.png`.
 
 **Y lo que esta fase no tocó, dicho explícitamente**: ni `PlanningEngine`, ni el cálculo del plan, ni los desplazamientos, ni las renegociaciones, ni el modelo de capacidad, ni una regla de negocio, ni la integración con GLPI, ni el backend —**cero ficheros del backend con diferencia**—. El diff es enteramente del frontend: **once ficheros, ninguno nuevo** —`pages/Declarations.tsx` y sus pruebas, `pages/PlanningPreview.tsx` y las suyas, `lib/declarations.ts`, `lib/incidents.ts`, `lib/planningPreview.ts`, `routes/navigation.ts`, `layouts/Header.tsx`, `components/team/TeamTable.tsx` y `test/setup.ts`, este último solo para el presupuesto de espera—.
+
+# Fase 38 — Qué ocurrió cuando se ejecutó el motor
+
+## Qué se hizo, en una frase
+
+El resultado de un plan **dejó de existir solo en la respuesta de la generación**: el calendario de un plan guardado enseña ahora, **encima de la rejilla**, qué produjo el motor —cuántos elementos recibió, cuántos ubicó, cuántos quedaron fuera y con qué motivo, y cómo quedó la capacidad— y, **debajo, una tabla de trazabilidad ticket a ticket** que dice dónde acabó cada elemento, por qué y qué exige renegociación; todo ello leído de **cuatro endpoints que ya existían** —uno de ellos publicado desde la Fase 8 y **nunca llamado hasta hoy**— y **sin tocar una sola línea del backend**.
+
+## El análisis obligatorio: qué produjo el motor, dónde está escrito, y por qué la pantalla no lo contaba
+
+### 1. Cómo se genera hoy un plan, y dónde queda
+
+`POST /api/planning/from-glpi` es el único endpoint que calcula un plan desde GLPI y **escribe**. La cadena entera —la búsqueda del técnico y de sus tickets, la fábrica de la petición, el motor y el guardado— corre en **una sola transacción**, y el motor **no consulta nada**: sus únicas dependencias son el libro de idempotencia y el reloj. **Guardar no es idempotente**: cada llamada inserta una fila nueva con su propio identificador. De ahí que el resultado de una generación sea, por definición, **un plan guardado** y no un cálculo en memoria: la respuesta del POST es un eco de lo que acaba de escribirse.
+
+### 2. Qué publica el backend sobre un plan guardado
+
+Cinco lecturas, todas con «plan no encontrado» si falta la fila. **Cuatro de ellas nunca las había llamado el frontend**; la quinta es la que el calendario ya pedía.
+
+| Endpoint | Devuelve | ¿La llamaba el frontend? |
+| --- | --- | --- |
+| `GET /{planId}` | sello, asignaciones, tramos, eventos de desplazamiento y conflictos | **No** |
+| `GET /{planId}/context` | reglas congeladas: versión del motor, umbral, horizonte, calendario y OLA por severidad | **No** |
+| `GET /{planId}/input` | la foto de la entrada: técnico, incidentes, requerimientos, origen y sello de extracción | **No** |
+| `GET /{planId}/blocks` | solo los tramos | **No** |
+| `GET /{planId}/timeline` | capacidad día a día, ítems con estado y asignaciones | **Sí** — era todo el calendario |
+
+**Las tres asimetrías que deciden el diseño de esta fase.**
+
+- **`GET /{planId}` es una lectura con pérdidas**: publica cuatro de los nueve bloques de la simulación. No trae los requerimientos desplazados —derivables de los eventos—, ni el calendario ni las políticas de incidentes —que viven en el contexto—, ni los vencimientos de incidentes, que **no se guardan**.
+- **La agenda no trae ni el sello, ni los conflictos, ni los eventos de desplazamiento.** Un requerimiento en conflicto no tiene tramo, así que **no tiene ítem de agenda**: el estado «no cupo» se descartó por inalcanzable cuando se definió el contrato de la rejilla. **Los conflictos solo existen en `GET /{planId}` y en la respuesta del POST.**
+- **Los motivos no son columnas**: tanto el motivo de un desplazamiento como el de un conflicto **los redacta el servidor en cada lectura**. Son los únicos sitios donde las frases del motor llegan a la interfaz, y por eso esta fase las pinta **tal cual**, sin traducirlas.
+
+### 3. Qué decide hoy el motor, y cuáles son los desenlaces posibles
+
+El motor tiene un solo método público y hace tres pasadas en este orden: los incidentes que **reclaman** —ordenados por severidad, fecha de reporte e identificador, y **sin límite de horizonte**—, los requerimientos planificables —por fecha planificada—, y los incidentes que **conviven** con lo que sobra.
+
+De ahí salen **siete desenlaces**, y el motor **no produce ninguno más**:
+
+| Desenlace | Dónde nace | Qué publica |
+| --- | --- | --- |
+| Ubicado en su fecha | la reclamación y la asignación | asignación y tramos; la agenda lo pinta «planificado» |
+| **Desplazado** | la asignación que termina después de la fecha comprometida | asignación, tramos y evento, con regla y motivo |
+| Desplazado **sin re-auditar** | el mismo sitio, con el par ya reclamado en el libro de idempotencia | asignación y tramos, **sin evento**: la agenda lo pinta «planificado» aunque se movió |
+| **En conflicto** | la reclamación que devuelve vacío | solo el conflicto, con su motivo: **sin asignación, sin tramo y sin ítem de agenda** |
+| Excluido — incidente ya resuelto | el propio incidente | nada; solo consta en la foto de la entrada |
+| Excluido — requerimiento no planificable | el propio requerimiento | nada; solo consta en la foto de la entrada |
+| **Renegociado** | **no es un desenlace del motor** | el motor solo **emite el evento**; el estado de renegociación lo sella el servicio sobre un DTO derivado y **nunca se persiste** |
+
+**Y una asimetría que gobierna toda la lectura: un incidente nunca entra en conflicto, nunca se desplaza y nunca se marca «desplazado».** Solo los requerimientos se nombran en los eventos. Un incidente se coloca siempre; si no cupiera, no habría dónde escribirlo.
+
+### 4. Qué representaba exactamente el Calendario antes de esta fase
+
+El calendario de un plan era **una sola lectura** —la agenda—, una rejilla de CSS Grid sin dependencias, de solo lectura, con una fila por recurso, una columna por día, una barra de capacidad por día y los tramos con su estado y su severidad. **No recalculaba nada**: leía los tramos guardados y sumaba. Lo que no hacía:
+
+- **Ni una cifra de conjunto.** Ni capacidad usada, ni libre, ni cuántos días quedaron saturados: solo la tira por día.
+- **Las asignaciones se pedían y se tiraban.** El tipo estaba declarado desde la Fase 16 y **ningún componente lo consumía**, así que no se podía saber si los tramos de un requerimiento sumaban su estimación.
+- **Un día no laborable y un día laborable sin trabajo se pintaban igual.** El eje se deriva de los tramos observados, no del calendario congelado. Pero **el dato ya estaba delante**: la capacidad disponible es **cero exactamente en los días no laborables**, porque el backend la calcula con el horario del calendario congelado.
+- **La barra de capacidad no tenía leyenda**, y su rojo no se explicaba.
+- **No había ninguna lectura del resultado**: al recargar, la respuesta de la generación se perdía y **no quedaba ninguna dirección a la que volver**. Las cinco pantallas que ya enlazaban a un plan —el equipo, los cuellos de botella, los desplazamientos, las renegociaciones y la propia planificación— llevaban a una agenda **sin decir qué había producido el motor**.
+
+**Y no existe ningún modelo de rol**: verificado, no hay autenticación, sesión, usuario actual ni permiso en el frontend. Todas las pantallas son idénticas para todo el mundo. Lo que distingue a un gestor de demanda de un desarrollador **no es lo que pueden ver, sino lo que preguntan**: el gestor pregunta «¿qué produjo el motor?» y el desarrollador «¿qué hago el lunes?». La pantalla contestaba regular la segunda y **nada** la primera.
+
+### 5. La medición de partida, en vivo y en solo lectura
+
+El tablero de métricas es la única fuente de conjunto que existía, y **no contesta ninguna de las siete preguntas**: su bloque de planes vigentes es el plan **más reciente de cada técnico**, no el plan que se está mirando, y su bloque de declaración cuenta **filas de metadatos, no tickets conocidos** — otro denominador. Es el tablero, y el brief pide **no duplicarlo**.
+
+Medido contra la instancia real antes de escribir una línea: **dos planes guardados, y los dos completamente vacíos** —cero asignaciones, cero conflictos—; 42 personas en el padrón, 18 en el equipo operativo; GLPI conectado y autenticado. Y la razón de que estuvieran vacíos se midió también, con tres técnicos reales: **la generación desde GLPI produjo cero asignaciones y cientos de descartes —409 tickets descartados cada uno dos veces, por no tener estimación declarada y por no tener compromiso declarado—**. Es exactamente el estado que la Fase 36 dejó documentado: **el equipo no ha declarado nada**, así que el motor no tiene con qué planificar.
+
+## Las decisiones
+
+### 176. El resultado del plan se lee, se cuenta y se trazabiliza, sin que la vista decida nada
+
+**176.1 — El resultado se lee, no se recalcula.** Cuatro lecturas publicadas, todas de base de datos local y **ninguna contra GLPI**: el plan releído —la única que trae los conflictos y los eventos con su motivo—, la foto de su entrada —la que dice cuántos elementos recibió el motor—, la agenda —que ya se pedía— y los acuerdos —que comparten clave de caché con renegociaciones y con recursos, así que no son una petición nueva—. **El motor no corre en el navegador y no se reimplementa ningún predicado suyo.** Cada cifra de la pantalla es **la longitud de una lista publicada o la suma de una columna publicada**, y por eso el resumen y la rejilla de debajo **no pueden discrepar**: leen las mismas filas. Y el precio se pagó donde se tenía que pagar: **ni un fichero del backend tiene una línea de diferencia**.
+
+**176.2 — Vive en el Calendario, no en una pantalla nueva.** Es el flujo que el brief pide —de planificación a calendario— y, sobre todo, es lo que hace que **las cinco pantallas que ya enlazaban a un plan empiecen a enseñar el resultado sin que se les toque una línea**. El resultado deja de existir solo en memoria, que era el hueco de verdad. El precio es que las tres pruebas del calendario se reescriben para servir cuatro direcciones en vez de una, y **ese cambio se hizo endureciendo y no aflojando**: el simulador nuevo **lanza ante cualquier dirección que no sea una de las suyas**, donde el anterior respondía lo mismo a todo —que es lo que dejaba pasar una lectura equivocada sin que nadie se enterara—.
+
+**176.3 — «Recibidos por el motor» no es el total que entregó GLPI, y la etiqueta lo dice.** El riesgo 122 —que el total consultado no se publica— **sigue abierto**: lo que se enseña es **la foto de la entrada**, es decir lo que llegó al motor después de validar, y son dos números distintos. Por eso la cifra se rotula con esas palabras y no con «tickets», y **la pantalla lo declara en prosa** debajo del bloque: el total de GLPI no viaja en ninguna lectura de un plan guardado.
+
+**176.4 — «Fuera» son los conflictos, y los descartes del validador no se inventan.** Los descartes del validador de GLPI **no se guardan con el plan** —decisión 99— y solo viajan en la respuesta del POST, donde la pantalla de planificación ya los enseña. Para un plan guardado **no existen**, así que la pantalla lo dice con esas palabras **en vez de rellenar el hueco con un cero**, que afirmaría que GLPI no descartó nada. Es la misma regla que gobierna toda la fase: **lo que no consta no es cero, es ausencia**, y se pinta con una raya y su explicación.
+
+**176.5 — El veredicto lo produjo el motor; la renegociación es un eje aparte y no un quinto veredicto.** La tabla lleva una columna de renegociación que **enlaza a donde se escribe**, y su celda distingue tres cosas que no son la misma: un acuerdo registrado, **un desplazamiento sin acuerdo** —que es un pendiente de verdad— y **un desplazamiento cuyo acuerdo no consta para este plan**. Lo tercero es lo que obligó a mirar el identificador del plan en cada acuerdo: la lectura de acuerdos **recorre el plan vigente de cada técnico**, así que al mirar un plan antiguo sus filas hablan de **otro** desplazamiento, y pegarlas pondría un acuerdo junto a unas fechas que no son las suyas.
+
+**176.6 — No se lee el contexto congelado del plan, y es una decisión, no un olvido.** Publica las reglas congeladas: versión del motor, umbral, horizonte, calendario y OLA por severidad. Pero **el horizonte ya viaja dentro del motivo del conflicto** que redacta el motor, y los días no laborables se derivan de la capacidad disponible. **Una lectura menos por un dato que ya está en la respuesta.** El día que se quieran el umbral y la OLA en pantalla, es un hook y un bloque; hoy no contestan ninguna de las siete preguntas.
+
+**176.7 — El día no laborable se pinta desde la capacidad publicada, y el eje no se toca.** Una columna cuyo disponible es cero es un día cerrado —lo calcula el backend con el calendario congelado—, así que se pinta con fondo apagado y su cabecera lo dice. Se exige además que el día **traiga al menos una fila de capacidad**: un día que solo aparece por un tramo, sin capacidad que lo respalde, **no es un día cerrado, es un día del que esta vista no sabe nada**, y marcarlo afirmaría algo que nadie publicó. La derivación del eje temporal y sus doce pruebas **quedan intactas**: el riesgo 67 se estrecha, no se cierra.
+
+**176.8 — Un plan es de un desarrollador, y la pregunta por el equipo se contesta en recursos.** El plan nace de la petición de **un** técnico y su agenda trae **un** recurso, así que «¿qué desarrolladores recibieron trabajo?» se contesta para el del plan, con enlace a la vista de equipo. **No se lista el equipo aquí**: eso sería duplicar recursos, que el brief prohíbe expresamente.
+
+**176.9 — Lo que ya existía se reutiliza, y no se declara dos veces la misma forma.** El átomo de cifra se **muda a `components/ui/`** —vivía dentro de una página y lo importaban **tres pantallas**, y un componente importando de una página es una inversión de capas que se paga después—; el clima de un día lo decide la misma función que ya usaban otros dos consumidores; las tres cifras de capacidad reutilizan el tipo que ya existía; y los eventos de desplazamiento y las asignaciones **reutilizan los tipos que ya estaban declarados** —son literalmente la misma forma, y dos declaraciones de la misma forma acaban divergiendo—. **Ninguna dependencia nueva y ningún tipo duplicado.**
+
+## Las pruebas
+
+**El frontend pasa de 187 pruebas en 13 archivos a 220 en 14.** Las **33 nuevas** se reparten en un fichero nuevo de lógica pura y en la reescritura del calendario: **19 en `lib/planResult.test.ts`** —la partición, la aritmética de conjuntos, la capacidad, el filtro de acuerdos por plan y la tokenización del veredicto— y **14 más en `Calendar.test.tsx`, que pasa de 3 a 17**. **Ninguna prueba existente se borró ni se debilitó**, y las tres del calendario que ya había **se conservaron tal cual, afirmación por afirmación**.
+
+**Los diez casos que el brief nombra, uno a uno.**
+
+| # | Caso | Qué afirma |
+| --- | --- | --- |
+| 1 | plan con trabajo | las cifras salen de las listas publicadas —5 recibidos, 1 planificado, 2 desplazados, 1 fuera, 1 excluido— y la frase dice qué ubicó y qué quedó fuera |
+| 2 | plan vacío | sin asignaciones ni eventos, pero con la entrada entera: el veredicto es **«nada ubicado»** y **no se lee como fallo de lectura** —el motor recibió 5 y no ubicó ninguno— |
+| 3 | capacidad agotada | un día exactamente a cero cuenta como **saturado** y no como sobrepasado |
+| 4 | capacidad disponible | la libre es la suma de los días publicados, y **un día sobrepasado se cuenta aparte y no se compensa con uno holgado** |
+| 5 | ticket planificado | su fila dice «planificado» y **no ofrece motivo**, porque no hubo ninguno |
+| 6 | ticket descartado | un conflicto da fila «fuera» con **el motivo literal del motor** |
+| 7 | requerimiento desplazado | la fila trae sus dos fechas, **la regla aplicada** y el motivo del motor |
+| 8 | resumen por persona | el plan enseña **su** técnico y enlaza a recursos; **no lista el equipo** |
+| 9 | estado vacío | la entrada que no consta **no inventa un cero**: deja la raya y lo declara; y un plan inexistente lo dice con esas palabras **y no pinta el resumen** |
+| 10 | consistencia entre planificación y calendario | las cifras de la pantalla son **las longitudes de las listas que publicó el backend** |
+
+**Y las tres invariantes que la fase añade**, porque son las que se rompen sin que nadie se entere: **que no se lee de más** —el simulador lanza ante cualquier dirección que no sea una de las cuatro, así que llegar al final de la prueba ya lo demuestra; y encima se afirma que son exactamente cuatro, todas de lectura y **ninguna del tablero**—; **que un fallo de una lectura no borra las otras** —los acuerdos caen y la tabla, el resumen y la rejilla siguen enteros, con su aviso—; y **que el día no laborable se distingue del laborable sin trabajo**, que es lo que la rejilla no sabía hacer.
+
+**Dos anclas dejaron de servir y se sustituyeron por otras más fuertes.** Desde que el mismo elemento se pinta **dos veces** —en su tramo de la rejilla y en su fila de trazabilidad—, buscar por el identificador del elemento encuentra dos y falla por ambigüedad, así que las esperas pasaron al identificador del recurso, que **solo pinta la rejilla** y es además **la última lectura en llegar**. Y el bloque de cifras lleva su nota en un párrafo hermano y no dentro de la casilla, así que las dos afirmaciones que dependían de la nota se hacen contra **el bloque entero**: la nota y el valor **son la misma casilla** y leer solo la mitad era el error.
+
+**Una prueba que se corrigió porque estaba mal escrita, no porque el código estuviera mal.** Una de las nuevas afirmaba que un plan inexistente no pintaba la rejilla. **La rejilla se pinta igual** —es otra lectura, y esa sí respondió—, así que lo que se afirma es lo que de verdad cambia: **que no se pinta el resumen**, porque un resumen a cero se leería como un plan sin trabajo cuando lo que pasa es que no hay plan.
+
+**El backend pasa de 370 sin cambios** —no se tocó ni un fichero— y se ejecutó igualmente para confirmarlo. El frontend queda además limpio de tipos y de lint.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 173 | **El calendario pasa de una lectura a cuatro** | **Bajo: tres son locales y una ya se hacía** | Ninguna toca GLPI. La de acuerdos comparte clave de caché con renegociaciones y con recursos, así que llegar desde cualquiera de las dos no la repite. Una prueba fija que son exactamente cuatro, todas de lectura y ninguna del tablero |
+| 174 | **Los descartes del validador de GLPI siguen sin ser recuperables para un plan guardado** | **Bajo: es la decisión 99, del backend, y el brief prohíbe tocarlo** | No se inventan ni se rellenan con un cero: la pantalla lo declara con esas palabras, y el sitio donde sí existen —la respuesta de la generación— ya los enseña |
+| 175 | **El plan releído y la agenda publican las asignaciones y los tramos dos veces, con dos formas** | **Medio: si divergieran, el resumen y la rejilla se contradirían** | Son la misma fila leída con dos formas y el backend ya lo documenta como dos preguntas distintas. Se acepta porque el plan releído es **el único** sitio con los conflictos y con los eventos y su motivo. Hoy coinciden, y la fase lo comprobó sobre un plan real |
+| 176 | **Un plan es de un desarrollador** | **Bajo: es el modelo, no una limitación de la vista** | El equipo vive en recursos y no se duplica. La pregunta por «qué desarrolladores recibieron trabajo» se contesta para el del plan, con enlace allí |
+| 177 | **Los desplazados sin re-auditar se pintan «planificado» aunque la agenda se movió** | **Medio, y se manifestó en vivo** | El libro de idempotencia suprime el evento cuando el par causa-requerimiento ya estaba reclamado, así que el movimiento **no se audita** y ninguna lectura puede saber que ocurrió. No se corrige aquí: es del motor, y el brief prohíbe tocarlo. **La primera sonda de la fase devolvió cero eventos con un requerimiento movido**: repetida con identificadores nuevos, los eventos aparecieron |
+| 178 | **Los incidentes nunca entran en conflicto ni se desplazan** | **Bajo: es por diseño** | Un incidente se coloca siempre, sin límite de horizonte. Los veredictos son asimétricos a propósito y la tabla no lo disimula |
+| 179 | **La capacidad disponible a cero se lee como «día no laborable»** | **Bajo hoy, y verificado que hoy es cierto** | El backend la deriva del calendario congelado, así que cero significa jornada cerrada. Si algún día una jornada laborable tuviera cero horas, la marca mentiría. Además se exige que el día traiga capacidad publicada, para no marcar un día del que la vista no sabe nada |
+| 180 | **El calendario sin plan sigue pidiendo un identificador a mano** | **Bajo, y es anterior a esta fase** | Es la entrada de una pantalla de consulta, no el flujo de trabajo: a un plan se llega desde las cinco pantallas que ya lo enlazan. Queda declarado |
+
+## Limitaciones
+
+**El total de tickets que GLPI entregó sigue sin publicarse** —riesgo 122—: «recibidos por el motor» es la foto de la entrada, y es un número distinto.
+
+**Los descartes del validador de GLPI no se guardan con el plan** —decisión 99—: para un plan guardado no existen, y solo viajan en la respuesta de la generación.
+
+**Un plan es de un desarrollador**: la vista de equipo es recursos y no se duplica.
+
+**Los desplazados sin re-auditar se pintan «planificado»** —riesgo 177—. El motor lo hace a propósito y no se corrige aquí.
+
+**El horizonte, el umbral y la OLA congelados no se enseñan**: viven en el contexto del plan, que esta fase decide no leer. El horizonte se lee dentro del motivo del conflicto.
+
+**Los conflictos solo los tienen los requerimientos**: un incidente nunca queda fuera.
+
+**El eje horario sigue derivándose de los tramos** —riesgo 67—: se estrecha con la marca de día no laborable, pero el eje no se cambia.
+
+**No hay modelo de rol**: gestor y desarrollador ven exactamente lo mismo. Lo que cambia es qué pregunta contesta cada bloque.
+
+**El calendario sin plan se sigue abriendo con un identificador a mano.**
+
+**El plan no guarda títulos**: los tramos y las filas se rotulan con el identificador del elemento, como ya hacía la rejilla.
+
+**Y un hallazgo de la verificación en vivo que deja al descubierto un límite de la decisión 176.7: la agenda publica capacidad solo para los días que el motor tocó.** Medido con un plan generado en viernes: la agenda trajo **un solo día**. Como consecuencia, en una lectura viva **un día cerrado nunca aparece** —el motor no coloca trabajo fuera de la jornada, así que no toca el sábado y el backend no publica su capacidad—, y la marca de «no laborable» que esta fase añade **no tiene ejemplo en vivo**: la ejercita la prueba unitaria y no una captura. Es la razón por la que el riesgo 179 se deja abierto en vez de darse por cerrado con lo medido hoy.
+
+## La verificación explícita: «¿Qué ocurrió después de ejecutar el motor?»
+
+**Se contestó con la aplicación corriendo, con navegador real y sobre la instancia de producción —en solo lectura, salvo las generaciones de plan que se declaran—, y las tres respuestas salen de la pantalla, no de este documento.**
+
+**Lo primero que ocurrió fue que el motor no tenía con qué planificar.** Medido antes de tocar nada: **dos planes guardados y los dos vacíos**, y la causa medida con tres técnicos reales —**la generación desde GLPI produjo cero asignaciones y 409 tickets descartados cada uno dos veces**, por no tener estimación declarada y por no tener compromiso declarado—. Es el estado que la Fase 36 dejó escrito: el equipo no ha declarado nada. **Un plan vacío no es un fallo de la pantalla, y por eso la fase se probó también contra ese caso**: el veredicto lo dice con sus palabras —el motor recibió N elementos y no ubicó ninguno— y **no se lee como un error de lectura**.
+
+**La demostración del resultado completo se hizo sobre un plan real con trabajo.** Con un técnico y cinco requerimientos preparados —uno que cabía, tres que desplazaban y uno que no cupo—, el plan generado **`946a743f-a2df-4bb9-8bea-94fdd8aeeb83`** quedó guardado con **cuatro asignaciones, tres eventos de desplazamiento, un conflicto y un excluido**, y su calendario lo enseña así:
+
+```
+entrada publicada : incidentes 1 + requerimientos 5 = 6
+plan publica      : asignaciones 4 elementos, eventos 3, conflictos 1
+
+LO QUE LA PANTALLA ENSEÑA (y lo que el backend publica):
+  recibidos      6   <- la foto de la entrada: 1 + 5
+  planificados   1   <- asignaciones sin evento
+  desplazados    3   <- asignaciones con evento
+  fuera          1   <- conflictos
+  excluidos      1   <- residuo de la entrada
+  suma           6   <- cuadra con los recibidos
+
+  capacidad usada 20 h de 24 h disponibles, libre 4 h
+  2 dia(s) saturados, 0 sobrepasado(s)
+
+acuerdos de ESTE plan: 3 de 3 filas publicadas
+    REQ-F38E-1 ACORDADA
+    REQ-F38E-2 PENDIENTE_DE_ACUERDO
+    REQ-F38E-3 PENDIENTE_DE_ACUERDO
+```
+
+**¿Qué ocurrió cuando se ejecutó el motor?** Recibió seis elementos, ubicó cuatro —uno donde se comprometió y tres desplazados—, dejó uno fuera del horizonte con su motivo literal y descartó uno por su propio estado. **Veinte de las veinticuatro horas disponibles quedaron ocupadas y cuatro libres, con dos días saturados y ninguno sobrepasado.** Las seis cifras cuadran con lo que el backend publica, y cuadran **porque no se recalculan**: son longitudes de listas y sumas de columnas.
+
+**¿Qué requiere renegociación?** Los tres desplazados, y la pantalla lo dice **por separado del veredicto**: **uno tiene acuerdo registrado y dos están pendientes**. Los tres siguen leyéndose «desplazado», porque el motor **no produce la renegociación** —solo emite el evento— y confundir las dos cosas sería afirmar que el motor decide algo que decide una persona.
+
+**¿Qué trabajo quedó fuera del plan?** **Uno, con el motivo que redactó el motor** —«Sin capacidad en el horizonte de 10 dias»—, y además **un excluido**, que entró en la foto de la entrada y el motor no usó porque su estado no consume capacidad. **Los dos se nombran por separado** porque son dos cosas distintas: uno no cupo, y al otro no se le buscó sitio.
+
+**Y una demostración que valió por dos.** La primera sonda se hizo con identificadores ya usados y devolvió **cero eventos con un requerimiento que sí se había movido**: el libro de idempotencia suprimió la auditoría porque el par ya estaba reclamado. Repetida con identificadores nuevos, los tres eventos aparecieron. **No es un defecto de esta fase: es el riesgo 177 manifestándose en vivo**, y quedó medido en vez de supuesto. La misma medición dejó otra constancia: el listado de renegociaciones **solo cubre el plan vigente de cada técnico**, así que tras generar el plan de prueba —que pasó a ser el vigente— la pantalla de renegociaciones dejó de mostrar los desplazamientos del plan anterior.
+
+**Las seis evidencias visuales que el brief pide**, hechas y capturadas: `f38-01-generacion-plan.png` —la generación desde la pantalla de planificación—, `f38-02-resultado-visible.png` —el bloque de resultado con sus cifras—, `f38-03-calendario.png` —la rejilla con su leyenda—, `f38-04-desplazamientos.png` —la fila con sus dos fechas, la regla aplicada y el motivo—, `f38-05-capacidad.png` —usada, libre y días saturados— y `f38-06-renegociaciones.png` —la fila pendiente y su enlace—. Están en `.playwright-mcp/`, que sí está en el `.gitignore`, y en copias de la raíz que quedan sin versionar: **no se commitean ni unas ni otras**, porque el repositorio no tiene ni un PNG versionado y esta fase no cambia esa convención.
+
+**Y un residuo que se declara en vez de maquillarse**: la demostración **sí escribió** —generó planes, que es lo que la fase viene a leer—, y un plan guardado **no se puede borrar**: no existe endpoint para ello. Los planes de la demostración quedan en la base con su identificador, como quedaron los de las fases anteriores. **Ni un token de GLPI se imprimió y ninguna sonda contra GLPI escribió nada.**
+
+**Lo que esta fase no tocó, dicho explícitamente**: ni el algoritmo de planificación, ni las reglas de capacidad, ni los desplazamientos, ni las renegociaciones, ni el modelo de capacidad, ni la integración con GLPI, ni una regla de negocio, ni **una sola línea del backend**. El diff es enteramente del frontend: **catorce ficheros —cinco nuevos** (la lógica pura del resultado y sus pruebas, el bloque de resultado, el átomo de cifra y los dos hooks de lectura) y **nueve modificados** (los tipos de planificación, el servicio, la pantalla del calendario y sus pruebas, la rejilla, las pruebas compartidas y **los tres importadores del átomo** —la pantalla de planificación, la vista previa del estado de entrada y la de declaración, que lo importaban de una página—).

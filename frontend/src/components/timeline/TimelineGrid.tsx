@@ -158,6 +158,32 @@ function CapacityStrip({ capacity }: { capacity: TimelineCapacity | undefined })
   )
 }
 
+/**
+ * Los dias en que **ningun** recurso tiene jornada.
+ *
+ * El backend calcula `availableHours` con el calendario congelado del plan, asi que un dia no
+ * laborable llega con cero disponible —y cero ocupado, porque el motor no coloca trabajo fuera de la
+ * jornada—. No hay que leer el calendario para saberlo: ya esta en la respuesta que la pagina pide
+ * desde siempre.
+ *
+ * Se exige que el dia traiga al menos una fila: un dia que solo aparece por un tramo, sin capacidad
+ * que lo respalde, no es un dia cerrado —es un dia del que esta vista no sabe nada—, y marcarlo
+ * afirmaria algo que nadie publico.
+ */
+function nonWorkingDays(
+  resources: readonly TimelineResource[],
+  days: readonly string[],
+): ReadonlySet<string> {
+  const rows = resources.flatMap((resource) => resource.capacity)
+
+  return new Set(
+    days.filter((day) => {
+      const onDay = rows.filter((row) => row.date === day)
+      return onDay.length > 0 && onDay.every((row) => row.availableHours === 0)
+    }),
+  )
+}
+
 interface TimelineGridProps {
   resources: readonly TimelineResource[]
   items: readonly TimelineItem[]
@@ -178,6 +204,7 @@ export function TimelineGrid({ resources, items }: TimelineGridProps) {
   const days = useMemo(() => timelineDays(resources, items), [resources, items])
   const axis = useMemo(() => hourAxis(items), [items])
   const byDate = useMemo(() => itemsByDate(items), [items])
+  const closed = useMemo(() => nonWorkingDays(resources, days), [resources, days])
 
   const bodyHeight = ((axis.endMinutes - axis.startMinutes) / 60) * hourHeight
   const hourMarks: number[] = []
@@ -187,29 +214,57 @@ export function TimelineGrid({ resources, items }: TimelineGridProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-1.5">
-        <span id="timeline-zoom-label" className="text-xs text-muted-foreground">
-          Zoom
-        </span>
-        <div
-          role="group"
-          aria-labelledby="timeline-zoom-label"
-          className="flex gap-0.5 rounded-md border border-border p-0.5"
-        >
-          {ZOOM.map((level, index) => (
-            <Button
-              key={level.label}
-              type="button"
-              size="sm"
-              variant={index === zoom ? 'secondary' : 'ghost'}
-              aria-pressed={index === zoom}
-              className="h-7 px-2 text-xs"
-              onClick={() => setZoom(index)}
-            >
-              {level.label}
-            </Button>
-          ))}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex items-center gap-1.5">
+          <span id="timeline-zoom-label" className="text-xs text-muted-foreground">
+            Zoom
+          </span>
+          <div
+            role="group"
+            aria-labelledby="timeline-zoom-label"
+            className="flex gap-0.5 rounded-md border border-border p-0.5"
+          >
+            {ZOOM.map((level, index) => (
+              <Button
+                key={level.label}
+                type="button"
+                size="sm"
+                variant={index === zoom ? 'secondary' : 'ghost'}
+                aria-pressed={index === zoom}
+                className="h-7 px-2 text-xs"
+                onClick={() => setZoom(index)}
+              >
+                {level.label}
+              </Button>
+            ))}
+          </div>
         </div>
+
+        {/*
+          La leyenda explica las tres marcas que la rejilla usa y no explica sola. El rojo no es un
+          error de la vista: es lo ocupado por encima de lo disponible, o sea una contradiccion del
+          plan con su propio contexto, y por eso se enseña en vez de recortarse.
+        */}
+        <ul
+          data-slot="timeline-legend"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"
+        >
+          <li className="flex items-center gap-1.5">
+            <span className="h-1.5 w-6 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+            Ocupado sobre lo disponible
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-1.5 w-6 shrink-0 rounded-full bg-red-500" aria-hidden="true" />
+            Ocupado por encima: el plan contradice su contexto
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span
+              className="size-3 shrink-0 rounded-xs border border-border bg-muted"
+              aria-hidden="true"
+            />
+            Día no laborable
+          </li>
+        </ul>
       </div>
 
       <div
@@ -225,10 +280,17 @@ export function TimelineGrid({ resources, items }: TimelineGridProps) {
             {days.map((day) => (
               <div
                 key={day}
+                data-slot="timeline-day"
+                // La marca de la prueba: el dia cerrado se reconoce por el dato, no por el color.
+                data-working={closed.has(day) ? 'false' : 'true'}
                 style={{ width: dayWidth }}
-                className="shrink-0 border-r border-border px-2 py-2 last:border-r-0"
+                className={cn(
+                  'shrink-0 border-r border-border px-2 py-2 last:border-r-0',
+                  closed.has(day) && 'bg-muted/70',
+                )}
               >
                 <p className="truncate text-xs font-medium capitalize">{formatDay(day)}</p>
+                {closed.has(day) && <p className="truncate text-[10px]">no laborable</p>}
               </div>
             ))}
           </div>
@@ -254,8 +316,13 @@ export function TimelineGrid({ resources, items }: TimelineGridProps) {
                 {days.map((day, dayIndex) => (
                   <div
                     key={day}
+                    data-slot="timeline-cell"
+                    data-working={closed.has(day) ? 'false' : 'true'}
                     style={{ width: dayWidth }}
-                    className="shrink-0 border-r border-border last:border-r-0"
+                    className={cn(
+                      'shrink-0 border-r border-border last:border-r-0',
+                      closed.has(day) && 'bg-muted/40',
+                    )}
                   >
                     <CapacityStrip capacity={capacityOn(resource, day)} />
 

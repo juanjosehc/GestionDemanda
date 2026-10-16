@@ -1,5 +1,9 @@
-import { apiPost } from '@/services/apiClient'
-import type { PlanningFromGlpiResponse } from '@/types/planning'
+import { apiGet, apiPost } from '@/services/apiClient'
+import type {
+  PlanningFromGlpiResponse,
+  PlanningInputResponse,
+  PlanSnapshotResponse,
+} from '@/types/planning'
 
 /**
  * El unico endpoint que genera planes, y el unico que esta pantalla invoca.
@@ -21,4 +25,35 @@ import type { PlanningFromGlpiResponse } from '@/types/planning'
  */
 export function generatePlan(developerId: string): Promise<PlanningFromGlpiResponse> {
   return apiPost<PlanningFromGlpiResponse>('/api/planning/from-glpi', { developerId })
+}
+
+/**
+ * `GET /api/planning/{planId}`: un plan guardado, releido de la base de datos.
+ *
+ * Es la unica lectura que publica los **conflictos** —el trabajo que no cupo en el horizonte, con el
+ * motivo que redacto el motor— y los eventos de reprogramacion con su regla aplicada. El timeline no
+ * los trae: un requerimiento en conflicto no tiene tramo, asi que no tiene item de agenda.
+ *
+ * **No recalcula nada.** Devuelve las filas que quedaron guardadas, asi que el mismo plan devuelve
+ * siempre lo mismo y no puede discrepar de lo que el motor decidio aquel dia.
+ *
+ * `404` con codigo `PLAN_NOT_FOUND` si el identificador no corresponde a ningun plan.
+ */
+export function fetchPlanSnapshot(planId: string, signal?: AbortSignal): Promise<PlanSnapshotResponse> {
+  return apiGet<PlanSnapshotResponse>(`/api/planning/${planId}`, signal)
+}
+
+/**
+ * `GET /api/planning/{planId}/input`: con que datos se calculo el plan guardado.
+ *
+ * Devuelve **todos** los elementos que el motor recibio, incluidos los que descarto por estar resueltos
+ * o finalizados: la foto es de lo que entro, no de lo que se uso. Es lo que permite contar los
+ * recibidos y nombrar a los excluidos, que no aparecen en ninguna otra lectura.
+ *
+ * **`404` no es un fallo.** Los planes anteriores a la Fase 8 no tienen foto de entrada, y el contrato
+ * lo dice con esas palabras: vacio significa que no consta, no que fuera vacia. Quien la lea tiene que
+ * distinguir «no entro nada» de «no sabemos que entro».
+ */
+export function fetchPlanInput(planId: string, signal?: AbortSignal): Promise<PlanningInputResponse> {
+  return apiGet<PlanningInputResponse>(`/api/planning/${planId}/input`, signal)
 }

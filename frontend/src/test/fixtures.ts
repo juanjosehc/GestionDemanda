@@ -4,7 +4,11 @@ import type {
   DeveloperDeclarationsResponse,
   PlanningMetadata,
 } from '@/types/declarations'
-import type { PlanningFromGlpiResponse } from '@/types/planning'
+import type {
+  PlanningFromGlpiResponse,
+  PlanningInputResponse,
+  PlanSnapshotResponse,
+} from '@/types/planning'
 import type {
   DeclaredGapDetailResponse,
   DisplacedRequirementsResponse,
@@ -810,6 +814,138 @@ export function teamCatalogFixture(
     ],
     unusedExceptions: [],
     unusedOperational: [],
+    ...overrides,
+  }
+}
+
+/**
+ * El plan guardado, releido por `GET /api/planning/{planId}`, sobre el mismo plan del timeline.
+ *
+ * **Los tres numeros son los del `timelineFixture`, no unos inventados aqui**: las asignaciones suman
+ * las mismas 8 horas del dia 5 y las 2 del dia 6 que su capacidad ya declara ocupadas, y los dos
+ * eventos son los de los dos tramos que ese fixture marca `DESPLAZADO`. Si los dos fixtures se
+ * separaran, la prueba de que el resumen y la rejilla dicen lo mismo afirmaria algo sobre datos que el
+ * backend no produce —el error que la Fase 18 tuvo que corregir en el suyo—.
+ *
+ * `REQ-3` es el que no cupo: **esta en `conflicts` y no tiene asignacion**, y por eso no aparece en el
+ * timeline. Es la fila que justifica leer este endpoint, porque es la unica lectura que la publica.
+ *
+ * Los motivos son los textos que el motor escribe de verdad —el del conflicto lo compone el backend
+ * con el horizonte congelado—, no unos redactados para que la prueba pase.
+ */
+export function planSnapshotFixture(
+  overrides: Partial<PlanSnapshotResponse> = {},
+): PlanSnapshotResponse {
+  return {
+    planId: PLAN_ID,
+    developerId: DEVELOPER_ID,
+    createdAt: '2026-10-07T14:00:00Z',
+    allocations: [
+      {
+        workItemId: 'INC-1',
+        workItemType: 'INCIDENTE',
+        developerId: DEVELOPER_ID,
+        date: '2026-10-05',
+        hours: 6,
+      },
+      {
+        workItemId: 'REQ-1',
+        workItemType: 'REQUERIMIENTO',
+        developerId: DEVELOPER_ID,
+        date: '2026-10-05',
+        hours: 2,
+      },
+      {
+        workItemId: 'REQ-2',
+        workItemType: 'REQUERIMIENTO',
+        developerId: DEVELOPER_ID,
+        date: '2026-10-06',
+        hours: 2,
+      },
+    ],
+    rescheduleEvents: [
+      {
+        timestamp: '2026-10-07T14:00:00Z',
+        incidentId: 'INC-1',
+        requirementId: 'REQ-1',
+        originalDate: '2026-10-05',
+        rescheduledDate: '2026-10-05',
+        appliedRule: 'INCIDENTE_ALTO_DESPLAZA_REQUERIMIENTOS',
+        severity: 'ALTO',
+        reason: 'Incidente de severidad alta sobre la misma jornada',
+      },
+      {
+        timestamp: '2026-10-07T14:00:00Z',
+        incidentId: 'INC-1',
+        requirementId: 'REQ-2',
+        originalDate: '2026-10-06',
+        rescheduledDate: '2026-10-06',
+        appliedRule: 'SIN_CAPACIDAD_EN_LA_JORNADA',
+        severity: 'MEDIO',
+        reason: 'La jornada quedo sin capacidad disponible',
+      },
+    ],
+    conflicts: [
+      {
+        workItemId: 'REQ-3',
+        workItemType: 'REQUERIMIENTO',
+        reason: 'Sin capacidad en el horizonte de 10 dias',
+      },
+    ],
+    ...overrides,
+  }
+}
+
+/**
+ * La foto de la entrada: los cinco elementos que el motor recibio, con los cuatro desenlaces.
+ *
+ * **Es mas grande que el plan a proposito.** `REQ-4` entro y no aparece en ninguna lista del
+ * resultado: el motor lo filtro por estar resuelto, y esa es la unica caja que no se puede contar sin
+ * esta lectura. Sin el, `considerados` cuadraria por casualidad con la suma de las otras tres y una
+ * prueba que confundiera el residuo con cero pasaria.
+ *
+ * Los cuatro suman los cinco: 1 planificado (`INC-1`), 2 desplazados (`REQ-1`, `REQ-2`), 1 fuera
+ * (`REQ-3`) y 1 excluido (`REQ-4`). `status` viaja tal cual porque es el estado que el motor leyo.
+ */
+export function planInputFixture(
+  overrides: Partial<PlanningInputResponse> = {},
+): PlanningInputResponse {
+  return {
+    planId: PLAN_ID,
+    developerId: DEVELOPER_ID,
+    incidents: [{ id: 'INC-1', estimatedHours: 6, status: 'ABIERTO', severity: 'MEDIO' }],
+    requirements: [
+      { id: 'REQ-1', estimatedHours: 2, plannedDate: '2026-10-05', status: 'ABIERTO' },
+      { id: 'REQ-2', estimatedHours: 2, plannedDate: '2026-10-06', status: 'ABIERTO' },
+      { id: 'REQ-3', estimatedHours: 8, plannedDate: '2026-10-09', status: 'ABIERTO' },
+      { id: 'REQ-4', estimatedHours: 4, plannedDate: '2026-10-08', status: 'RESUELTO' },
+    ],
+    source: 'GLPI',
+    extractedAt: '2026-10-07T13:59:00Z',
+    ...overrides,
+  }
+}
+
+/**
+ * Los dos desenlaces del acuerdo, **atados al plan que se mira**.
+ *
+ * `GET /api/renegotiations` recorre el plan vigente de cada desarrollador, asi que las filas de un plan
+ * comparten `planId`; el fixture general las reparte entre tres planes para cubrir la pantalla
+ * consolidada, y aqui se atan al mismo. Es la diferencia entre un acuerdo que habla de este
+ * desplazamiento y uno que habla de otro: la vista no puede pegarlos por el identificador a secas.
+ *
+ * `REQ-1` queda acordado y `REQ-2` pendiente, que son los dos estados que el resumen tiene que
+ * distinguir.
+ */
+export function planRenegotiationsFixture(
+  overrides: Partial<RenegotiationsResponse> = {},
+): RenegotiationsResponse {
+  const base = renegotiationsFixture()
+
+  return {
+    ...base,
+    items: base.items.slice(0, 2).map((one) => ({ ...one, planId: PLAN_ID })),
+    summary: { displaced: 2, pending: 1, agreed: 1 },
     ...overrides,
   }
 }

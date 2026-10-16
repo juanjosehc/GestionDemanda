@@ -14,7 +14,7 @@ import { useTeam } from '@/hooks/useTeam'
 import { isDeclarable } from '@/lib/declarations'
 import { isActive } from '@/lib/incidents'
 import { statusCounts } from '@/lib/planningPreview'
-import { Figure } from '@/pages/Planning'
+import { Figure } from '@/components/ui/figure'
 import { ROUTES, declarationContextOf, navItemFor } from '@/routes/navigation'
 import type { TeamPerson } from '@/types/team'
 
