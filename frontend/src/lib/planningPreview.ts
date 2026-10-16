@@ -1,3 +1,4 @@
+import { DECLARABLE_STATUSES } from '@/lib/declarations'
 import { isActive } from '@/lib/incidents'
 import type {
   DeclarationItem,
@@ -115,9 +116,21 @@ export function statusCounts(items: readonly DeclarationItem[]): StatusCounts {
   return counts
 }
 
-/** Los cajones que se arreglan declarando: todo menos lo planificable y lo intraduducible. */
+/**
+ * Los cajones que se arreglan declarando: todo menos lo planificable y lo intraducible.
+ *
+ * **La lista de estados no se escribe aqui.** Es la misma que la pantalla de declaracion usa para
+ * ofrecer su atajo —`DECLARABLE_STATUSES`—, y sumar los tres cajones a mano seria la segunda version
+ * de esa regla.
+ */
 function declarableOf(counts: StatusCounts): number {
-  return counts.SIN_ESTIMACION + counts.SIN_COMPROMISO + counts.SIN_DECLARACION
+  let total = 0
+
+  for (const status of DECLARABLE_STATUSES) {
+    total += counts[status]
+  }
+
+  return total
 }
 
 /**

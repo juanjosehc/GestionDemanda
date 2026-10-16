@@ -227,6 +227,41 @@ describe('el estado de entrada del plan', () => {
     )
   })
 
+  it('la fila lleva a declarar a esa persona, con la vuelta a esta misma vista', async () => {
+    serve({ work: { [ANA]: [ticketWith('SIN_ESTIMACION', '907')] }, people: [ANA_PERSON] })
+
+    const container = await preview()
+
+    // Esta pantalla decía quién bloquea sin ofrecer dónde se arregla: Incidentes y Recursos ya
+    // llevaban a declarar, y el estado del plan era el tercer origen del alcance y el único mudo.
+    expect(
+      within(rowOf(container, ANA)).getByRole('link', {
+        name: 'Declarar el trabajo pendiente de Ana Perez',
+      }),
+    ).toHaveAttribute('href', '/declaraciones?tecnico=dev-001&volver=%2Fplanificar%2Festado')
+  })
+
+  it('el modo con el que se entró viaja en la vuelta, o la fila desaparecería al volver', async () => {
+    serve({ work: { [ANA]: [ticketWith('SIN_ESTIMACION', '907')] }, people: [ANA_PERSON] })
+
+    const { container } = renderWithClient(<PlanningPreview />, {
+      route: '/planificar/estado?modo=todos',
+    })
+
+    await screen.findByText('Estado de entrada, persona a persona')
+
+    // El modo se siembra desde la dirección y se devuelve con ella: quien entró con «Mostrar todo»
+    // puesto vuelve a esa vista, en vez de encontrarse la fila de quien está fuera ya escondida.
+    expect(
+      within(rowOf(container, ANA)).getByRole('link', {
+        name: 'Declarar el trabajo pendiente de Ana Perez',
+      }),
+    ).toHaveAttribute(
+      'href',
+      '/declaraciones?tecnico=dev-001&volver=%2Fplanificar%2Festado%3Fmodo%3Dtodos',
+    )
+  })
+
   it('sin compromiso no se confunde con sin estimación: cada carencia tiene su cajón', async () => {
     serve({ work: { [ANA]: [ticketWith('SIN_COMPROMISO', '906')] }, people: [ANA_PERSON] })
 

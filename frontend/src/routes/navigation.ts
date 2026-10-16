@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-import { incidentsQuery } from '@/lib/incidents'
+import { incidentsQuery, modeQuery } from '@/lib/incidents'
 import type { IncidentFilters, TeamViewMode } from '@/lib/incidents'
 import { DISPLACED_TOKEN, METRIC_GAPS } from '@/types/planningMetrics'
 import type { MetricToken } from '@/types/planningMetrics'
@@ -73,6 +73,19 @@ export function incidentsPath(filters: IncidentFilters, mode: TeamViewMode): str
   const query = incidentsQuery(filters, mode)
 
   return query === '' ? ROUTES.incidents : `${ROUTES.incidents}?${query}`
+}
+
+/**
+ * La vista previa del estado de entrada, con su conmutador de equipo.
+ *
+ * El modo viaja por el mismo motivo que en `incidentsPath`: quien entro con «Mostrar todo» puesto
+ * tiene que volver a esa vista. Sin el, la fila de quien esta fuera del equipo operativo
+ * desapareceria al otro lado del enlace y el cambio se leeria como si alguien la hubiera sacado.
+ */
+export function planningPreviewPath(mode: TeamViewMode): string {
+  const query = modeQuery(mode)
+
+  return query === '' ? ROUTES.planningPreview : `${ROUTES.planningPreview}?${query}`
 }
 
 /**
@@ -242,3 +255,22 @@ export const NAV_ITEMS: readonly NavItem[] = [
     description: 'Parametros de la integracion y del sistema',
   },
 ]
+
+/**
+ * La entrada de menu que corresponde a una direccion: su rotulo y su descripcion.
+ *
+ * **Gana la coincidencia mas larga, no la primera.** «Estado del plan» cuelga de `/planificar` y las
+ * dos casan por prefijo, asi que quedarse con la primera le daria a la vista previa el titulo de la
+ * pantalla de al lado. El respaldo es el tablero, que es lo que le toca a una direccion desconocida.
+ *
+ * La usan el encabezado —para titular la pantalla— y el enlace de vuelta de la declaracion —para
+ * nombrar a donde se vuelve—. Recibe la direccion entera, con su consulta, porque el enlace de vuelta
+ * la lleva: la consulta no cambia de pantalla, solo de vista.
+ */
+export function navItemFor(path: string): NavItem {
+  const pathname = path.split('?')[0]
+
+  return NAV_ITEMS.filter(
+    (item) => item.to === pathname || pathname.startsWith(`${item.to}/`),
+  ).reduce((longest, item) => (item.to.length > longest.to.length ? item : longest), NAV_ITEMS[0])
+}

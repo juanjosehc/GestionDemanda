@@ -346,10 +346,14 @@ export function TeamTable({ members }: TeamTableProps) {
                       La de los tickets lleva el identificador de esta fila: la pantalla de
                       declaracion ya sabe abrirse por direccion, asi que dejar al usuario delante de
                       un campo vacio —teniendo aqui el dato— era un callejon sin salida.
+
+                      Y lleva tambien **a donde volver**: sin el, la pantalla de declaracion ofrecia
+                      «Volver a Incidentes» a quien habia entrado desde aqui, que es nombrar mal el
+                      sitio al que se vuelve.
                     */}
                     {member.tickets !== null && member.tickets > 0 && (
                       <Link
-                        to={declarationPath({ developerId: member.developerId })}
+                        to={declarationPath({ developerId: member.developerId, from: ROUTES.resources })}
                         className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                       >
                         Ver los tickets

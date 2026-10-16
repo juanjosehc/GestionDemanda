@@ -1,21 +1,32 @@
-import { fireEvent, screen, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Declarations } from '@/pages/Declarations'
+import { ROUTES } from '@/routes/navigation'
 import {
   DECLARATION_DEVELOPER_ID,
   declarationItemFixture,
   declarationsFixture,
   planningMetadataFixture,
+  teamCatalogFixture,
 } from '@/test/fixtures'
 import { renderWithClient } from '@/test/render'
 import type { DeclarationStatus } from '@/types/declarations'
+import type { TeamCatalogResponse, TeamPerson } from '@/types/team'
 
 const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<unknown>>()
 
+const TEAM_URL = '/api/team'
 const LIST_URL = `/api/planning-metadata/declarations/${DECLARATION_DEVELOPER_ID}`
 const ITEM_URL = '/api/planning-metadata/501'
 const CREATE_URL = '/api/planning-metadata'
+/**
+ * El listado de un tecnico y el recurso de un ticket comparten prefijo, y el listado lo lleva dentro:
+ * las dos comprobaciones van **de la mas larga a la mas corta**, o el listado se tomaria por el
+ * recurso de un ticket llamado «declarations».
+ */
+const LIST_PREFIX = '/api/planning-metadata/declarations/'
+const ITEM_PREFIX = '/api/planning-metadata/'
 
 /** Lo que `fetch` devuelve en estas pruebas: solo se usan `ok`, `status` y `json()`. */
 type Served = { ok: boolean; status: number; json: () => Promise<unknown> }
@@ -41,6 +52,8 @@ function queue(responses: Served | Served[]): () => Served {
 }
 
 interface Routes {
+  /** El padron del equipo: es lo que llena el desplegable de tecnicos. */
+  team?: Served | Served[]
   /** La lista de tickets del tecnico, por `GET`. */
   declarations?: Served | Served[]
   /** La planificacion declarada de un ticket, por `GET`: lo que el formulario lee antes de escribir. */
@@ -57,7 +70,8 @@ interface Routes {
  * con su nombre en vez de devolver algo parecido: es lo que convierte «la pantalla pidio otra cosa»
  * en una prueba que se cae.
  */
-function serve({ declarations, declaration, write }: Routes) {
+function serve({ team, declarations, declaration, write }: Routes) {
+  const catalog = queue(team ?? okResponse(TEAM))
   const list = queue(declarations ?? okResponse(declarationsFixture()))
   const read = queue(declaration ?? okResponse(planningMetadataFixture()))
   const saved = queue(write ?? okResponse(planningMetadataFixture()))
@@ -65,13 +79,19 @@ function serve({ declarations, declaration, write }: Routes) {
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
 
-    if (url === LIST_URL && method === 'GET') {
+    if (url === TEAM_URL) {
+      return Promise.resolve(catalog())
+    }
+    // El listado antes que el recurso: su direccion tambien empieza por el prefijo del recurso.
+    if (url.startsWith(LIST_PREFIX) && method === 'GET') {
       return Promise.resolve(list())
     }
-    if (url === ITEM_URL && method === 'GET') {
+    // El recurso de un ticket, por prefijo y no por una direccion fija: el atajo abre el que toca, y
+    // con una sola direccion escrita aqui la prueba del atajo no podria abrir dos tickets distintos.
+    if (url.startsWith(ITEM_PREFIX) && method === 'GET') {
       return Promise.resolve(read())
     }
-    if (url === ITEM_URL && method === 'PUT') {
+    if (url.startsWith(ITEM_PREFIX) && method === 'PUT') {
       return Promise.resolve(saved())
     }
     if (url === CREATE_URL && method === 'POST') {
@@ -117,13 +137,28 @@ function rowOf(container: HTMLElement, workItemId: string): HTMLElement {
   return row
 }
 
+/** Una cifra del resumen operativo, por su `data-slot`: el `<dd>` cuyo texto es el numero. */
+function figureOf(container: HTMLElement, slot: string): number {
+  const cell = container.querySelector<HTMLElement>(`[data-slot="${slot}"]`)
+
+  if (!cell) {
+    throw new Error(`No hay cifra "${slot}"`)
+  }
+
+  return Number(cell.textContent)
+}
+
 /**
- * Consulta los tickets de un tecnico, como lo haria una persona: escribe y envia.
+ * Consulta los tickets de un tecnico, como lo haria una persona: elige y envia.
  *
  * `espera` es lo que se aguarda a ver: la tabla, o el vacio declarado. Una consulta tiene dos
  * desenlaces legitimos y la prueba tiene que decir cual esta mirando.
  */
 async function consultar(container: HTMLElement, espera = 'Tickets asignados') {
+  // El desplegable se llena con el padron: sin el no hay ninguna opcion que elegir, y asignarle un
+  // valor a un `select` que no la tiene lo deja en blanco. Esperar aqui es lo que haria una persona.
+  await screen.findByRole('option', { name: 'Ana Perez' })
+
   fireEvent.change(screen.getByLabelText('Técnico'), { target: { value: DECLARATION_DEVELOPER_ID } })
   fireEvent.click(screen.getByRole('button', { name: 'Consultar' }))
 
@@ -137,6 +172,22 @@ async function abrir(container: HTMLElement, workItemId: string) {
   fireEvent.click(within(row).getByRole('button'))
 
   return screen.findByRole('button', { name: 'Guardar' })
+}
+
+/**
+ * Espera a que la escritura termine, mirando que el formulario se haya cerrado.
+ *
+ * **Estas pruebas esperaban antes a ver el nombre del tecnico, y dejo de servir**: desde que el
+ * desplegable trae el padron, ese nombre esta tambien en una opcion y la consulta encuentra dos. El
+ * cierre del formulario es lo que de verdad dice que la escritura termino —ocurre en el `onSuccess`
+ * de la llamada—, y no se confunde con nada.
+ *
+ * Es ademas un ancla **mas fuerte** que la anterior: `useSaveDeclaration` invalida la lista antes de
+ * cerrar, asi que cuando el boton desaparece la relectura ya se pidio, y las afirmaciones de despues
+ * —cuantas veces se leyo la lista— no dependen de un turno del bucle de eventos.
+ */
+async function esperarGuardado() {
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull())
 }
 
 function field(label: string): HTMLInputElement {
@@ -167,6 +218,50 @@ function listWith501(status: DeclarationStatus) {
   })
 }
 
+/**
+ * Una persona del padron, con los campos que no importan al caso ya puestos.
+ *
+ * `operational` en verdadero es el estado normal, y quien quiera otro lo pide por `overrides` en vez
+ * de darlo por supuesto: es la misma convencion que `teamCatalogFixture`, y por el mismo motivo.
+ */
+function person(
+  developerId: string,
+  glpiId: number,
+  name: string,
+  overrides: Partial<TeamPerson> = {},
+): TeamPerson {
+  return {
+    developerId,
+    glpiId,
+    name,
+    active: true,
+    sourceType: 'GLPI',
+    operational: true,
+    ...overrides,
+  }
+}
+
+/**
+ * El padron que sirve esta prueba: el tecnico de la declaracion y dos personas mas.
+ *
+ * **`DECLARATION_DEVELOPER_ID` no esta en `teamCatalogFixture()`**, cuyas tres personas son las de la
+ * fotografia operativa del tablero. Aqui hace falta que quien tiene los tickets del fixture —`dev-1`—
+ * este en el padron, o el desplegable no tendria su opcion y todas las consultas fallarian por una
+ * razon que no es la que se quiere probar.
+ *
+ * Las otras dos existen para los dos casos del brief que no se pueden probar con una sola persona:
+ * quien esta **fuera del equipo operativo** y quien entro por la **via de excepcion**.
+ */
+const ANA = person(DECLARATION_DEVELOPER_ID, 201, 'Ana Perez')
+/** Fuera del equipo operativo: no se le reparte trabajo, pero tiene tickets que hay que declarar. */
+const OUTSIDE = person('dev-2', 202, 'Beto Salas', { operational: false })
+/** Declarada a mano en la configuracion, no en el grupo de GLPI. */
+const EXCEPTION = person('dev-3', 203, 'Caro Mena', { operational: false, sourceType: 'EXCEPTION' })
+
+const PEOPLE: readonly TeamPerson[] = [ANA, OUTSIDE, EXCEPTION]
+
+const TEAM: TeamCatalogResponse = teamCatalogFixture({ people: [...PEOPLE] })
+
 beforeEach(() => {
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
@@ -186,15 +281,16 @@ describe('Declarations', () => {
     expect(rows(container)).toHaveLength(5)
     expect(rowOf(container, '501').getAttribute('data-status')).toBe('PLANIFICABLE')
 
-    // Una sola lectura, la del listado consolidado. Y ninguna escritura: consultar no declara nada.
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // Dos lecturas y ni una mas: el padron, que es lo que llena el desplegable, y el listado
+    // consolidado del tecnico. Y ninguna escritura: consultar no declara nada.
+    expect(order()).toEqual([`GET ${TEAM_URL}`, `GET ${LIST_URL}`])
     expect(calls(LIST_URL)).toHaveLength(1)
     expect(writes('POST')).toHaveLength(0)
     expect(writes('PUT')).toHaveLength(0)
 
-    // El nombre lo pone GLPI; la pantalla no lo compone.
-    expect(screen.getByText('Ana Perez')).toBeInTheDocument()
-    expect(screen.getByText(/5 tickets asignados/)).toBeInTheDocument()
+    // El nombre lo pone GLPI; la pantalla no lo compone. Se lee dentro de la frase del listado y no
+    // suelto: desde que el desplegable trae el padron, ese mismo nombre esta tambien en una opcion.
+    expect(screen.getByText(/5 tickets asignados/)).toHaveTextContent('Ana Perez')
   })
 
   it('con un tecnico sin tickets lo declara, sin tabla y sin inventar filas', async () => {
@@ -206,8 +302,9 @@ describe('Declarations', () => {
     expect(container.querySelector('table')).toBeNull()
     expect(rows(container)).toHaveLength(0)
 
-    // Una lista vacia es una respuesta completa: no es un error y no se pide nada mas.
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // Una lista vacia es una respuesta completa: no es un error, y lo unico que se pide de mas es el
+    // padron que llena el desplegable.
+    expect(order()).toEqual([`GET ${TEAM_URL}`, `GET ${LIST_URL}`])
   })
 
   it('pinta los cinco estados con su codigo y su motivo, tal como llegan', async () => {
@@ -254,7 +351,7 @@ describe('Declarations', () => {
     escribir('Quién declara', 'carlos')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
-    await screen.findByText('Ana Perez')
+    await esperarGuardado()
 
     expect(writes('POST')).toEqual([
       {
@@ -280,14 +377,14 @@ describe('Declarations', () => {
     await consultar(container)
     await abrir(container, '501')
 
-    // Abrir el formulario solo lee: la lista del tecnico y despues el recurso del ticket, en ese
-    // orden. Todavia no hay ninguna escritura.
-    expect(order()).toEqual([`GET ${LIST_URL}`, `GET ${ITEM_URL}`])
+    // Abrir el formulario solo lee: el padron, la lista del tecnico y despues el recurso del ticket,
+    // en ese orden. Todavia no hay ninguna escritura.
+    expect(order()).toEqual([`GET ${TEAM_URL}`, `GET ${LIST_URL}`, `GET ${ITEM_URL}`])
 
     escribir('Quién declara', 'carlos')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
-    await screen.findByText('Ana Perez')
+    await esperarGuardado()
 
     // Y la lectura sigue estando antes que la escritura, que es la razon de que exista: el PUT
     // reemplaza, asi que hay que saber que hay que reemplazar antes de mandarlo.
@@ -326,9 +423,11 @@ describe('Declarations', () => {
     // El recurso del ticket se invalidó, pero el formulario ya se cerró: no se relee de más.
     expect(calls(ITEM_URL)).toHaveLength(1)
 
-    // La conversación entera, en orden: la lista, la lectura previa, la escritura y la relectura de
-    // la lista. Ni una peticion mas: no se recargo la pantalla ni se toco nada que no fuera esto.
+    // La conversación entera, en orden: el padron, la lista, la lectura previa, la escritura y la
+    // relectura de la lista. Ni una peticion mas: no se recargo la pantalla ni se toco nada que no
+    // fuera esto.
     expect(order()).toEqual([
+      `GET ${TEAM_URL}`,
       `GET ${LIST_URL}`,
       `GET ${ITEM_URL}`,
       `PUT ${ITEM_URL}`,
@@ -403,7 +502,7 @@ describe('Declarations', () => {
     escribir('Quién declara', 'carlos')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
-    await screen.findByText('Ana Perez')
+    await esperarGuardado()
 
     expect(writes('PUT')[0]?.body).toEqual({
       estimatedHours: 6,
@@ -451,4 +550,194 @@ describe('Declarations', () => {
     expect(writes('POST')).toHaveLength(0)
     expect(writes('PUT')).toHaveLength(0)
   })
+
+describe('Declarations · el selector de persona', () => {
+  it('ofrece el equipo operativo primero y el resto después, por nombre y sin identificadores', async () => {
+    serve({})
+
+    renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await screen.findByRole('option', { name: 'Ana Perez' })
+
+    const select = screen.getByLabelText('Técnico') as HTMLSelectElement
+    const groups = [...select.querySelectorAll('optgroup')]
+
+    // Dos listas y en este orden: con quien se trabaja a diario primero, y despues el resto.
+    expect(groups.map((group) => group.label)).toEqual(['Equipo operativo', 'Resto del padrón'])
+    expect([...groups[0].querySelectorAll('option')].map((one) => one.textContent)).toEqual([
+      'Ana Perez',
+    ])
+    expect([...groups[1].querySelectorAll('option')].map((one) => one.textContent)).toEqual([
+      'Beto Salas',
+      'Caro Mena · excepción',
+    ])
+
+    // Y ninguna opcion enseña un identificador tecnico: es lo que esta fase viene a retirar.
+    expect(select.textContent).not.toContain(DECLARATION_DEVELOPER_ID)
+  })
+
+  it('nadie queda fuera: quien está fuera del equipo operativo se puede elegir y consultar', async () => {
+    serve({
+      declarations: okResponse(
+        declarationsFixture({ developer: { id: 'dev-2', name: 'Beto Salas' } }),
+      ),
+    })
+
+    const { container } = renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await screen.findByRole('option', { name: 'Beto Salas' })
+
+    fireEvent.change(screen.getByLabelText('Técnico'), { target: { value: 'dev-2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Consultar' }))
+
+    await screen.findByText('Tickets asignados')
+
+    // Se le pidio su listado, y el nombre que la pantalla enseña es el del padron.
+    expect(calls(`${LIST_PREFIX}dev-2`)).toHaveLength(1)
+    expect(screen.getByText(/5 tickets asignados/)).toBeInTheDocument()
+    expect(within(rowOf(container, '501')).getByRole('button')).toHaveTextContent('Editar')
+  })
+
+  it('una excepción del catálogo se distingue de una persona de GLPI', async () => {
+    serve({})
+
+    renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await screen.findByRole('option', { name: 'Caro Mena · excepción' })
+
+    // La marca es la unica señal, y solo la lleva quien no viene de GLPI: es la convencion de la
+    // Fase 30, que señala lo que no es GLPI y nada mas.
+    expect(screen.getByRole('option', { name: 'Caro Mena · excepción' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Ana Perez · excepción' })).toBeNull()
+  })
+
+  it('si el padrón no carga lo dice, en vez de ofrecer un desplegable vacío', async () => {
+    serve({ team: errorResponse(500, { message: 'GLPI no responde' }) })
+
+    renderWithClient(<Declarations />, { route: '/declaraciones' })
+
+    expect(await screen.findByText('No fue posible cargar el equipo')).toBeInTheDocument()
+
+    // Sin padron no hay a quien elegir, y no se pide ninguna declaracion: no habria a quien pedirla.
+    expect(screen.queryByLabelText('Técnico')).toBeNull()
+    expect(order()).toEqual([`GET ${TEAM_URL}`])
+  })
+})
+
+describe('Declarations · la entrada directa', () => {
+  it('con técnico y ticket en la dirección se abre sola, sin teclear nada', async () => {
+    serve({})
+
+    renderWithClient(<Declarations />, {
+      route: `/declaraciones?tecnico=${DECLARATION_DEVELOPER_ID}&ticket=504`,
+    })
+
+    // El formulario del ticket pedido esta abierto sin haber tocado el desplegable ni la tabla.
+    await screen.findByRole('button', { name: 'Guardar' })
+
+    expect(screen.getByText('Declarar la planificación')).toBeInTheDocument()
+    expect(screen.getByLabelText('Técnico')).toHaveValue(DECLARATION_DEVELOPER_ID)
+
+    // Y no se pidio nada de mas: el 504 no tiene fila, asi que no hay recurso que leer.
+    expect(order()).toEqual([`GET ${TEAM_URL}`, `GET ${LIST_URL}`])
+  })
+
+  it('sin contexto no pide ninguna declaración: solo el padrón que llena el desplegable', async () => {
+    serve({})
+
+    renderWithClient(<Declarations />, { route: '/declaraciones' })
+
+    await screen.findByText('Elige un técnico')
+
+    expect(order()).toEqual([`GET ${TEAM_URL}`])
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('el enlace de vuelta nombra la pantalla de la que se salió', async () => {
+    serve({})
+
+    renderWithClient(<Declarations />, {
+      route: `/declaraciones?tecnico=${DECLARATION_DEVELOPER_ID}&volver=${ROUTES.resources}`,
+    })
+
+    // No dice «Incidentes» desde cualquier sitio: dice a donde vuelve de verdad.
+    expect(await screen.findByRole('link', { name: 'Volver a Recursos' })).toHaveAttribute(
+      'href',
+      ROUTES.resources,
+    )
+  })
+
+  it('sin vuelta declarada el enlace sigue llevando a Incidentes', async () => {
+    serve({})
+
+    renderWithClient(<Declarations />, { route: '/declaraciones' })
+
+    // El flujo empieza en la lista de trabajo, asi que ese es el respaldo.
+    expect(await screen.findByRole('link', { name: 'Volver a Incidentes' })).toHaveAttribute(
+      'href',
+      ROUTES.incidents,
+    )
+  })
+})
+
+describe('Declarations · el resumen y el atajo', () => {
+  it('el resumen cuenta lo mismo que la tabla, y declarados y pendientes no se solapan', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await consultar(container)
+
+    // El fixture trae los cinco estados, uno de cada: un planificable y cuatro pendientes.
+    expect(figureOf(container, 'declaration-active')).toBe(5)
+    expect(figureOf(container, 'declaration-declared')).toBe(1)
+    expect(figureOf(container, 'declaration-pending')).toBe(4)
+    expect(figureOf(container, 'declaration-without-estimation')).toBe(1)
+    expect(figureOf(container, 'declaration-without-commitment')).toBe(1)
+
+    // Declarados y pendientes parten a los activos: suman, no se solapan. Las dos carencias, en
+    // cambio, son causas de estar pendiente y por eso no se exige que sumen nada.
+    expect(
+      figureOf(container, 'declaration-declared') + figureOf(container, 'declaration-pending'),
+    ).toBe(figureOf(container, 'declaration-active'))
+  })
+
+  it('«Declarar siguiente pendiente» abre el primero que falta y salta el que ya está abierto', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await consultar(container)
+
+    // El 501 es planificable y el 505 intraducible: ninguno de los dos se ofrece.
+    fireEvent.click(screen.getByRole('button', { name: 'Declarar siguiente pendiente' }))
+    await screen.findByRole('button', { name: 'Guardar' })
+
+    expect(calls(`${ITEM_PREFIX}502`)).toHaveLength(1)
+
+    // El segundo clic avanza al 503 en vez de reabrir el 502: es lo que hace que el atajo sirva dos
+    // veces seguidas.
+    fireEvent.click(screen.getByRole('button', { name: 'Declarar siguiente pendiente' }))
+    await screen.findByRole('button', { name: 'Guardar' })
+
+    expect(calls(`${ITEM_PREFIX}503`)).toHaveLength(1)
+    expect(calls(`${ITEM_PREFIX}502`)).toHaveLength(1)
+  })
+
+  it('sin nada que declarar el atajo no se ofrece', async () => {
+    serve({
+      declarations: okResponse(
+        declarationsFixture({
+          items: [
+            declarationItemFixture({ declarationStatus: 'PLANIFICABLE' }),
+            declarationItemFixture({ workItemId: '505', declarationStatus: 'NO_TRADUCIBLE' }),
+          ],
+        }),
+      ),
+    })
+
+    const { container } = renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await consultar(container)
+
+    // Hay un pendiente —el intraducible— y no se ofrece: no se arregla declarando, asi que el boton
+    // llevaria a rellenar un formulario que no cambia nada.
+    expect(figureOf(container, 'declaration-pending')).toBe(1)
+    expect(screen.queryByRole('button', { name: 'Declarar siguiente pendiente' })).toBeNull()
+  })
+})
 })

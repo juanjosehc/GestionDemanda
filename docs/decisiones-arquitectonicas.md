@@ -5653,3 +5653,136 @@ La ruta nueva **cuelga de** `/planificar`, y las dos casan por prefijo. El `Side
 **Los siete criterios de aceptación del brief se cumplen**: (1) **no cambia ninguna regla de negocio** —ni el motor, ni los desplazamientos, ni las renegociaciones, ni la integración GLPI, ni la validación, ni el protocolo de escritura—; (2) **`PlanningEngine` no se toca**, ni un fichero del backend; (3) la pantalla enseña **tickets activos, planificables, no planificables, sin estimación, sin compromiso y declaraciones completas**, por equipo y por persona; (4) contesta **las cuatro preguntas** —si se puede generar un plan útil, qué lo bloquea, quién tiene trabajo listo y quién debe declarar—; (5) **reutiliza los datos existentes** y no duplica el Dashboard ni Incidentes —cero lecturas de métricas, comprobado en la prueba y en la red—; (6) **las 370 pruebas del backend y las 174 del frontend pasan**, y las 166 anteriores no se editaron; (7) la demostración con navegador está hecha y capturada.
 
 **Y lo que esta fase no tocó, dicho explícitamente**: ni `PlanningEngine`, ni los desplazamientos, ni las renegociaciones, ni una regla de negocio, ni la integración con GLPI, ni el backend —**cero ficheros del backend con diferencia**—. El diff es enteramente del frontend: **cinco ficheros tocados** —`routes/navigation.ts`, `routes/AppRoutes.tsx`, `layouts/Sidebar.tsx`, `layouts/Header.tsx` y `pages/Planning.tsx`— y **tres nuevos** —`lib/planningPreview.ts`, `pages/PlanningPreview.tsx` y `pages/PlanningPreview.test.tsx`—.
+
+# Fase 37 — Declarar con personas y tickets, no con identificadores
+
+## Qué se hizo, en una frase
+
+La pantalla de declaración **dejó de pedir identificadores técnicos**: el técnico se elige de un desplegable que trae el padrón del equipo —el nombre, y una marca si la persona entró por excepción—, el ticket se elige de la lista de esa persona, y se puede llegar desde Recursos, Incidentes y el estado del plan **con las dos cosas ya puestas**; además hay un atajo que abre el siguiente pendiente sin volver a buscar nada, y el enlace de vuelta dice el nombre de la pantalla de la que se salió.
+
+## El análisis obligatorio: qué se seguía pidiendo a mano, y por qué ya no hacía falta
+
+### 1. Los problemas de UX que seguían existiendo
+
+La Fase 35 quitó cuatro pasos del camino de entrada —el atajo de Incidentes ya lleva el técnico y el ticket puestos—, pero **la pantalla en sí seguía siendo la misma de la Fase 12**, y sus dos primeros pasos seguían exigiendo saber algo de memoria:
+
+- **El técnico se tecleaba.** Un `<input>` con la pista «Identificador en GLPI, p. ej. 296» y un botón «Consultar». El campo no ofrecía nada, no validaba nada y no perdonaba una errata: el `developerId` que espera el backend es el **login** de GLPI —`JoseGarc`—, no el número, así que la pista del propio campo **nombraba un identificador que no era el que había que escribir**. Ese hueco estaba declarado desde la Fase 12 como **riesgo 107**, con la mitigación escrita: «se convierte en desplegable el día que ese catálogo exista».
+- **El ticket se buscaba a ojo.** Entre las filas de una tabla que, para quien más trabajo tiene, pasa de veinte.
+- **El enlace de vuelta mentía.** Decía «Volver a Incidentes» **desde cualquier sitio**, incluso a quien había entrado desde Recursos o desde el estado del plan. No era un enlace roto: era un enlace que nombraba mal su destino, que es peor, porque quien lo lee cree saber a dónde va.
+- **No había resumen.** Nada decía, antes de mirar la tabla entera, cuánto de ese trabajo estaba listo y cuánto bloqueado.
+
+### 2. Las dependencias funcionales de la pantalla
+
+`Declarations.tsx` es autocontenida y **no lee nada del router**: vive de tres `useState` y consume tres cosas.
+
+| Qué necesita | De dónde sale |
+| --- | --- |
+| Quién es el técnico | Un `<input>` tecleado, confirmado con «Consultar» |
+| Qué tickets tiene | `GET /api/planning-metadata/declarations/{developerId}` |
+| Lo ya declarado de un ticket | `GET /api/planning-metadata/{workItemId}` |
+| Escribir | `POST /api/planning-metadata` (crear) o `PUT /api/planning-metadata/{workItemId}` (reemplazar) |
+
+**El verbo lo decide la existencia de la fila y no el estado**: `item.declaration !== null` —que la lista ya trae— elige entre crear y reemplazar. La pantalla **no clasifica**: el estado de declaración y los descartes llegan decididos por el mismo validador que decide qué entra al plan, y aquí se pintan tal cual. **Nada de eso cambia en esta fase.**
+
+### 3. La información que el sistema ya conocía y se seguía pidiendo a mano
+
+- **`GET /api/team` publica el padrón desde la Fase 30**: nombre, login, identificador de GLPI, pertenencia al equipo operativo y origen —GLPI o excepción—. Es exactamente lo que faltaba en la Fase 12 para no tener que teclear nada, y la Fase 30 dejó anotado que ese catálogo ya tenía de dónde salir. **El riesgo 107 llevaba cinco fases esperando a este dato.**
+- **El propio `developerId` viaja ya en la dirección** en todos los enlaces que llegan desde fuera (Fase 35 y Fase 36), así que al abrir la pantalla por esa vía **el técnico se conoce antes de pintar nada**.
+- **El rótulo de cada pantalla ya existe en el menú** (`NAV_ITEMS`), y el encabezado ya lo usaba para titularse: el nombre de la pantalla de la que se vuelve **estaba escrito en el repositorio** y el enlace de vuelta no lo consultaba.
+
+### 4. Qué se podía eliminar, y qué no
+
+Se elimina **el campo libre**, porque hay alternativa mejor y la alternativa cubre a todo el mundo: el desplegable ofrece el padrón entero —43 personas hoy— y **además** sigue ofreciendo, como última opción, un técnico que no esté en él. No se elimina «Quién declara»: es un dato que GLPI no guarda y que **no se puede deducir** del técnico, porque el autor de la estimación y el del compromiso son dos personas distintas y ninguna es necesariamente el asignado (decisión 173.7).
+
+## Las decisiones
+
+### 175. La declaración se opera con personas y con tickets, y el menú nombra a dónde se vuelve
+
+**175.1 — El campo libre se sustituye por un desplegable con el padrón, y nadie queda fuera de él.** Dos `<optgroup>`: «Equipo operativo» —con quien se trabaja a diario— y «Resto del padrón». La separación **ordena, no esconde**: quien está fuera del equipo operativo **se puede elegir y consultar igual**, porque una persona sin trabajo repartido sigue teniendo tickets que declarar —medido: de las 42 personas del padrón, 24 están fuera del equipo operativo—. Y quien no está en el padrón de hoy —un enlace viejo, o alguien a quien GLPI dejó de publicar— **se sigue ofreciendo** con la marca «· no está en el padrón de hoy»: quitarlo dejaría el desplegable en blanco sobre un técnico que sí se pidió, y la pantalla diría «elige un técnico» teniéndolo ya elegido.
+
+**175.2 — El rótulo de una persona es su nombre, y el login solo aparece si no hay nombre.** Enseñar el login sería reintroducir por la puerta de atrás el identificador que esta fase viene a retirar; y quien declara reconoce a la persona por su nombre. Cuando GLPI no publica ninguno utilizable el login es lo único que queda, y entonces se usa como nombre —el mismo trato que `personName` da en la tabla del equipo—. La marca «· excepción» sigue la convención de la Fase 30: **se señala lo que no es GLPI y nada más**, y es lo que explica por qué alguien que no está en el grupo aparece en la lista.
+
+**175.3 — La consulta sale del botón y no del `change`.** Cambiar de técnico cierra el formulario abierto y pide su listado, y eso es una acción de quien opera, no un efecto de pasar por encima de las opciones. Es la misma razón por la que el `<input>` original tenía «Consultar», conservada al cambiar el control.
+
+**175.4 — La dirección siembra y no espeja, otra vez.** El técnico, el ticket y la vuelta se leen **una sola vez**, en el inicializador de `useState`, y a partir de ahí manda el estado local. Es la decisión 173.2 aplicada al mismo problema: cerrar el formulario no lo reabre aunque el parámetro siga en la dirección —igual que el valor inicial de un campo no vuelve cuando alguien lo borra—, y consultar no reescribe la dirección. **El precio de lo contrario está medido**: con la dirección como dueña, cada `<select>` sería una navegación y el botón «atrás» desharía filtros en vez de salir de la pantalla.
+
+**175.5 — El enlace de vuelta se nombra con el menú, y por eso la resolución de rótulos se muda a `routes/navigation.ts`.** El rótulo sale de `navItemFor(back)`, que devuelve la entrada de menú **por coincidencia más larga** —«Estado del plan» cuelga de `/planificar` y las dos casan por prefijo—. Esa lógica ya existía, pero vivía dentro de `Header.tsx` y **dejó de ser la única que la necesita**: el encabezado la usa para titularse y el enlace de vuelta para nombrar su destino. Mudarla a `navigation.ts` es una función y ningún cambio de comportamiento —el encabezado pasa a llamarla—, y evita que la regla de «gana el prefijo más largo» exista dos veces. Sin `volver` el respaldo sigue siendo Incidentes, que es donde empieza el flujo.
+
+**175.6 — El resumen operativo son cinco cifras que no son de la misma clase, y la pantalla lo dice.** «Activos» es el total; «declarados» y «pendientes» **lo parten en dos**; «sin estimación» y «sin compromiso» son **dos de las causas** de estar pendiente y **no lo agotan** —falta el trabajo sin ninguna declaración, que son los dos descartes a la vez, y el tipo que el contrato no sabe leer—. Presentarlas como cinco cajones hermanos sería un error de lectura que la propia pantalla provocaría, así que lleva debajo la misma advertencia que el desglose de Incidentes arrastra desde la Fase 35. **Se cuenta sobre las filas activas y no sobre la respuesta entera**, así que cuadra con la tabla de debajo.
+
+**175.7 — El atajo salta el ticket que ya está abierto, y solo ofrece lo que se arregla declarando.** `declarables.find(item => item.workItemId !== selected) ?? declarables[0]`: **saltar el abierto es lo que hace que el botón sirva dos veces seguidas** —quien acaba de declarar uno quiere el siguiente, no el mismo otra vez—, y el orden es el que devolvió GLPI, el mismo de la tabla, así que el recorrido es el de la lista y no uno inventado aquí. **`NO_TRADUCIBLE` queda fuera** y el botón desaparece cuando no queda nada que declarar: un botón que lleva a rellenar un formulario que no cambia nada es una promesa vacía.
+
+**175.8 — La lista de estados que se arreglan declarando se declara una sola vez.** `DECLARABLE_STATUSES` vive en `lib/declarations.ts` y tiene **dos lectores con formas distintas**: la pantalla pregunta por un ticket —`isDeclarable`— y la vista previa del estado de entrada suma cajones —`declarableOf`, que pasa a recorrer la misma lista en vez de sumar tres literales—. Escribirla dos veces sería la segunda versión de la misma regla, y el día que el backend añadiera un parcial las dos se separarían sin avisar.
+
+**175.9 — `GET /api/team` se lee al abrir, y si falla la pantalla entera lo dice.** El padrón es la única lectura que enumera personas, y es lo que convierte el campo de texto en un desplegable. **Comparte clave de caché con Recursos, Incidentes y el estado del plan**, así que llegar aquí desde cualquiera de las tres no repite la petición. Cuando falla no se pinta un desplegable vacío —que se leería como «no hay nadie»— sino un estado de error con «Reintentar», y **no se pide ninguna declaración**: sin padrón no hay a quién pedírsela.
+
+**175.10 — El estado del plan también lleva a declarar, y su última columna pasa a llamarse «Acciones».** Era el único de los tres orígenes del alcance que **decía quién bloquea sin ofrecer dónde se arregla**: Incidentes y Recursos ya llevaban a la declaración y esta pantalla se quedaba en el diagnóstico. La columna se llamaba «Bloqueadores» y ahora lleva las dos cosas —«Ver» los tickets que bloquean a esa persona y «Declarar» su trabajo pendiente, con la persona ya puesta—, así que **el rótulo cambia con el contenido**: llamar «Bloqueadores» a una columna que además abre un formulario sería nombrarla por la mitad de lo que hace. El enlace a declarar **solo aparece cuando hay algo que declarar** —`declarable > 0`—, y `declarable` deja fuera lo planificable y lo intraducible, así que nunca lleva a un formulario que no cambia nada.
+
+**175.11 — El modo se siembra desde la dirección y se devuelve con ella, y su nombre se escribe una sola vez.** El conmutador de esta pantalla nació como estado local —`useState('operativo')`—, y eso dejaba un agujero al cerrar el círculo de la decisión anterior: el enlace a la declaración lleva consigo la vuelta, así que quien hubiera entrado con «Mostrar todo» puesto volvía a encontrarse **la fila de quien está fuera del equipo operativo ya escondida**, como si alguien la hubiera sacado. Ahora se lee con `modeFromParams` —la misma función que usa Incidentes— y se escribe con `modeQuery`, que es su espejo y **solo emite el valor cuando no es el de por defecto**. Es la decisión 173.2 otra vez y con el mismo límite: **se siembra, no se espeja** —mover el conmutador no reescribe la dirección; solo lo que se comparte por enlace lleva el modo—. La alternativa era componer `?modo=todos` a mano dentro de la pantalla, que sería el segundo sitio del repositorio donde se escribe ese nombre.
+
+## Las pruebas
+
+**Trece pruebas nuevas —once en `Declarations.test.tsx`, de 10 a 21, y dos en `PlanningPreview.test.tsx`, de 8 a 10— y ninguna existente borrada ni debilitada: el frontend pasa de 174 a 187, en 13 archivos.**
+
+**Las dos de la vista previa cubren la entrada que le faltaba** (175.10 y 175.11), y son las únicas de esta fase que no viven en `Declarations.test.tsx`: que la fila de una persona con trabajo declarable lleve a **su** declaración —con el nombre de la persona en el nombre accesible, porque hay tickets compartidos— y que **el modo con el que se entró viaje en la vuelta**, sembrado desde la dirección, para que quien entró con «Mostrar todo» puesto no se encuentre al volver la fila de quien está fuera ya escondida. **Se añaden en vez de darse por cubiertas por las siete demostraciones de navegador**: una captura enseña que el enlace está ahí hoy, y una prueba afirma que sigue estando mañana.
+
+Tres bloques nuevos: **el selector de persona** —el agrupado y su orden, que ninguna opción enseñe un identificador técnico, que quien está fuera del equipo operativo se pueda elegir y consultar, que una excepción se distinga de una persona de GLPI, y que un padrón que no carga lo diga en vez de ofrecer un desplegable vacío—, **la entrada directa** —que con técnico y ticket en la dirección el formulario se abra solo y no se pida nada de más, que sin contexto solo se lea el padrón, que el enlace de vuelta nombre la pantalla de la que se salió y que sin vuelta declarada siga llevando a Incidentes— y **el resumen y el atajo** —que las cinco cifras cuadren con la tabla y que declarados y pendientes **partan** los activos sin solaparse, que el atajo abra el primero que falta y **avance al segundo en vez de reabrir el mismo**, y que sin nada que se arregle declarando el atajo no se ofrezca—.
+
+**El simulador de la prueba ganó el padrón, y con él una trampa que hubo que desarmar.** `serve()` sirve ahora `/api/team`, y el listado de un técnico y el recurso de un ticket **comparten prefijo** —el listado lo lleva dentro—, así que las dos comprobaciones van **de la más larga a la más corta** o el listado se tomaría por el recurso de un ticket llamado «declarations».
+
+**Y tres anclas que dejaron de servir, sustituidas por una más fuerte.** Desde que el desplegable trae el padrón, **el nombre del técnico está en dos sitios** —una `<option>` y el resumen—, así que `getByText('Ana Perez')` encuentra dos y las tres esperas que lo usaban se cambiaron por `esperarGuardado()`, que espera a que **el formulario se cierre**. No es un apaño: el cierre ocurre en el `onSuccess` de la escritura y es **estrictamente más fuerte** que la espera anterior, porque `useSaveDeclaration` invalida la lista **antes** de cerrar, así que cuando el botón desaparece la relectura ya se pidió y las afirmaciones de después no dependen de un turno del bucle de eventos.
+
+**Las tres pruebas que afirman la conversación de red entera** —cuántas peticiones y en qué orden— se actualizaron al padrón, y siguen fijando lo mismo: consultar **no escribe nada**, una lista vacía **es una respuesta completa** y no dispara nada más, y guardar produce **exactamente** la secuencia lectura → escritura → relectura.
+
+**`DeclarationFlow.test.tsx` no se tocó ni una línea**, y se comprobó por qué: ya servía `/api/team` y ya afirmaba `getByRole('link', { name: 'Volver a Incidentes' })`, que el rótulo derivado del menú **conserva por construcción** —la ruta por defecto es Incidentes y su entrada de menú se llama así—.
+
+**Y una prueba que resultó ser frágil, con la causa medida antes de tocarla.** Pasada la batería entera en repetidas ocasiones, `carga los tickets del tecnico y no pide nada mas` falló **una vez de cada doce**, siempre con el mismo mensaje —`Unable to find role="option" and name "Ana Perez"`— y siempre con el DOM en un estado **legítimo e intermedio**: el desplegable ya pintado y el padrón todavía sin llegar. **No era la afirmación** —el orden y el número de peticiones nunca fallaron— **sino el presupuesto de espera**: `findBy*` trae 1000 ms por defecto, y esta pantalla hace **dos viajes seguidos** por consulta —el padrón y después el listado—, así que la fase duplicó la exposición del fichero a un segundo que en esta máquina —trece entornos jsdom en paralelo sobre una carpeta sincronizada con OneDrive— se agota de vez en cuando. La corrección es **una línea en `src/test/setup.ts`**: `configure({ asyncUtilTimeout: 3000 })`. **No afloja ninguna afirmación** —`waitFor` vuelve en cuanto la condición se cumple, así que en una máquina despejada no cuesta nada, y sigue por debajo del `testTimeout` de 5 s, de modo que una pantalla que de verdad se cuelga sigue fallando, solo que tres segundos más tarde—. Es el único cambio de esta fase que no es de producto, y se declara en vez de esconderse.
+
+**El backend pasa de 370 sin cambios** —no se tocó ni un fichero— y se ejecutó igualmente para confirmarlo.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 167 | **El desplegable crece con el padrón y no tiene buscador** | **Bajo, y es el precio de no teclear** | 43 opciones hoy, agrupadas y ordenadas: el equipo operativo —18— primero. Un buscador dentro del `<select>` es un componente nuevo, y el brief acota la fase a retirar los identificadores |
+| 168 | **El padrón es una lectura nueva al abrir la pantalla, y si falla la pantalla entera se cae** | **Bajo: se dice en vez de disimularse** | Estado de error propio con «Reintentar», y **no se pide ninguna declaración**: sin padrón no hay a quién pedírsela. Comparte clave de caché con Recursos, Incidentes y el estado del plan, así que llegar desde cualquiera de las tres no la repite |
+| 169 | **Los identificadores siguen viajando en la dirección** | **Bajo: nadie tiene que escribirlos** | Son la clave con la que responde el backend, y los componen los enlaces de origen. La regla del brief es que **no haya que conocerlos**, no que no existan |
+| 170 | **«Quién declara» se sigue tecleando** | **Bajo, y es deliberado** | Es un dato que GLPI no guarda y **no se deduce** del técnico: el autor de la estimación y el del compromiso son dos personas distintas (decisión 173.7). Prerrellenarlo convertiría la trazabilidad en un dato falso la mitad de las veces |
+| 171 | **El resumen no distingue «nunca declaró» de «declaró y retiró»** | **Bajo: es el riesgo 165, del backend** | `SIN_DECLARACION` junta los dos casos porque los dos emiten los dos descartes. Separarlos exigiría tocar el backend, que el brief prohíbe |
+| 172 | **La verificación sobre la instancia real deja rastro** | **Bajo: es el riesgo 158, ya declarado** | No existe endpoint `DELETE`. La declaración de prueba se hizo **solo con el compromiso**, dejando la estimación vacía, para que el ticket **no llegue a ser planificable** y no entre en ningún plan |
+
+## Limitaciones
+
+**No hay buscador en el desplegable.** 43 opciones agrupadas y ordenadas, y nada más. Con el equipo operativo primero, el caso corriente —declarar a alguien del equipo— está a un despliegue de distancia.
+
+**Los identificadores siguen en la dirección.** No se teclean, pero se ven. Son la clave del backend y no hay forma de quitarlos sin inventar un segundo vocabulario.
+
+**«Quién declara» no se prerrellena**, a propósito y por el motivo de la decisión 173.7.
+
+**El resumen no separa «nunca declaró» de «declaró y retiró»**, porque el backend no lo separa.
+
+**La fase no toca el backend.** Ni una línea: ni `PlanningEngine`, ni el cálculo del plan, ni los desplazamientos, ni las renegociaciones, ni el modelo de capacidad, ni la integración GLPI, ni la validación, ni el protocolo de escritura.
+
+## La verificación explícita: «El usuario NO debe necesitar conocer login, developerId ni id GLPI para utilizar Declaración»
+
+**Sí, y se comprobó con la aplicación corriendo, con navegador real y sobre datos de producción.**
+
+**El punto de partida, medido**: 42 personas en el padrón —**18 en el equipo operativo y 24 fuera**—, y el técnico de trabajo `Jose Luis Garces Gonzalez` (`JoseGarc`) con **8 tickets activos: 1 planificable, 1 sin estimación y 6 sin ninguna declaración**.
+
+**Las siete demostraciones del brief, hechas y capturadas.**
+
+1. **Desde Recursos.** El enlace «Ver los tickets» de la tabla del equipo apunta a `/declaraciones?tecnico=JoseGarc&volver=%2Frecursos`; al pulsarlo, **el desplegable ya lee «Jose Luis Garces Gonzalez»** —un nombre, no un identificador— y el resumen aparece con **8 activos · 1 declarado · 7 pendientes · 1 sin estimación · 0 sin compromiso**. El botón de vuelta dice **«Volver a Recursos»**.
+2. **Desde Incidentes.** La fila del 66666 lleva a `/declaraciones?tecnico=JoseGarc&ticket=66666&volver=%2Fincidentes`, y llega **con el formulario de ese ticket ya abierto** en modo edición, con la fecha compromiso `20/10/2026` puesta y las horas estimadas vacías —que es lo que esa fila tiene—. El botón dice **«Volver a Incidentes»**.
+3. **Desde el estado del plan.** La columna «Acciones» de `/planificar/estado` ofrece «Declarar» por persona; el de `JoseGarc` lleva a `/declaraciones?tecnico=JoseGarc&volver=%2Fplanificar%2Festado`, y llega con el técnico puesto y el botón leyendo **«Volver a Estado del plan»**.
+4. **Entrada directa desde el menú.** `/declaraciones` sin un solo parámetro: **no se pide ninguna declaración** —solo el padrón—, no hay tabla, y se lee «Elige un técnico» sobre un desplegable de **43 opciones** en dos grupos. Elegido `Abraham Arana Aldana` y pulsado «Consultar», salen **sus** 8 tickets con **8 activos · 0 declarados · 8 pendientes**, que no son las cifras de JoseGarc: la pantalla es de la persona, no un ejemplo.
+5. **Declaración de un ticket pendiente.** El **66913**, que estaba en `SIN_DECLARACION` sin fila, se declaró **solo con el compromiso** —`2026-10-23`— dejando la estimación vacía. La fila pasó a **`SIN_ESTIMACION`** leyendo «sin estimación · 2026-10-23», su acción cambió de **«Declarar» a «Editar»**, el formulario **se cerró al guardar** y la lista **se releyó sola**: «Sin estimación» pasó de 1 a 2 con el total de activos intacto en 8. **El ticket no llegó a ser planificable, así que no entra en ningún plan**: es la escritura con el rastro más pequeño que demuestra el caso.
+6. **Declarar el siguiente pendiente.** Con nada abierto, el atajo abrió el **66666** —el primero de la lista que se arregla declarando—; pulsado otra vez, **avanzó al 66913** en vez de reabrirlo, y el formulario leyó de vuelta lo que se acababa de declarar —«compromiso por verificacion-fase-37»—, que confirma a la vez que el atajo avanza y que el formulario **lee el recurso fresco** en vez de pintar lo que traía la lista.
+7. **Retorno correcto.** Desde la declaración abierta por el estado del plan, el botón devolvió a `/planificar/estado`. Los tres orígenes se comprobaron por separado y **cada uno nombra el suyo**: «Volver a Recursos», «Volver a Incidentes» y «Volver a Estado del plan». Sin `volver`, el respaldo es Incidentes.
+
+**La regla crítica del brief, comprobada en la misma captura**: en las siete demostraciones **no se tecleó ni un login, ni un `developerId`, ni un identificador de GLPI**. El desplegable enseña nombres —y «· excepción» donde toca—, el resumen nombra a la persona, y los dos únicos campos que se escriben son la estimación y la fecha compromiso, que son las dos cosas que GLPI no guarda.
+
+**El residuo, declarado y no maquillado**: la declaración de prueba deja **una fila en `planning_metadata`** —la del 66913, con su entrada *append-only* en el historial— y **no existe endpoint `DELETE`**. Es el riesgo 158, ya abierto por la Fase 35 y repetido aquí como riesgo 172. La estimación se dejó vacía **a propósito**, para que el ticket quedara en `SIN_ESTIMACION` y **no pasara a contar como entrada del motor**.
+
+**Las evidencias visuales**, en `.playwright-mcp/` —que sí está en el `.gitignore`— y en **trece copias de la raíz que quedan sin versionar**, no se commitean ni unas ni otras —el repositorio no tiene ni un PNG versionado y esta fase no cambia esa convención—: `f37-01-recursos-origen.png` y `f37-02-recursos-a-declaracion.png`; `f37-03-incidentes-origen.png` y `f37-04-incidentes-a-declaracion.png`; `f37-05-declaracion-pendiente.png` y `f37-06-declaracion-guardada.png`; `f37-07-siguiente-pendiente.png` y `f37-08-siguiente-avanza.png`; `f37-09-estado-origen.png`, `f37-10-estado-a-declaracion.png` y `f37-11-retorno-estado.png`; `f37-12-menu-directo.png` y `f37-13-selector-consulta.png`.
+
+**Y lo que esta fase no tocó, dicho explícitamente**: ni `PlanningEngine`, ni el cálculo del plan, ni los desplazamientos, ni las renegociaciones, ni el modelo de capacidad, ni una regla de negocio, ni la integración con GLPI, ni el backend —**cero ficheros del backend con diferencia**—. El diff es enteramente del frontend: **once ficheros, ninguno nuevo** —`pages/Declarations.tsx` y sus pruebas, `pages/PlanningPreview.tsx` y las suyas, `lib/declarations.ts`, `lib/incidents.ts`, `lib/planningPreview.ts`, `routes/navigation.ts`, `layouts/Header.tsx`, `components/team/TeamTable.tsx` y `test/setup.ts`, este último solo para el presupuesto de espera—.

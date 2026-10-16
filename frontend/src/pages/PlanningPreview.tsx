@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Layers, ListChecks, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,13 +10,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useTeamDeclarations } from '@/hooks/useDeclarations'
 import { useTeam } from '@/hooks/useTeam'
 import { formatInstant } from '@/lib/format'
-import { NO_FILTERS, PENDING } from '@/lib/incidents'
+import { modeFromParams, NO_FILTERS, PENDING } from '@/lib/incidents'
 import type { TeamViewMode } from '@/lib/incidents'
 import { entrySummary, personEntries, verdictOf } from '@/lib/planningPreview'
 import type { EntrySummary, PersonEntry } from '@/lib/planningPreview'
 import { declarationKeysFor } from '@/lib/team'
 import { Figure } from '@/pages/Planning'
-import { incidentsPath } from '@/routes/navigation'
+import { declarationPath, incidentsPath, planningPreviewPath } from '@/routes/navigation'
 import type { DeclarationStatus } from '@/types/declarations'
 
 /** Esqueleto de la carga: la misma forma que el contenido, para que no haya salto de altura. */
@@ -110,7 +110,11 @@ export function PlanningPreview() {
   const queryClient = useQueryClient()
   const { data, isPending, isError, error, refetch, isFetching } = useTeam()
 
-  const [mode, setMode] = useState<TeamViewMode>('operativo')
+  // El conmutador se siembra desde la direccion, como el de Incidentes y por el mismo motivo: quien
+  // entra con «Mostrar todo» puesto —o vuelve de declarar— tiene que encontrar la misma vista, o la
+  // fila de quien esta fuera del equipo operativo desaparece sin que nadie haya cambiado nada.
+  const [searchParams] = useSearchParams()
+  const [mode, setMode] = useState<TeamViewMode>(() => modeFromParams(searchParams))
 
   const people = data?.people ?? []
 
@@ -191,6 +195,16 @@ export function PlanningPreview() {
 
   const blockersHref = (entry: PersonEntry) =>
     incidentsPath({ ...NO_FILTERS, person: entry.developerId, declaration: PENDING }, mode)
+
+  /**
+   * La direccion de la declaracion con la persona ya puesta, y la vuelta a esta misma vista.
+   *
+   * Es la entrada que le faltaba al alcance: Incidentes y Recursos ya llevaban a declarar, y esta
+   * pantalla decia quien bloquea sin ofrecer donde se arregla. El modo viaja en la vuelta, o al volver
+   * la fila de quien esta fuera no apareceria.
+   */
+  const declarationHref = (entry: PersonEntry) =>
+    declarationPath({ developerId: entry.developerId, from: planningPreviewPath(mode) })
 
   return (
     <div className="space-y-6">
@@ -395,7 +409,7 @@ export function PlanningPreview() {
                         No traducible
                       </th>
                       <th scope="col" className="py-2 text-left font-medium">
-                        Bloqueadores
+                        Acciones
                       </th>
                     </tr>
                   </thead>
@@ -443,15 +457,30 @@ export function PlanningPreview() {
                             pendiente. El nombre accesible lleva la cuenta y la persona porque hay
                             tickets compartidos: sin él, dos filas tendrían enlaces indistinguibles. */}
                         <td className="py-3" data-slot="entry-blockers">
-                          {entry.blocked > 0 && (
-                            <Link
-                              to={blockersHref(entry)}
-                              aria-label={`Ver los ${entry.blocked} tickets que bloquean a ${entry.personName}`}
-                              className="underline underline-offset-2 hover:text-foreground"
-                            >
-                              Ver
-                            </Link>
-                          )}
+                          <div className="flex flex-col items-start gap-1">
+                            {entry.blocked > 0 && (
+                              <Link
+                                to={blockersHref(entry)}
+                                aria-label={`Ver los ${entry.blocked} tickets que bloquean a ${entry.personName}`}
+                                className="underline underline-offset-2 hover:text-foreground"
+                              >
+                                Ver
+                              </Link>
+                            )}
+
+                            {/* Y la entrada a la declaracion con la persona ya puesta. Solo cuando
+                                hay algo que declarar: `declarable` excluye lo planificable y lo
+                                intraducible, asi que este enlace siempre lleva a trabajo real. */}
+                            {entry.declarable > 0 && (
+                              <Link
+                                to={declarationHref(entry)}
+                                aria-label={`Declarar el trabajo pendiente de ${entry.personName}`}
+                                className="underline underline-offset-2 hover:text-foreground"
+                              >
+                                Declarar
+                              </Link>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

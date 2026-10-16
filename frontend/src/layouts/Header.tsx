@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { NAV_ITEMS } from '@/routes/navigation'
+import { navItemFor } from '@/routes/navigation'
 
 interface HeaderProps {
   onToggleSidebar: () => void
@@ -12,16 +12,10 @@ interface HeaderProps {
 export function Header({ onToggleSidebar }: HeaderProps) {
   const { pathname } = useLocation()
 
-  // El titulo se deriva del menu para no duplicar literales en cada pagina. El prefijo cubre las
-  // rutas con parametro ("/calendario/:planId"); para "/" el prefijo es "//" y nunca casa, asi que
-  // el tablero sigue resolviendose por igualdad exacta.
-  //
-  // **Gana la coincidencia mas larga, no la primera.** «Estado del plan» cuelga de `/planificar`, y
-  // las dos casan por prefijo: quedarse con la primera le daria a la vista previa el titulo y la
-  // descripcion de la pantalla de al lado. El respaldo sigue siendo el tablero.
-  const current = NAV_ITEMS.filter(
-    (item) => item.to === pathname || pathname.startsWith(`${item.to}/`),
-  ).reduce((longest, item) => (item.to.length > longest.to.length ? item : longest), NAV_ITEMS[0])
+  // El titulo sale del menu, que es quien ya sabe como se llama cada pantalla. La resolucion se mudo
+  // a `navItemFor` porque dejo de ser la unica: el enlace de vuelta de la declaracion la necesita
+  // igual, para nombrar a donde se vuelve en vez de decir «Incidentes» desde cualquier sitio.
+  const current = navItemFor(pathname)
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur sm:px-6 lg:px-8">

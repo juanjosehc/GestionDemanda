@@ -214,6 +214,18 @@ export function modeFromParams(params: URLSearchParams): TeamViewMode {
 }
 
 /**
+ * El modo, en la direccion, y solo cuando no es el de por defecto.
+ *
+ * Es el espejo de `modeFromParams`: lo que uno escribe el otro lo lee. Existe porque la vista previa
+ * del estado de entrada tambien conserva su conmutador en la vuelta —su enlace a la declaracion
+ * devuelve a la misma vista—, y componer `?modo=todos` a mano en una pantalla seria el segundo sitio
+ * donde se escribe ese nombre.
+ */
+export function modeQuery(mode: TeamViewMode): string {
+  return mode === ALL_TEAM ? `${MODE_PARAM}=${ALL_TEAM}` : ''
+}
+
+/**
  * Los filtros y el modo, en una sola cadena de consulta.
  *
  * **Solo viaja lo que no está en su valor por defecto**, así que la vista sin tocar se escribe como la
