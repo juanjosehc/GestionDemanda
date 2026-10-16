@@ -1,0 +1,1970 @@
+{
+  ".claude/settings.local.json": {
+    "mtime": 1791383227.3131042,
+    "seen": 1791470349.3840852,
+    "ast_hash": "91e4928d65429fc011f062480a458b8f",
+    "semantic_hash": "91e4928d65429fc011f062480a458b8f"
+  },
+  "backend/pom.xml": {
+    "mtime": 1791225581.818271,
+    "seen": 1791470349.384095,
+    "ast_hash": "4ff46cf7ace45094bf6f52f50ec7a3e0",
+    "semantic_hash": "4ff46cf7ace45094bf6f52f50ec7a3e0"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/GestionDemandaApplication.java": {
+    "mtime": 1791209732.9772458,
+    "seen": 1791470349.384099,
+    "ast_hash": "3ed9082ed5a597571ef0a35fe17e7f22",
+    "semantic_hash": "3ed9082ed5a597571ef0a35fe17e7f22"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/client/GlpiClient.java": {
+    "mtime": 1791242636.7041974,
+    "seen": 1791470349.3841019,
+    "ast_hash": "8f15e3706f0eb086abd5a89490b2514b",
+    "semantic_hash": "8f15e3706f0eb086abd5a89490b2514b"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/config/GlpiProperties.java": {
+    "mtime": 1791209733.0631356,
+    "seen": 1791470349.3841047,
+    "ast_hash": "d163fe55d2500796759148f720243123",
+    "semantic_hash": "d163fe55d2500796759148f720243123"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/config/PlanningConfig.java": {
+    "mtime": 1791295509.54807,
+    "seen": 1791470349.384107,
+    "ast_hash": "8eb0c981baa540f6d21144b51ce711a0",
+    "semantic_hash": "8eb0c981baa540f6d21144b51ce711a0"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/config/PlanningProperties.java": {
+    "mtime": 1791219548.3493478,
+    "seen": 1791470349.3841097,
+    "ast_hash": "0027d65c07f8c10e6454d2297b145ad4",
+    "semantic_hash": "0027d65c07f8c10e6454d2297b145ad4"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/config/WebClientConfig.java": {
+    "mtime": 1791299459.8783097,
+    "seen": 1791470349.3841124,
+    "ast_hash": "2c391bf52525682e6a4ebb6113a70ef6",
+    "semantic_hash": "2c391bf52525682e6a4ebb6113a70ef6"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/controller/GlpiController.java": {
+    "mtime": 1791209786.0375829,
+    "seen": 1791470349.384115,
+    "ast_hash": "68ac5368714667fb27d9a846b477c7ae",
+    "semantic_hash": "68ac5368714667fb27d9a846b477c7ae"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningController.java": {
+    "mtime": 1791489362.0687962,
+    "seen": 1791921478.9358175,
+    "ast_hash": "eff6ac8c347514713f5e5e0cb431b175",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningMetadataController.java": {
+    "mtime": 1791908863.536769,
+    "seen": 1791921478.9358213,
+    "ast_hash": "dbf76b830be4156a3ab29b02774c7c90",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/PlanningEngine.java": {
+    "mtime": 1791224317.1411977,
+    "seen": 1791470349.384123,
+    "ast_hash": "4867facd044421e60797f313257b8824",
+    "semantic_hash": "4867facd044421e60797f313257b8824"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/AppliedRule.java": {
+    "mtime": 1791217633.63063,
+    "seen": 1791470349.3841252,
+    "ast_hash": "b08006a6757f7b1c027a7eec422db0b4",
+    "semantic_hash": "b08006a6757f7b1c027a7eec422db0b4"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/DisplacementPolicy.java": {
+    "mtime": 1791224352.8023932,
+    "seen": 1791470349.3841274,
+    "ast_hash": "f7d6540dd85b8a47c5cc7b0241ff4001",
+    "semantic_hash": "f7d6540dd85b8a47c5cc7b0241ff4001"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/IncidentSeverity.java": {
+    "mtime": 1791217621.9369473,
+    "seen": 1791470349.3841302,
+    "ast_hash": "e7f331bdaf1d5efc35d6c6e7dc5c208f",
+    "semantic_hash": "e7f331bdaf1d5efc35d6c6e7dc5c208f"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/IncidentStatus.java": {
+    "mtime": 1791213279.649505,
+    "seen": 1791470349.3841326,
+    "ast_hash": "8fc06f03e90c8329ab977b1da8cc8d25",
+    "semantic_hash": "8fc06f03e90c8329ab977b1da8cc8d25"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/InputSource.java": {
+    "mtime": 1791242415.4542122,
+    "seen": 1791470349.3841352,
+    "ast_hash": "6d28a547dba9424049601dc145985cf0",
+    "semantic_hash": "6d28a547dba9424049601dc145985cf0"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/PlanningMetadataField.java": {
+    "mtime": 1791316481.1662982,
+    "seen": 1791470349.384137,
+    "ast_hash": "e056bc37f02a874761c370bc55b23791",
+    "semantic_hash": "e056bc37f02a874761c370bc55b23791"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/RequirementStatus.java": {
+    "mtime": 1791213279.5645628,
+    "seen": 1791470349.3841383,
+    "ast_hash": "20c9f46493076d4f4e4bbe3de60367e7",
+    "semantic_hash": "20c9f46493076d4f4e4bbe3de60367e7"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/TimelineItemStatus.java": {
+    "mtime": 1791383310.065192,
+    "seen": 1791470349.3841398,
+    "ast_hash": "cb3dfe06565dd3cc13e44a97f96c748b",
+    "semantic_hash": "cb3dfe06565dd3cc13e44a97f96c748b"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/WorkItemType.java": {
+    "mtime": 1791213279.5002992,
+    "seen": 1791470349.3841407,
+    "ast_hash": "8781e56355e6b434602890b3d8c0b16f",
+    "semantic_hash": "8781e56355e6b434602890b3d8c0b16f"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/idempotency/RescheduleLedger.java": {
+    "mtime": 1791225581.980258,
+    "seen": 1791470349.3841426,
+    "ast_hash": "344f17cd63af63686e2efabdd340a728",
+    "semantic_hash": "344f17cd63af63686e2efabdd340a728"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/BusinessHours.java": {
+    "mtime": 1791219495.1899197,
+    "seen": 1791470349.3841453,
+    "ast_hash": "67bfe5015a2fe957bcb363cab9b167ff",
+    "semantic_hash": "67bfe5015a2fe957bcb363cab9b167ff"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/DeclaredPlanningMetrics.java": {
+    "mtime": 1791399111.509849,
+    "seen": 1791470349.3841467,
+    "ast_hash": "812b61d99631ed5c9967a5aeefde52ea",
+    "semantic_hash": "812b61d99631ed5c9967a5aeefde52ea"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/Developer.java": {
+    "mtime": 1791213353.1406667,
+    "seen": 1791470349.384148,
+    "ast_hash": "f004d46e36f96d761904064343f28f88",
+    "semantic_hash": "f004d46e36f96d761904064343f28f88"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/DomainPreconditions.java": {
+    "mtime": 1791213279.8004155,
+    "seen": 1791470349.3841496,
+    "ast_hash": "5a2ae9a3a86d504c95a15f87f9d048e3",
+    "semantic_hash": "5a2ae9a3a86d504c95a15f87f9d048e3"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/Incident.java": {
+    "mtime": 1791217633.732292,
+    "seen": 1791470349.3841507,
+    "ast_hash": "3b1ddd003797282905ac104bf585ac0c",
+    "semantic_hash": "3b1ddd003797282905ac104bf585ac0c"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/InputProvenance.java": {
+    "mtime": 1791242415.5425744,
+    "seen": 1791470349.3841524,
+    "ast_hash": "f078cd0dce7e8dee204ec8fea81fb952",
+    "semantic_hash": "f078cd0dce7e8dee204ec8fea81fb952"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/PlanReference.java": {
+    "mtime": 1791399101.571692,
+    "seen": 1791470349.3841536,
+    "ast_hash": "2aeb9824bb771d6dce925a2bedf91d7f",
+    "semantic_hash": "2aeb9824bb771d6dce925a2bedf91d7f"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/PlanSnapshot.java": {
+    "mtime": 1791225472.6174507,
+    "seen": 1791470349.3841546,
+    "ast_hash": "b96690c6f8ac96701cbedcfaa19976d9",
+    "semantic_hash": "b96690c6f8ac96701cbedcfaa19976d9"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/PlanningConflict.java": {
+    "mtime": 1791213353.5331748,
+    "seen": 1791470349.384156,
+    "ast_hash": "acf77fa3a731c717784e24a4464887f5",
+    "semantic_hash": "acf77fa3a731c717784e24a4464887f5"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/PlanningContextSnapshot.java": {
+    "mtime": 1791231558.237127,
+    "seen": 1791470349.3841577,
+    "ast_hash": "9f8fb1059d4b15c4c9b711f4035189e1",
+    "semantic_hash": "9f8fb1059d4b15c4c9b711f4035189e1"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/PlanningInputSnapshot.java": {
+    "mtime": 1791242422.3098147,
+    "seen": 1791470349.384159,
+    "ast_hash": "5a32418021f098a30fa8951b5dce5869",
+    "semantic_hash": "5a32418021f098a30fa8951b5dce5869"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/PlanningMetadata.java": {
+    "mtime": 1791317235.8268373,
+    "seen": 1791470349.3841603,
+    "ast_hash": "25757eede9187b4f56fef7da273caed6",
+    "semantic_hash": "25757eede9187b4f56fef7da273caed6"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/PlanningMetadataChange.java": {
+    "mtime": 1791316481.2785113,
+    "seen": 1791470349.3841615,
+    "ast_hash": "a077597c921b02ec87e49f9f1963e285",
+    "semantic_hash": "a077597c921b02ec87e49f9f1963e285"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/PlanningRequest.java": {
+    "mtime": 1791213353.5931141,
+    "seen": 1791470349.384163,
+    "ast_hash": "ddd77255426c2aaeccc6bcd8a7a6b650",
+    "semantic_hash": "ddd77255426c2aaeccc6bcd8a7a6b650"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/PlanningResult.java": {
+    "mtime": 1791224294.8905883,
+    "seen": 1791470349.384164,
+    "ast_hash": "ed05a9527597ae1462357e42a7e3ee8c",
+    "semantic_hash": "ed05a9527597ae1462357e42a7e3ee8c"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/Requirement.java": {
+    "mtime": 1791213353.31443,
+    "seen": 1791470349.3841653,
+    "ast_hash": "b8ff6c477a62697cab9491a9cea4d737",
+    "semantic_hash": "b8ff6c477a62697cab9491a9cea4d737"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/RescheduleEvent.java": {
+    "mtime": 1791217633.8507473,
+    "seen": 1791470349.3841667,
+    "ast_hash": "5f18f02039d3c0c6e3d90a25c8542626",
+    "semantic_hash": "5f18f02039d3c0c6e3d90a25c8542626"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/TimeSlot.java": {
+    "mtime": 1791224261.2727838,
+    "seen": 1791470349.384168,
+    "ast_hash": "dd2993a52c03c491a360a6f2d9e73f13",
+    "semantic_hash": "dd2993a52c03c491a360a6f2d9e73f13"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/WorkAllocation.java": {
+    "mtime": 1791213353.3801816,
+    "seen": 1791470349.384169,
+    "ast_hash": "71a7aad1d8d317a5cb447ec555a65f43",
+    "semantic_hash": "71a7aad1d8d317a5cb447ec555a65f43"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/WorkBlock.java": {
+    "mtime": 1791224261.386268,
+    "seen": 1791470349.3841705,
+    "ast_hash": "1cb866309e10f4f61d56d3383e3aa3f3",
+    "semantic_hash": "1cb866309e10f4f61d56d3383e3aa3f3"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/repository/PlanSnapshotRepository.java": {
+    "mtime": 1791399160.6729312,
+    "seen": 1791470349.3841732,
+    "ast_hash": "743823e92bc08cf4b19ea77354c5880a",
+    "semantic_hash": "743823e92bc08cf4b19ea77354c5880a"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/repository/PlanningMetadataRepository.java": {
+    "mtime": 1791482771.4795482,
+    "seen": 1791921478.9359272,
+    "ast_hash": "c7ac58333304638e1dd5a9f96d2528d4",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/rules/BusinessTimeCalculator.java": {
+    "mtime": 1791224275.9721737,
+    "seen": 1791470349.384178,
+    "ast_hash": "bf14f0157d19247018f9cd13c8e2dd9c",
+    "semantic_hash": "bf14f0157d19247018f9cd13c8e2dd9c"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/rules/CapacityBook.java": {
+    "mtime": 1791224288.9349463,
+    "seen": 1791470349.3841798,
+    "ast_hash": "f4ef9fe4549db6ce932af4953555b792",
+    "semantic_hash": "f4ef9fe4549db6ce932af4953555b792"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/rules/IncidentPolicy.java": {
+    "mtime": 1791217622.111547,
+    "seen": 1791470349.384182,
+    "ast_hash": "90d325f5a5bfe73680e843e0b7fd35b7",
+    "semantic_hash": "90d325f5a5bfe73680e843e0b7fd35b7"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/rules/PlanningRules.java": {
+    "mtime": 1791224863.0974674,
+    "seen": 1791470349.3841836,
+    "ast_hash": "783d98d4470cd6fe437ce8bd522dbedd",
+    "semantic_hash": "783d98d4470cd6fe437ce8bd522dbedd"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/rules/WorkingCalendar.java": {
+    "mtime": 1791224871.428716,
+    "seen": 1791470349.3841856,
+    "ast_hash": "95cb9980ecf6ed47910a77b438a4f930",
+    "semantic_hash": "95cb9980ecf6ed47910a77b438a4f930"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/ApiError.java": {
+    "mtime": 1791209746.7391288,
+    "seen": 1791470349.3841875,
+    "ast_hash": "7c19c6cc5c27e3704995dc633f1558eb",
+    "semantic_hash": "7c19c6cc5c27e3704995dc633f1558eb"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/GlpiHealthResponse.java": {
+    "mtime": 1791209746.5761085,
+    "seen": 1791470349.3841894,
+    "ast_hash": "8cc6b998a46b0164e221bc34b0c4570e",
+    "semantic_hash": "8cc6b998a46b0164e221bc34b0c4570e"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/GlpiSessionResponse.java": {
+    "mtime": 1791209746.4280796,
+    "seen": 1791470349.3841915,
+    "ast_hash": "7a9a691815b877684f3898decbcfb793",
+    "semantic_hash": "7a9a691815b877684f3898decbcfb793"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanSnapshotResponse.java": {
+    "mtime": 1791231837.7734685,
+    "seen": 1791470349.3841932,
+    "ast_hash": "cebec00367bae37fde5ced62f025f255",
+    "semantic_hash": "cebec00367bae37fde5ced62f025f255"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningContextResponse.java": {
+    "mtime": 1791231595.727137,
+    "seen": 1791470349.384195,
+    "ast_hash": "c0e8b8cf1b076d439b663bb1e4754f27",
+    "semantic_hash": "c0e8b8cf1b076d439b663bb1e4754f27"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningFromGlpiRequest.java": {
+    "mtime": 1791242761.3795106,
+    "seen": 1791470349.3841968,
+    "ast_hash": "25d46148e5c2547f1e8c193b467ef7a7",
+    "semantic_hash": "25d46148e5c2547f1e8c193b467ef7a7"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningFromGlpiResponse.java": {
+    "mtime": 1791323004.6181352,
+    "seen": 1791470349.3841987,
+    "ast_hash": "c4e3560bbf316e41a1418313f6adfa36",
+    "semantic_hash": "c4e3560bbf316e41a1418313f6adfa36"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningInputResponse.java": {
+    "mtime": 1791242454.1552348,
+    "seen": 1791470349.3842008,
+    "ast_hash": "ba5a34d4e35bae6c9dce2c133cbfdbc6",
+    "semantic_hash": "ba5a34d4e35bae6c9dce2c133cbfdbc6"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningMetadataHistoryResponse.java": {
+    "mtime": 1791316794.1820183,
+    "seen": 1791470349.3842032,
+    "ast_hash": "00eb89de63a5a90c7befbad0986a23bf",
+    "semantic_hash": "00eb89de63a5a90c7befbad0986a23bf"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningMetadataRequest.java": {
+    "mtime": 1791316793.8423448,
+    "seen": 1791470349.3842053,
+    "ast_hash": "0e553a4e4435ec044a13d3674bdd6089",
+    "semantic_hash": "0e553a4e4435ec044a13d3674bdd6089"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningMetadataResponse.java": {
+    "mtime": 1791316794.0563283,
+    "seen": 1791470349.3842072,
+    "ast_hash": "9b1b3df4d21d55937bd440fa3c80db0b",
+    "semantic_hash": "9b1b3df4d21d55937bd440fa3c80db0b"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningMetadataUpdateRequest.java": {
+    "mtime": 1791316793.946227,
+    "seen": 1791470349.3842182,
+    "ast_hash": "131cfe991b524615dbd9b4b654e3e0d4",
+    "semantic_hash": "131cfe991b524615dbd9b4b654e3e0d4"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningOperationalMetricsResponse.java": {
+    "mtime": 1791399135.401167,
+    "seen": 1791470349.38422,
+    "ast_hash": "114187c694e0de64b8209684aafa1e58",
+    "semantic_hash": "114187c694e0de64b8209684aafa1e58"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningPlanResponse.java": {
+    "mtime": 1791231837.902534,
+    "seen": 1791470349.3842216,
+    "ast_hash": "08add98194225c7e85017c9e348c8f7b",
+    "semantic_hash": "08add98194225c7e85017c9e348c8f7b"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningSimulationRequest.java": {
+    "mtime": 1791217680.663721,
+    "seen": 1791470349.3842232,
+    "ast_hash": "8e92e689208e580fca9ddc5efe5d4a07",
+    "semantic_hash": "8e92e689208e580fca9ddc5efe5d4a07"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/PlanningSimulationResponse.java": {
+    "mtime": 1791224334.210631,
+    "seen": 1791470349.3842251,
+    "ast_hash": "459080c00051f371d506345dcb15c200",
+    "semantic_hash": "459080c00051f371d506345dcb15c200"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/TimelinePlanResponse.java": {
+    "mtime": 1791383337.378634,
+    "seen": 1791470349.3842268,
+    "ast_hash": "d0862a6bda8196bb5222250220746c64",
+    "semantic_hash": "d0862a6bda8196bb5222250220746c64"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/GlobalExceptionHandler.java": {
+    "mtime": 1791914051.4692757,
+    "seen": 1791921478.9360194,
+    "ast_hash": "5a7e8846baceaf019e5d380a2b8ec551",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/GlpiAuthenticationException.java": {
+    "mtime": 1791242602.7829592,
+    "seen": 1791470349.3842304,
+    "ast_hash": "31a854fadb1a8e6db125c97f25952214",
+    "semantic_hash": "31a854fadb1a8e6db125c97f25952214"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/GlpiConnectionException.java": {
+    "mtime": 1791209747.0260165,
+    "seen": 1791470349.3842323,
+    "ast_hash": "ce49a3416cb21c352e5715be5fa5a4f1",
+    "semantic_hash": "ce49a3416cb21c352e5715be5fa5a4f1"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/GlpiDeveloperNotFoundException.java": {
+    "mtime": 1791242415.693475,
+    "seen": 1791470349.3842337,
+    "ast_hash": "3a1609626238d02607d642fefe36aa5f",
+    "semantic_hash": "3a1609626238d02607d642fefe36aa5f"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/GlpiInvalidDataException.java": {
+    "mtime": 1791242415.6136482,
+    "seen": 1791470349.3842359,
+    "ast_hash": "28133567000574a48c78615fb4545b62",
+    "semantic_hash": "28133567000574a48c78615fb4545b62"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/GlpiItemNotFoundException.java": {
+    "mtime": 1791242602.8620296,
+    "seen": 1791470349.3842382,
+    "ast_hash": "1a9315718a5c29f8f1b615fdeb044f59",
+    "semantic_hash": "1a9315718a5c29f8f1b615fdeb044f59"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/GlpiUnreachableException.java": {
+    "mtime": 1791209785.791202,
+    "seen": 1791470349.3842404,
+    "ast_hash": "8c77db6f8193a1fca925b333a425ac75",
+    "semantic_hash": "8c77db6f8193a1fca925b333a425ac75"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/PlanNotFoundException.java": {
+    "mtime": 1791225554.860777,
+    "seen": 1791470349.384242,
+    "ast_hash": "2c6f93a351971156963a8943142c203e",
+    "semantic_hash": "2c6f93a351971156963a8943142c203e"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/PlanningMetadataAlreadyExistsException.java": {
+    "mtime": 1791316794.4031405,
+    "seen": 1791470349.3842447,
+    "ast_hash": "c5d2d6fd9d6c4b4bd70f638ddee376aa",
+    "semantic_hash": "c5d2d6fd9d6c4b4bd70f638ddee376aa"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/PlanningMetadataNotFoundException.java": {
+    "mtime": 1791316794.2950354,
+    "seen": 1791470349.3842468,
+    "ast_hash": "6ae5a7c51dd263322b763392d151158d",
+    "semantic_hash": "6ae5a7c51dd263322b763392d151158d"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiContract.java": {
+    "mtime": 1791904732.743926,
+    "seen": 1791921478.936052,
+    "ast_hash": "ad75dfd31e62162c12d0420ae9c0233a",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiContractVerifier.java": {
+    "mtime": 1791295710.490053,
+    "seen": 1791470349.3842509,
+    "ast_hash": "9fda754de1b82753b1ebcc173488d502",
+    "semantic_hash": "9fda754de1b82753b1ebcc173488d502"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiDiscardReason.java": {
+    "mtime": 1791322880.3604405,
+    "seen": 1791470349.384253,
+    "ast_hash": "9f152d857b9c3238410f6379a20043f9",
+    "semantic_hash": "9f152d857b9c3238410f6379a20043f9"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiDiscardedItem.java": {
+    "mtime": 1791908731.0135174,
+    "seen": 1791921478.9360607,
+    "ast_hash": "e97ebcb0b9fecf9ced0bcbaa797bbe8d",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiPlanningRequestFactory.java": {
+    "mtime": 1791908690.1386986,
+    "seen": 1791921478.936063,
+    "ast_hash": "1ad784268e480d605728e0d4d2152dd5",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiPlanningSource.java": {
+    "mtime": 1792011838.2163825,
+    "seen": 1792075092.07491,
+    "ast_hash": "cad5ed99f39437f06444df3b11727304",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiPriorityMapper.java": {
+    "mtime": 1791295467.0794642,
+    "seen": 1791470349.384261,
+    "ast_hash": "fd12ebbfdf59503e0a22b4e6aa9eaf53",
+    "semantic_hash": "fd12ebbfdf59503e0a22b4e6aa9eaf53"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiRestPlanningSource.java": {
+    "mtime": 1792011955.6923642,
+    "seen": 1792075092.0749166,
+    "ast_hash": "5d0ddcd2091f5bae15cb360601396c4c",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiTicket.java": {
+    "mtime": 1791904732.9398665,
+    "seen": 1791921478.9360726,
+    "ast_hash": "47774acfb840e350d63b5dbca073c7e5",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiTicketMapper.java": {
+    "mtime": 1791322966.3268342,
+    "seen": 1791470349.384267,
+    "ast_hash": "619ed8f28fab1382dadb10909801a6df",
+    "semantic_hash": "619ed8f28fab1382dadb10909801a6df"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiTicketValidator.java": {
+    "mtime": 1791322942.0452926,
+    "seen": 1791470349.3842711,
+    "ast_hash": "367dd8638290d203d508334c2ffd6a85",
+    "semantic_hash": "367dd8638290d203d508334c2ffd6a85"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiUser.java": {
+    "mtime": 1791992632.60963,
+    "seen": 1791999865.7130523,
+    "ast_hash": "8bcfccc4bfc90c348262e57f3083d380",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaPlanSnapshotRepository.java": {
+    "mtime": 1791399208.2773025,
+    "seen": 1791470349.3842757,
+    "ast_hash": "efbcfd4cdd2a039e4829709b80ee618e",
+    "semantic_hash": "efbcfd4cdd2a039e4829709b80ee618e"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaPlanningMetadataRepository.java": {
+    "mtime": 1791482800.8335392,
+    "seen": 1791921478.936087,
+    "ast_hash": "ca5da5d3b49590ef69519bdea45eef95",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaRescheduleLedger.java": {
+    "mtime": 1791225554.446201,
+    "seen": 1791470349.3842807,
+    "ast_hash": "7fca300a02ea05c7a321092818838f77",
+    "semantic_hash": "7fca300a02ea05c7a321092818838f77"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanSnapshotEntity.java": {
+    "mtime": 1791225502.8209393,
+    "seen": 1791470349.3842833,
+    "ast_hash": "16fe8590afc393e5e9f7ed09511dd21d",
+    "semantic_hash": "16fe8590afc393e5e9f7ed09511dd21d"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanSnapshotJpaRepository.java": {
+    "mtime": 1791225553.8051524,
+    "seen": 1791470349.3842857,
+    "ast_hash": "24fe1f326c702fbcf3c672222761de70",
+    "semantic_hash": "24fe1f326c702fbcf3c672222761de70"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningConflictEntity.java": {
+    "mtime": 1791225503.3094265,
+    "seen": 1791470349.3842883,
+    "ast_hash": "27b8844f53aa55955420771fcf88ace1",
+    "semantic_hash": "27b8844f53aa55955420771fcf88ace1"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningConflictJpaRepository.java": {
+    "mtime": 1791225554.1581273,
+    "seen": 1791470349.3842902,
+    "ast_hash": "16fbc2c80390af8d8b9dcb894605cae0",
+    "semantic_hash": "16fbc2c80390af8d8b9dcb894605cae0"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningContextEntity.java": {
+    "mtime": 1791231571.5883725,
+    "seen": 1791470349.3842926,
+    "ast_hash": "beb866ca74cc9b94cea769b5eb06b7bd",
+    "semantic_hash": "beb866ca74cc9b94cea769b5eb06b7bd"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningContextJpaRepository.java": {
+    "mtime": 1791231585.1397269,
+    "seen": 1791470349.3842955,
+    "ast_hash": "7a98db97e848c1b2e67d6b842e5fd308",
+    "semantic_hash": "7a98db97e848c1b2e67d6b842e5fd308"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningContextPolicyEntity.java": {
+    "mtime": 1791231585.0629418,
+    "seen": 1791470349.3842976,
+    "ast_hash": "db28cb593dbab4ed9f8d3a85a7164d9b",
+    "semantic_hash": "db28cb593dbab4ed9f8d3a85a7164d9b"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningContextPolicyJpaRepository.java": {
+    "mtime": 1791231585.2155228,
+    "seen": 1791470349.3843,
+    "ast_hash": "9d100fd46dccd8b675a0cf0885e06a6a",
+    "semantic_hash": "9d100fd46dccd8b675a0cf0885e06a6a"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningInputEntity.java": {
+    "mtime": 1791242443.7853265,
+    "seen": 1791470349.3843026,
+    "ast_hash": "975ac303e19b8b206061b1f769783393",
+    "semantic_hash": "975ac303e19b8b206061b1f769783393"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningInputIncidentEntity.java": {
+    "mtime": 1791235936.9982402,
+    "seen": 1791470349.384305,
+    "ast_hash": "bbc8ab7f82a5ff0514bd3cb9582e5be7",
+    "semantic_hash": "bbc8ab7f82a5ff0514bd3cb9582e5be7"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningInputIncidentJpaRepository.java": {
+    "mtime": 1791235945.4129965,
+    "seen": 1791470349.3843071,
+    "ast_hash": "5ff54a49f46c15676cc2d9fea088abc2",
+    "semantic_hash": "5ff54a49f46c15676cc2d9fea088abc2"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningInputJpaRepository.java": {
+    "mtime": 1791235945.3216224,
+    "seen": 1791470349.3843098,
+    "ast_hash": "829ca0ff9ebbf5d6a4420fe27a52f4dd",
+    "semantic_hash": "829ca0ff9ebbf5d6a4420fe27a52f4dd"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningInputRequirementEntity.java": {
+    "mtime": 1791235937.0719593,
+    "seen": 1791470349.3843122,
+    "ast_hash": "d6cc0094fd740ea06d4a5f991dc6b567",
+    "semantic_hash": "d6cc0094fd740ea06d4a5f991dc6b567"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningInputRequirementJpaRepository.java": {
+    "mtime": 1791235945.499978,
+    "seen": 1791470349.3843143,
+    "ast_hash": "7d57a264d2b9db34539cfd89d8d2f3b5",
+    "semantic_hash": "7d57a264d2b9db34539cfd89d8d2f3b5"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningMetadataEntity.java": {
+    "mtime": 1791317075.0508242,
+    "seen": 1791470349.3843172,
+    "ast_hash": "bc2d9012831e023dc57e8325716ba725",
+    "semantic_hash": "bc2d9012831e023dc57e8325716ba725"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningMetadataHistoryEntity.java": {
+    "mtime": 1791316688.9858153,
+    "seen": 1791470349.3843195,
+    "ast_hash": "a16d55b845c640711093bcfacd67673c",
+    "semantic_hash": "a16d55b845c640711093bcfacd67673c"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningMetadataHistoryJpaRepository.java": {
+    "mtime": 1791316689.052731,
+    "seen": 1791470349.3843224,
+    "ast_hash": "18b2b00a4ed48b2f8720b090571cd356",
+    "semantic_hash": "18b2b00a4ed48b2f8720b090571cd356"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningMetadataJpaRepository.java": {
+    "mtime": 1791482778.6535122,
+    "seen": 1791921478.936139,
+    "ast_hash": "eef92d60c3b9a2a07b6250f1b0307170",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/RescheduleClaimEntity.java": {
+    "mtime": 1791225503.4095545,
+    "seen": 1791470349.384327,
+    "ast_hash": "4803724be5967dac72b86fc02662e0b6",
+    "semantic_hash": "4803724be5967dac72b86fc02662e0b6"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/RescheduleClaimJpaRepository.java": {
+    "mtime": 1791225554.2460997,
+    "seen": 1791470349.3843296,
+    "ast_hash": "c79c9508c3cff35237f957847364cb71",
+    "semantic_hash": "c79c9508c3cff35237f957847364cb71"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/RescheduleEventEntity.java": {
+    "mtime": 1791225503.2157412,
+    "seen": 1791470349.3843317,
+    "ast_hash": "2f86dadc06e75b586b14553779f1a9f4",
+    "semantic_hash": "2f86dadc06e75b586b14553779f1a9f4"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/RescheduleEventJpaRepository.java": {
+    "mtime": 1791225554.0685163,
+    "seen": 1791470349.384334,
+    "ast_hash": "8452fbd2470e882f7276bf134435f0f3",
+    "semantic_hash": "8452fbd2470e882f7276bf134435f0f3"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/WorkAllocationEntity.java": {
+    "mtime": 1791225502.9722795,
+    "seen": 1791470349.384337,
+    "ast_hash": "593c8b614180a02b7095c2d0dfa8eceb",
+    "semantic_hash": "593c8b614180a02b7095c2d0dfa8eceb"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/WorkAllocationJpaRepository.java": {
+    "mtime": 1791225553.8781023,
+    "seen": 1791470349.384339,
+    "ast_hash": "c4656580c1d40de1d25a391f827e22ad",
+    "semantic_hash": "c4656580c1d40de1d25a391f827e22ad"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/WorkBlockEntity.java": {
+    "mtime": 1791225503.101494,
+    "seen": 1791470349.384342,
+    "ast_hash": "356ead36bba074705e4aa4d80b5805b9",
+    "semantic_hash": "356ead36bba074705e4aa4d80b5805b9"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/WorkBlockJpaRepository.java": {
+    "mtime": 1791225553.9664915,
+    "seen": 1791470349.3843446,
+    "ast_hash": "bd060914f8f86587a6d07d835c607c13",
+    "semantic_hash": "bd060914f8f86587a6d07d835c607c13"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/service/GlpiConnectivityService.java": {
+    "mtime": 1791209785.969058,
+    "seen": 1791470349.3843467,
+    "ast_hash": "c85700a0baef567ed77890babe9e7290",
+    "semantic_hash": "c85700a0baef567ed77890babe9e7290"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/service/GlpiPlanningService.java": {
+    "mtime": 1791323011.8814497,
+    "seen": 1791470349.384349,
+    "ast_hash": "caaf76e686f20a1e3600e5abf95894aa",
+    "semantic_hash": "caaf76e686f20a1e3600e5abf95894aa"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/service/PlanningMetadataService.java": {
+    "mtime": 1791317368.884836,
+    "seen": 1791470349.3843515,
+    "ast_hash": "635d2913c271fd90fa9f563eea472121",
+    "semantic_hash": "635d2913c271fd90fa9f563eea472121"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/service/PlanningMetricsService.java": {
+    "mtime": 1791482846.9720583,
+    "seen": 1791921478.9361799,
+    "ast_hash": "5d58f715c413c2feaa38ffdb8024df6a",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/service/PlanningService.java": {
+    "mtime": 1791399281.6624837,
+    "seen": 1791470349.3843565,
+    "ast_hash": "08fe14b354d3805b3dfec87ff2aef1b2",
+    "semantic_hash": "08fe14b354d3805b3dfec87ff2aef1b2"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/GestionDemandaApplicationTests.java": {
+    "mtime": 1791225724.347649,
+    "seen": 1791470349.3843594,
+    "ast_hash": "bd0241980ec2cdbe72ec77912560f967",
+    "semantic_hash": "bd0241980ec2cdbe72ec77912560f967"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/controller/GlpiPlanningEndpointsTest.java": {
+    "mtime": 1791904060.3474102,
+    "seen": 1791921478.9361906,
+    "ast_hash": "5a007165c04e89f25727fa4ee641e106",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningEndpointsTest.java": {
+    "mtime": 1791236389.5743861,
+    "seen": 1791470349.3843644,
+    "ast_hash": "8e747c15fa3d9f85f90810869b31291e",
+    "semantic_hash": "8e747c15fa3d9f85f90810869b31291e"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningMetadataEndpointsTest.java": {
+    "mtime": 1791317335.3085341,
+    "seen": 1791470349.3843668,
+    "ast_hash": "bd68477e741b57c371b5a8741bd77903",
+    "semantic_hash": "bd68477e741b57c371b5a8741bd77903"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningMetricsEndpointsTest.java": {
+    "mtime": 1791400123.799924,
+    "seen": 1791470349.3843691,
+    "ast_hash": "de42a1fdc550a61679704f6e1f1f394b",
+    "semantic_hash": "de42a1fdc550a61679704f6e1f1f394b"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningTimelineEndpointsTest.java": {
+    "mtime": 1791903957.630066,
+    "seen": 1791921478.9362073,
+    "ast_hash": "2bddccec48319b8d976841061bbdf9e1",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/domain/BusinessTimeCalculatorTest.java": {
+    "mtime": 1791219596.3368177,
+    "seen": 1791470349.384374,
+    "ast_hash": "b53d02de0c626f1354c64782c4bbaca6",
+    "semantic_hash": "b53d02de0c626f1354c64782c4bbaca6"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/domain/CapacityBookTest.java": {
+    "mtime": 1791224513.379451,
+    "seen": 1791470349.3843765,
+    "ast_hash": "ef3777d6a594e5675e460f5f4f25e89f",
+    "semantic_hash": "ef3777d6a594e5675e460f5f4f25e89f"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/domain/PlanningEngineTest.java": {
+    "mtime": 1791224498.473472,
+    "seen": 1791470349.3843791,
+    "ast_hash": "211913f5d8b55a11706bbdd957d6e185",
+    "semantic_hash": "211913f5d8b55a11706bbdd957d6e185"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/domain/idempotency/InMemoryRescheduleLedger.java": {
+    "mtime": 1791225724.347649,
+    "seen": 1791470349.3843815,
+    "ast_hash": "39fa36997937e01fa17741c00e231fa4",
+    "semantic_hash": "39fa36997937e01fa17741c00e231fa4"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/domain/repository/InMemoryPlanningMetadataRepository.java": {
+    "mtime": 1791482942.8534603,
+    "seen": 1791921478.9362214,
+    "ast_hash": "d51c7f006360e5e19802004e91a97215",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiContractValidationTest.java": {
+    "mtime": 1791904733.1304002,
+    "seen": 1791921478.936226,
+    "ast_hash": "e5576f4c01ee70640e68532f0e2e3b30",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiContractVerifierTest.java": {
+    "mtime": 1791904733.2267828,
+    "seen": 1791921478.9362283,
+    "ast_hash": "d2a80cee81e47d20b26b986ef51ffd2b",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiModelDiscoveryTest.java": {
+    "mtime": 1791310107.053444,
+    "seen": 1791470349.3843913,
+    "ast_hash": "61274832103c8518775c64bbc6140cfb",
+    "semantic_hash": "61274832103c8518775c64bbc6140cfb"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiPlanningRequestFactoryTest.java": {
+    "mtime": 1791903957.633903,
+    "seen": 1791921478.9362335,
+    "ast_hash": "1c23dd69192b61291806d655bbad288c",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiPriorityMapperTest.java": {
+    "mtime": 1791903957.6381352,
+    "seen": 1791921478.936238,
+    "ast_hash": "ccb0cf09498d2f3358a5283e6fbc2469",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiRestPlanningSourceTest.java": {
+    "mtime": 1792012014.8475232,
+    "seen": 1792075092.0751512,
+    "ast_hash": "74d04ee3fd0f75ce74576f88751e0706",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiTicketMapperTest.java": {
+    "mtime": 1791903957.6381352,
+    "seen": 1791921478.9362423,
+    "ast_hash": "704007cd3778477fe8fe08e5e6d2f129",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiTicketValidatorTest.java": {
+    "mtime": 1791903957.6381352,
+    "seen": 1791921478.9362445,
+    "ast_hash": "3266d6e2e34af5c47bf1586f76267f39",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaPlanSnapshotRepositoryTest.java": {
+    "mtime": 1791399521.6657355,
+    "seen": 1791470349.3844056,
+    "ast_hash": "2909efceb23a2a3c2d1419e53adfbf09",
+    "semantic_hash": "2909efceb23a2a3c2d1419e53adfbf09"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaPlanningMetadataRepositoryTest.java": {
+    "mtime": 1791483581.678887,
+    "seen": 1791921478.936249,
+    "ast_hash": "ba9ceb5eabe78d4d35a6954e87b51813",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaRescheduleLedgerTest.java": {
+    "mtime": 1791225954.0108194,
+    "seen": 1791470349.3844101,
+    "ast_hash": "7cbd3d291f7dddc4cb3f886d19dae3c7",
+    "semantic_hash": "7cbd3d291f7dddc4cb3f886d19dae3c7"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/service/GlpiConnectivityServiceTest.java": {
+    "mtime": 1791209819.733074,
+    "seen": 1791470349.3844128,
+    "ast_hash": "dc7a55685ed0c888c1c0c050a0129868",
+    "semantic_hash": "dc7a55685ed0c888c1c0c050a0129868"
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/service/PlanningMetadataServiceTest.java": {
+    "mtime": 1791317312.8813758,
+    "seen": 1791470349.3844154,
+    "ast_hash": "9cf913b0209bd050ff2d0cd5374e93b3",
+    "semantic_hash": "9cf913b0209bd050ff2d0cd5374e93b3"
+  },
+  "frontend/.oxlintrc.json": {
+    "mtime": 1791209814.9410124,
+    "seen": 1791470349.3844178,
+    "ast_hash": "029f4905006c1fffd96bc863e2d98d3e",
+    "semantic_hash": "029f4905006c1fffd96bc863e2d98d3e"
+  },
+  "frontend/components.json": {
+    "mtime": 1791209950.9287624,
+    "seen": 1791470349.3844204,
+    "ast_hash": "57aab01ed6d1929de1ee5aca808e38b0",
+    "semantic_hash": "57aab01ed6d1929de1ee5aca808e38b0"
+  },
+  "frontend/package.json": {
+    "mtime": 1791390189.4772666,
+    "seen": 1791470349.384423,
+    "ast_hash": "e1408911d97453f3a5b1eee3829a0673",
+    "semantic_hash": "e1408911d97453f3a5b1eee3829a0673"
+  },
+  "frontend/src/App.tsx": {
+    "mtime": 1791210175.6591544,
+    "seen": 1791470349.3844254,
+    "ast_hash": "331e71014a776a7f0966675da881e85c",
+    "semantic_hash": "331e71014a776a7f0966675da881e85c"
+  },
+  "frontend/src/components/dashboard/BottleneckTable.tsx": {
+    "mtime": 1791578333.7191725,
+    "seen": 1791921478.9362757,
+    "ast_hash": "8bbbfed231d75e2a53e30c28c01c4233",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/dashboard/GlpiStatusCard.tsx": {
+    "mtime": 1791210120.3900318,
+    "seen": 1791470349.3844333,
+    "ast_hash": "1b672b82ff96c17726d4324a6c004e8d",
+    "semantic_hash": "1b672b82ff96c17726d4324a6c004e8d"
+  },
+  "frontend/src/components/dashboard/StatCard.tsx": {
+    "mtime": 1791483886.6065705,
+    "seen": 1791921478.9362912,
+    "ast_hash": "13ababbc0a26409781cbfac610406873",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/timeline/ResourceTimeline.test.tsx": {
+    "mtime": 1791390379.6908512,
+    "seen": 1791470349.384438,
+    "ast_hash": "dbf71f84c291bd3003197c34febc5c1c",
+    "semantic_hash": "dbf71f84c291bd3003197c34febc5c1c"
+  },
+  "frontend/src/components/timeline/ResourceTimeline.tsx": {
+    "mtime": 1791390156.27157,
+    "seen": 1791470349.3844404,
+    "ast_hash": "59c91813941bb0b4a7f5c7ada6eab3e0",
+    "semantic_hash": "59c91813941bb0b4a7f5c7ada6eab3e0"
+  },
+  "frontend/src/components/timeline/TimelineGrid.tsx": {
+    "mtime": 1792171410.2782376,
+    "seen": 1792173498.1065552,
+    "ast_hash": "937c38f082d479e673ae08c29954e2e1",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/ui/badge.tsx": {
+    "mtime": 1791210280.5711548,
+    "seen": 1791470349.3844457,
+    "ast_hash": "0f0b6a91ba362ad937ebab5189e769c5",
+    "semantic_hash": "0f0b6a91ba362ad937ebab5189e769c5"
+  },
+  "frontend/src/components/ui/button.tsx": {
+    "mtime": 1791210280.4823627,
+    "seen": 1791470349.3844485,
+    "ast_hash": "d1b7b9c0b952e5c1ce52b782fb51f832",
+    "semantic_hash": "d1b7b9c0b952e5c1ce52b782fb51f832"
+  },
+  "frontend/src/components/ui/card.tsx": {
+    "mtime": 1791209986.493584,
+    "seen": 1791470349.3844512,
+    "ast_hash": "be89b2e9cd896c5d3298d6162e9443e2",
+    "semantic_hash": "be89b2e9cd896c5d3298d6162e9443e2"
+  },
+  "frontend/src/components/ui/empty-state.tsx": {
+    "mtime": 1791409638.7624469,
+    "seen": 1791470349.3844538,
+    "ast_hash": "da6216bfd8720d72b947cf594b32ca89",
+    "semantic_hash": "da6216bfd8720d72b947cf594b32ca89"
+  },
+  "frontend/src/components/ui/skeleton.tsx": {
+    "mtime": 1791209986.744424,
+    "seen": 1791470349.3844562,
+    "ast_hash": "a84db90192fbed7fc6cb4a987200cb94",
+    "semantic_hash": "a84db90192fbed7fc6cb4a987200cb94"
+  },
+  "frontend/src/env.d.ts": {
+    "mtime": 1791210008.9366484,
+    "seen": 1791470349.3844588,
+    "ast_hash": "da3bfde55580094a62087f1dc0454ae5",
+    "semantic_hash": "da3bfde55580094a62087f1dc0454ae5"
+  },
+  "frontend/src/hooks/useGlpiHealth.ts": {
+    "mtime": 1791210050.602886,
+    "seen": 1791470349.3844614,
+    "ast_hash": "435389a8c5f4cdd6b5abbfc94952238c",
+    "semantic_hash": "435389a8c5f4cdd6b5abbfc94952238c"
+  },
+  "frontend/src/hooks/usePlanningMetrics.ts": {
+    "mtime": 1791483876.0056045,
+    "seen": 1791921478.9363387,
+    "ast_hash": "230670cfb0e61281796e0d2f37eba5f0",
+    "semantic_hash": ""
+  },
+  "frontend/src/hooks/useTimeline.ts": {
+    "mtime": 1791389960.3288596,
+    "seen": 1791470349.3844664,
+    "ast_hash": "8ed95d0c1f102df3ae1e4cb9b6fd6705",
+    "semantic_hash": "8ed95d0c1f102df3ae1e4cb9b6fd6705"
+  },
+  "frontend/src/layouts/Header.tsx": {
+    "mtime": 1792165085.292673,
+    "seen": 1792168658.0916579,
+    "ast_hash": "405b5e40450ea55107c79573b644208b",
+    "semantic_hash": ""
+  },
+  "frontend/src/layouts/MainLayout.tsx": {
+    "mtime": 1791210089.9167626,
+    "seen": 1791470349.3844712,
+    "ast_hash": "b5e26e6a923e312bd04f3ddd3737b796",
+    "semantic_hash": "b5e26e6a923e312bd04f3ddd3737b796"
+  },
+  "frontend/src/layouts/Sidebar.tsx": {
+    "mtime": 1792098382.357452,
+    "seen": 1792099541.0414333,
+    "ast_hash": "b2f387a41ea45eec90c1317f5b1534c1",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/timeline.test.ts": {
+    "mtime": 1791390340.1776373,
+    "seen": 1791470349.3844764,
+    "ast_hash": "49240602a664184fa20a7b0bbd264229",
+    "semantic_hash": "49240602a664184fa20a7b0bbd264229"
+  },
+  "frontend/src/lib/timeline.ts": {
+    "mtime": 1791389975.1437273,
+    "seen": 1791470349.384479,
+    "ast_hash": "04cfb97e9de1e64b571f263bbeebaee8",
+    "semantic_hash": "04cfb97e9de1e64b571f263bbeebaee8"
+  },
+  "frontend/src/lib/utils.ts": {
+    "mtime": 1791209951.0034919,
+    "seen": 1791470349.3844848,
+    "ast_hash": "c37c8b9a69104f61177f979b34e50680",
+    "semantic_hash": "c37c8b9a69104f61177f979b34e50680"
+  },
+  "frontend/src/main.tsx": {
+    "mtime": 1791210175.7888036,
+    "seen": 1791470349.3844874,
+    "ast_hash": "3c7c954fd3d86e9705b99532bf85a73c",
+    "semantic_hash": "3c7c954fd3d86e9705b99532bf85a73c"
+  },
+  "frontend/src/pages/Calendar.test.tsx": {
+    "mtime": 1792171827.4713461,
+    "seen": 1792173498.1066947,
+    "ast_hash": "5bdeb2a4de1eb6def721aa11a9b4e11c",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Calendar.tsx": {
+    "mtime": 1792171436.227877,
+    "seen": 1792173498.1066978,
+    "ast_hash": "dcc2c9383f6113f529dc77eb6fe25a7b",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Dashboard.test.tsx": {
+    "mtime": 1791484233.576998,
+    "seen": 1791921478.9363859,
+    "ast_hash": "8d9c15cad2499417a8f40bee2ecf6216",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Dashboard.tsx": {
+    "mtime": 1791578333.9847963,
+    "seen": 1791921478.9363878,
+    "ast_hash": "57c2e48c2fb1a5f05c3d66eed40e5cce",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Incidents.tsx": {
+    "mtime": 1792085732.8542037,
+    "seen": 1792086512.5902727,
+    "ast_hash": "eb4c95391e995bfe5d4f7f58b037a1f0",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/NotFound.tsx": {
+    "mtime": 1791210166.3791256,
+    "seen": 1791470349.3845017,
+    "ast_hash": "6187b6923d8e03bb1d31680473cb5868",
+    "semantic_hash": "6187b6923d8e03bb1d31680473cb5868"
+  },
+  "frontend/src/pages/Resources.tsx": {
+    "mtime": 1792072403.364571,
+    "seen": 1792075092.0754254,
+    "ast_hash": "973c9e379a36e586218afc2d952d3b54",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Settings.tsx": {
+    "mtime": 1791210166.244739,
+    "seen": 1791470349.3845053,
+    "ast_hash": "8258a4b3210202437a5743f9124d600e",
+    "semantic_hash": "8258a4b3210202437a5743f9124d600e"
+  },
+  "frontend/src/routes/AppRoutes.tsx": {
+    "mtime": 1792098382.0752728,
+    "seen": 1792099541.0415652,
+    "ast_hash": "a4a225f0187c694458a9cf1f1d96f271",
+    "semantic_hash": ""
+  },
+  "frontend/src/routes/navigation.ts": {
+    "mtime": 1792165085.2886615,
+    "seen": 1792168658.0917718,
+    "ast_hash": "9332a2759fc1c76d3c2e967dc9340d84",
+    "semantic_hash": ""
+  },
+  "frontend/src/services/apiClient.ts": {
+    "mtime": 1791910692.2751997,
+    "seen": 1791921478.9364235,
+    "ast_hash": "beeb2f8072c46eeceda5837995fc9177",
+    "semantic_hash": ""
+  },
+  "frontend/src/services/glpiService.ts": {
+    "mtime": 1791210009.3268082,
+    "seen": 1791470349.3845131,
+    "ast_hash": "cbcbc6917db67f71846d1461268217f1",
+    "semantic_hash": "cbcbc6917db67f71846d1461268217f1"
+  },
+  "frontend/src/services/planningMetricsService.ts": {
+    "mtime": 1791483863.3130493,
+    "seen": 1791921478.9364316,
+    "ast_hash": "5aaa7d4a9606e1df7057d26833431e68",
+    "semantic_hash": ""
+  },
+  "frontend/src/services/timelineService.ts": {
+    "mtime": 1791389960.1505399,
+    "seen": 1791470349.384518,
+    "ast_hash": "5631f44753e7ef0a65d05f1c637312ba",
+    "semantic_hash": "5631f44753e7ef0a65d05f1c637312ba"
+  },
+  "frontend/src/test/fixtures.ts": {
+    "mtime": 1792171175.8703036,
+    "seen": 1792173498.1068146,
+    "ast_hash": "5e0de77c4cf5b9c5e87c21902d6853d3",
+    "semantic_hash": ""
+  },
+  "frontend/src/test/render.tsx": {
+    "mtime": 1792085182.574996,
+    "seen": 1792086512.5903149,
+    "ast_hash": "1e053d765a8db7ac5f804ba6421721e7",
+    "semantic_hash": ""
+  },
+  "frontend/src/test/setup.ts": {
+    "mtime": 1792167132.0365202,
+    "seen": 1792168658.0918,
+    "ast_hash": "c4b85dee198b78b89a58db54db9a39cd",
+    "semantic_hash": ""
+  },
+  "frontend/src/types/glpi.ts": {
+    "mtime": 1791210009.009158,
+    "seen": 1791470349.3845348,
+    "ast_hash": "63330c2a4d0d379330b2b737f1e40d0e",
+    "semantic_hash": "63330c2a4d0d379330b2b737f1e40d0e"
+  },
+  "frontend/src/types/planningMetrics.ts": {
+    "mtime": 1791484055.4612987,
+    "seen": 1791921478.9364529,
+    "ast_hash": "f62d747e0003a6796d6c986d27fdd52f",
+    "semantic_hash": ""
+  },
+  "frontend/src/types/resource.ts": {
+    "mtime": 1791210009.1448867,
+    "seen": 1791470349.3845394,
+    "ast_hash": "6b1f58791e6083e3e362d7b54a98b121",
+    "semantic_hash": "6b1f58791e6083e3e362d7b54a98b121"
+  },
+  "frontend/src/types/timeline.ts": {
+    "mtime": 1791389959.981214,
+    "seen": 1791470349.384542,
+    "ast_hash": "5a0ab9cb4e9779747f90620004191cb5",
+    "semantic_hash": "5a0ab9cb4e9779747f90620004191cb5"
+  },
+  "frontend/tsconfig.app.json": {
+    "mtime": 1791210217.7984364,
+    "seen": 1791470349.3845444,
+    "ast_hash": "459383384de10720fd77a721081c14f3",
+    "semantic_hash": "459383384de10720fd77a721081c14f3"
+  },
+  "frontend/tsconfig.json": {
+    "mtime": 1791209814.9881053,
+    "seen": 1791470349.3845465,
+    "ast_hash": "a3d39fa780ebff65444de257f291ce6c",
+    "semantic_hash": "a3d39fa780ebff65444de257f291ce6c"
+  },
+  "frontend/tsconfig.node.json": {
+    "mtime": 1791209814.9881053,
+    "seen": 1791470349.3845487,
+    "ast_hash": "f9cb81ddcea69ffdab672fc8c48dca66",
+    "semantic_hash": "f9cb81ddcea69ffdab672fc8c48dca66"
+  },
+  "frontend/vite.config.ts": {
+    "mtime": 1791390189.8616273,
+    "seen": 1791470349.3845508,
+    "ast_hash": "3a844117a42756250e24a711d12e4ea0",
+    "semantic_hash": "3a844117a42756250e24a711d12e4ea0"
+  },
+  "README.md": {
+    "mtime": 1792173364.5833302,
+    "seen": 1792173498.1068833,
+    "ast_hash": "faf2d9a0e6692ad3a4741d03fb630bef",
+    "semantic_hash": ""
+  },
+  "docker-compose.yml": {
+    "mtime": 1791225623.4797547,
+    "seen": 1791470349.3845553,
+    "ast_hash": "a8cebd5830dc0a85953c3c52d9f74c4f",
+    "semantic_hash": "a8cebd5830dc0a85953c3c52d9f74c4f"
+  },
+  "docs/decisiones-arquitectonicas.md": {
+    "mtime": 1792173548.452913,
+    "seen": 1792173588.081384,
+    "ast_hash": "e32705b6d1b6377132abaaa0847271db",
+    "semantic_hash": ""
+  },
+  "frontend/index.html": {
+    "mtime": 1791210175.8692007,
+    "seen": 1791470349.3845599,
+    "ast_hash": "7c5b5ceed927b40512731fe90f8a0544",
+    "semantic_hash": "7c5b5ceed927b40512731fe90f8a0544"
+  },
+  "frontend/public/favicon.svg": {
+    "mtime": 1791209814.9575775,
+    "seen": 1791470349.3845623,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": "7e840862161341271697daa99a40d76b"
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/controller/RenegotiationController.java": {
+    "mtime": 1791922656.7893255,
+    "seen": 1791923801.285709,
+    "ast_hash": "bbebebf18cf556e65124af25a4fc728d",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/AlertSeverity.java": {
+    "mtime": 1791488940.1505342,
+    "seen": 1791921478.9358304,
+    "ast_hash": "f181eb2ff0d8343db1ea75810e9d31cc",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/DeclaredGap.java": {
+    "mtime": 1791483551.248228,
+    "seen": 1791921478.9358354,
+    "ast_hash": "0cffd0c7c779e5feb9234f262706fa22",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/OperationalAlertType.java": {
+    "mtime": 1791489328.1868756,
+    "seen": 1791921478.9358487,
+    "ast_hash": "c839660b7402c76a528a130f4e7022f9",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/enums/RenegotiationStatus.java": {
+    "mtime": 1791913638.6862838,
+    "seen": 1791921478.9358535,
+    "ast_hash": "d451fbf4d1e6731277c2462f90bcacf1",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/Renegotiation.java": {
+    "mtime": 1791922733.1216288,
+    "seen": 1791923801.2858188,
+    "ast_hash": "0f10845f831ba859a3981344b5305112",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/model/RenegotiationChange.java": {
+    "mtime": 1791922235.241197,
+    "seen": 1791923801.2858222,
+    "ast_hash": "36d211af8f3303378513a2c74f70ba1f",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/repository/RenegotiationRepository.java": {
+    "mtime": 1791913638.9452114,
+    "seen": 1791921478.9359298,
+    "ast_hash": "6045ea11b601d31b4f9e9d9dade9a848",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/DeclaredGapDetailResponse.java": {
+    "mtime": 1791482808.4693441,
+    "seen": 1791921478.9359472,
+    "ast_hash": "adc2b5b0e444605a94f790bd8cebac0d",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/DeveloperDeclarationsResponse.java": {
+    "mtime": 1791908716.836871,
+    "seen": 1791921478.9359493,
+    "ast_hash": "eb9bab7e6011e08c5f2db17e27ab0680",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/DisplacedRequirementsResponse.java": {
+    "mtime": 1791482819.5654664,
+    "seen": 1791921478.9359517,
+    "ast_hash": "d4087d109dc5f3ad9f429685dc696eed",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/OperationalAlert.java": {
+    "mtime": 1791489338.3078847,
+    "seen": 1791921478.9359593,
+    "ast_hash": "7e349b9693884f8e94ab75781ba50d2b",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/OperationalAlertResponse.java": {
+    "mtime": 1791488981.0176868,
+    "seen": 1791921478.9359622,
+    "ast_hash": "6ccba36fdc4c438bfe9bb3765b28cc4f",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/RenegotiationHistoryResponse.java": {
+    "mtime": 1791922282.6468613,
+    "seen": 1791923801.285938,
+    "ast_hash": "045d7c3b82adaa2cca82beba191ee61a",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/RenegotiationRequest.java": {
+    "mtime": 1791922282.2863517,
+    "seen": 1791923801.2859418,
+    "ast_hash": "50776b5958cc9a39955eb7a683676846",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/RenegotiationResponse.java": {
+    "mtime": 1791922282.5618143,
+    "seen": 1791923801.2859445,
+    "ast_hash": "f59a8ce694a94900b6a666ad54c4ebf4",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/RenegotiationUpdateRequest.java": {
+    "mtime": 1791922326.721671,
+    "seen": 1791923801.2859473,
+    "ast_hash": "09a3ea151327eafd8049fd3430d768c2",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/RenegotiationsResponse.java": {
+    "mtime": 1791922656.889269,
+    "seen": 1791923801.2859507,
+    "ast_hash": "edd0715d3c76873022b915cf2a70418f",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/RenegotiationAlreadyExistsException.java": {
+    "mtime": 1791913967.7499542,
+    "seen": 1791921478.9360452,
+    "ast_hash": "5c4ca79ce8e489f36299735dfbf76a61",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/exception/RenegotiationNotFoundException.java": {
+    "mtime": 1791913937.7221072,
+    "seen": 1791921478.936047,
+    "ast_hash": "e4238b22b6db3481cdf62304830aa1ec",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/DeclarationStatus.java": {
+    "mtime": 1791908633.8628464,
+    "seen": 1791921478.9360497,
+    "ast_hash": "7e70b46965cffe2083b94b33d4ecd410",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaRenegotiationRepository.java": {
+    "mtime": 1791913671.4388864,
+    "seen": 1791921478.9360886,
+    "ast_hash": "adf6e6602975dfa4ee32815e950dc8e0",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/RenegotiationEntity.java": {
+    "mtime": 1791922248.834668,
+    "seen": 1791923801.28611,
+    "ast_hash": "89b7947142cc39f4dccbf68a23f3b255",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/RenegotiationHistoryEntity.java": {
+    "mtime": 1791922258.9360683,
+    "seen": 1791923801.2861123,
+    "ast_hash": "9fe72e22b36063dcdf52fe8f6d2afa61",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/RenegotiationHistoryJpaRepository.java": {
+    "mtime": 1791913671.3379967,
+    "seen": 1791921478.9361444,
+    "ast_hash": "0012c8d6b9b4e0e23b05182e77d4730a",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/RenegotiationJpaRepository.java": {
+    "mtime": 1791913671.1805096,
+    "seen": 1791921478.9361465,
+    "ast_hash": "fe18a6f36e1f46c072e23dc450a2ab86",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/service/OperationalAlertService.java": {
+    "mtime": 1791489005.3874795,
+    "seen": 1791921478.9361732,
+    "ast_hash": "7dc33c4f574a41aaf24250ac581b201f",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/service/PlanningDeclarationService.java": {
+    "mtime": 1792009103.0751379,
+    "seen": 1792075092.0750535,
+    "ast_hash": "2c33a364cba1d4c317f5fb8c83edbe62",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/service/RenegotiationService.java": {
+    "mtime": 1791922340.46811,
+    "seen": 1791923801.2861707,
+    "ast_hash": "27fcf3d895a3d5e925ea7e8245684c91",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningDeclarationEndpointsTest.java": {
+    "mtime": 1792009242.5392861,
+    "seen": 1792075092.0750806,
+    "ast_hash": "f23253b1b12ecbcae66d9ae852eca358",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningMetricsDrilldownEndpointsTest.java": {
+    "mtime": 1791483416.4693685,
+    "seen": 1791921478.9361997,
+    "ast_hash": "656c304d2b4cc27fe19a456f5f03c82d",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningOperationalAlertsEndpointsTest.java": {
+    "mtime": 1791489808.936868,
+    "seen": 1791921478.9362044,
+    "ast_hash": "6eb9d708286c40d2ea1f52d9dcbc3647",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/domain/repository/InMemoryRenegotiationRepository.java": {
+    "mtime": 1791914259.2842474,
+    "seen": 1791921478.9362237,
+    "ast_hash": "1e323bb6c60bd5a47679ee791f5c1edd",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiPlanningRequestFactoryVerdictsTest.java": {
+    "mtime": 1791909007.6562972,
+    "seen": 1791921478.9362354,
+    "ast_hash": "abacf24c4ab7ddadd0f1058803f32b92",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/service/OperationalAlertServiceTest.java": {
+    "mtime": 1791489495.7717483,
+    "seen": 1791921478.936257,
+    "ast_hash": "38f5ee6f3395fd135688da6919af02cd",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/service/RenegotiationServiceTest.java": {
+    "mtime": 1791922788.4100907,
+    "seen": 1791923801.2862716,
+    "ast_hash": "b584df567e8cb60b2f3a30bcb245fd49",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/dashboard/DeclaredGapTable.tsx": {
+    "mtime": 1791484760.4238763,
+    "seen": 1791921478.9362779,
+    "ast_hash": "ca5be6409dd53db4abaa1d54cdd751d4",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/dashboard/DisplacedRequirementsTable.tsx": {
+    "mtime": 1791484047.5513568,
+    "seen": 1791921478.93628,
+    "ast_hash": "69843ed4243e9fbdf86fdf8009820ff0",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/declarations/DeclarationForm.tsx": {
+    "mtime": 1791910926.9148927,
+    "seen": 1791921478.9362936,
+    "ast_hash": "d376fe255936308e01455d46e7ffc4b3",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/declarations/DeclarationTable.tsx": {
+    "mtime": 1791910923.634431,
+    "seen": 1791921478.9362957,
+    "ast_hash": "5c78b7c71fc97379a998582ad2ea75b4",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/renegotiations/RenegotiationForm.tsx": {
+    "mtime": 1791923027.6810348,
+    "seen": 1791923801.2863145,
+    "ast_hash": "c3c8d0061593bce96536dbe353363bc6",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/renegotiations/RenegotiationHistory.tsx": {
+    "mtime": 1791923036.2535567,
+    "seen": 1791923801.2863173,
+    "ast_hash": "a59373fee228fa3a6cd75d6f7cb5dcdf",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/renegotiations/RenegotiationTable.tsx": {
+    "mtime": 1791923046.2337434,
+    "seen": 1791923801.2863202,
+    "ast_hash": "36820714ee083aea9d31ce1d6421ae42",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/team/TeamTable.tsx": {
+    "mtime": 1792165085.2991965,
+    "seen": 1792168658.0916102,
+    "ast_hash": "6bb06ebcb027a89e3cceb55e645f6b34",
+    "semantic_hash": ""
+  },
+  "frontend/src/hooks/useAlerts.ts": {
+    "mtime": 1791575887.727997,
+    "seen": 1791921478.9363317,
+    "ast_hash": "5760e33b20710d6196b5e8366d9a75f1",
+    "semantic_hash": ""
+  },
+  "frontend/src/hooks/useDeclarations.ts": {
+    "mtime": 1792085669.0579221,
+    "seen": 1792086512.5902152,
+    "ast_hash": "82a2fbd18ba52893da3cdab1fa9741fa",
+    "semantic_hash": ""
+  },
+  "frontend/src/hooks/useRenegotiations.ts": {
+    "mtime": 1791917108.5483658,
+    "seen": 1791921478.9363406,
+    "ast_hash": "fc05771dc98c3de8bdf5b440281a31e6",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/alerts.ts": {
+    "mtime": 1791578322.6084304,
+    "seen": 1791921478.936357,
+    "ast_hash": "46d7686b581b91adc0c5a586258b36cf",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/capacity.ts": {
+    "mtime": 1791985701.2036984,
+    "seen": 1791999865.7132058,
+    "ast_hash": "67af361d0dc09f1a32c967449888f9e8",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/declarations.ts": {
+    "mtime": 1792165085.266076,
+    "seen": 1792168658.0916712,
+    "ast_hash": "8964cc7ce87efb1b7581c84a4c22ace7",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/format.ts": {
+    "mtime": 1791578322.5153482,
+    "seen": 1791921478.936363,
+    "ast_hash": "d2f2923d470e5926ff2d23262d1baa6b",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/renegotiations.ts": {
+    "mtime": 1791917116.7915654,
+    "seen": 1791921478.9363651,
+    "ast_hash": "803d9aa3ac8a10003fba99798ec180ab",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Alerts.test.tsx": {
+    "mtime": 1791576240.9163332,
+    "seen": 1791921478.9363768,
+    "ast_hash": "c119c0f26ea7fd108083a4a2da213a49",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Alerts.tsx": {
+    "mtime": 1791578349.6600268,
+    "seen": 1791921478.936379,
+    "ast_hash": "89e45fba2dd4268ae91c1116db1d3e11",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Declarations.test.tsx": {
+    "mtime": 1792165626.7396152,
+    "seen": 1792168658.0917287,
+    "ast_hash": "863e41952e704f1aee2b2b8ee1e254d2",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Declarations.tsx": {
+    "mtime": 1792171272.5986488,
+    "seen": 1792173498.1067157,
+    "ast_hash": "97bc6d3512d9b0ee6d09eafa52a4bff1",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/MetricDetail.test.tsx": {
+    "mtime": 1791484311.4221933,
+    "seen": 1791921478.936397,
+    "ast_hash": "784a9a3f0bcab08622aa5186aeb1497d",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/MetricDetail.tsx": {
+    "mtime": 1791484122.175236,
+    "seen": 1791921478.9363992,
+    "ast_hash": "6926242bc6f54be4d9a59c7a74896532",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Renegotiations.test.tsx": {
+    "mtime": 1791923132.9086375,
+    "seen": 1791923801.2864542,
+    "ast_hash": "a3101f111c43e47c16d4cdd51680573a",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Renegotiations.tsx": {
+    "mtime": 1791917490.037366,
+    "seen": 1791921478.936406,
+    "ast_hash": "fc8ee75897a6176d37d5cd188cbb0dc5",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Resources.test.tsx": {
+    "mtime": 1792072435.2296467,
+    "seen": 1792075092.0754225,
+    "ast_hash": "72d82401da9a8919d2b887966ff7e335",
+    "semantic_hash": ""
+  },
+  "frontend/src/services/alertsService.ts": {
+    "mtime": 1791575878.0931,
+    "seen": 1791921478.9364207,
+    "ast_hash": "1a596beae5309de95fc2a4a8a97117e4",
+    "semantic_hash": ""
+  },
+  "frontend/src/services/declarationsService.ts": {
+    "mtime": 1791910699.2657597,
+    "seen": 1791921478.9364254,
+    "ast_hash": "4e5a83ada17d3a56f002a4dacf31129f",
+    "semantic_hash": ""
+  },
+  "frontend/src/services/renegotiationsService.ts": {
+    "mtime": 1791922656.9680877,
+    "seen": 1791923801.2864997,
+    "ast_hash": "9b3f48201a73c57b79b107170b18eef4",
+    "semantic_hash": ""
+  },
+  "frontend/src/types/alerts.ts": {
+    "mtime": 1791575878.0183122,
+    "seen": 1791921478.936446,
+    "ast_hash": "22f72699c878dbe1b6c7aadcbbb5a3d4",
+    "semantic_hash": ""
+  },
+  "frontend/src/types/declarations.ts": {
+    "mtime": 1791910672.2216828,
+    "seen": 1791921478.9364486,
+    "ast_hash": "a219f48ea1a068059e3fbcbeaf44dabe",
+    "semantic_hash": ""
+  },
+  "frontend/src/types/renegotiations.ts": {
+    "mtime": 1791922990.9015622,
+    "seen": 1791923801.2865288,
+    "ast_hash": "dacc96a3e23ad36070c34fca6069f592",
+    "semantic_hash": ""
+  },
+  "respaldo-planes-invalidos-2026-10-09/manifiesto.txt": {
+    "mtime": 1791583585.8878975,
+    "seen": 1791921478.936485,
+    "ast_hash": "9ebd0a9916b629214dddfc5e9db01514",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/config/TeamProperties.java": {
+    "mtime": 1792071416.7911973,
+    "seen": 1792075092.0745459,
+    "ast_hash": "1dde74aadffc3a5e224e4a9a8a159b87",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/controller/TeamController.java": {
+    "mtime": 1791992408.826765,
+    "seen": 1791999865.7129061,
+    "ast_hash": "18fe55eabd559a06400f55cde31a564b",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/TeamCatalogResponse.java": {
+    "mtime": 1792071182.268103,
+    "seen": 1792075092.0748274,
+    "ast_hash": "758f42b9b4a863267061ddced13bc7a0",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/integration/glpi/GlpiSearchPage.java": {
+    "mtime": 1791991933.41404,
+    "seen": 1791999865.7130473,
+    "ast_hash": "528ab30fcbf2bd0759e7d64d3431cd96",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/service/TeamCatalogService.java": {
+    "mtime": 1792071234.762588,
+    "seen": 1792075092.0750716,
+    "ast_hash": "a5b9a8ca7b31bb035bae4520176c5b96",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/controller/TeamEndpointsTest.java": {
+    "mtime": 1792071545.4072087,
+    "seen": 1792075092.0751038,
+    "ast_hash": "1be7ec23325e99e481a763ebdb109bd9",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/service/TeamCatalogServiceTest.java": {
+    "mtime": 1792071695.802654,
+    "seen": 1792075092.075184,
+    "ast_hash": "a71d8c93084b58ba0892e7966087aeae",
+    "semantic_hash": ""
+  },
+  "frontend/src/hooks/usePlanGeneration.ts": {
+    "mtime": 1791926417.294308,
+    "seen": 1791999865.713194,
+    "ast_hash": "b813f02fc86ddf0a7b0afb5fb55a4c9d",
+    "semantic_hash": ""
+  },
+  "frontend/src/hooks/useTeam.ts": {
+    "mtime": 1791993376.0996265,
+    "seen": 1791999865.7131977,
+    "ast_hash": "73bc26845275e9a278233a7d1f05c290",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/team.ts": {
+    "mtime": 1792071995.9336257,
+    "seen": 1792075092.0753424,
+    "ast_hash": "1eb4ce1151a9a403893d7abeacdaa139",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Planning.test.tsx": {
+    "mtime": 1791926725.2638402,
+    "seen": 1791999865.7132366,
+    "ast_hash": "380b1384013ccb2200cba84161bfbac2",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Planning.tsx": {
+    "mtime": 1792171278.1205492,
+    "seen": 1792173498.1067493,
+    "ast_hash": "6cfe6d62f75bbbda6cbe69509720cbf8",
+    "semantic_hash": ""
+  },
+  "frontend/src/services/planningService.ts": {
+    "mtime": 1792170963.700769,
+    "seen": 1792173498.1068015,
+    "ast_hash": "a048ce892a8fa1bd0384ffd84bf10da3",
+    "semantic_hash": ""
+  },
+  "frontend/src/services/teamService.ts": {
+    "mtime": 1791993357.4353418,
+    "seen": 1791999865.7132556,
+    "ast_hash": "f53d1b353c44f2a49cf0fd4c4b6df122",
+    "semantic_hash": ""
+  },
+  "frontend/src/types/planning.ts": {
+    "mtime": 1792170953.6351304,
+    "seen": 1792173498.1068377,
+    "ast_hash": "98c5e4a09118871b76d9e1e727c54109",
+    "semantic_hash": ""
+  },
+  "frontend/src/types/team.ts": {
+    "mtime": 1792071945.976737,
+    "seen": 1792075092.0755148,
+    "ast_hash": "acfd1fdb49ee3cc0fe8283a57ca5d5a6",
+    "semantic_hash": ""
+  },
+  ".probe/n.json": {
+    "mtime": 1792014580.1159792,
+    "seen": 1792075092.0745058,
+    "ast_hash": "df6e041e3efc4c80dda2c4f5107c1842",
+    "semantic_hash": ""
+  },
+  ".probe/team.json": {
+    "mtime": 1792014570.003801,
+    "seen": 1792075092.0745122,
+    "ast_hash": "e5a7075ca73c6de98e8b75ebd605e4ea",
+    "semantic_hash": ""
+  },
+  ".probe/f34-incidentes.py": {
+    "mtime": 1792077363.1094599,
+    "seen": 1792078158.1995258,
+    "ast_hash": "78960df9b2035e0e26c0e1dbe24a1621",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/incidents/IncidentTable.tsx": {
+    "mtime": 1792085276.6681697,
+    "seen": 1792086512.590187,
+    "ast_hash": "6d113d7526205739f83465ed3558ae65",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/incidents.ts": {
+    "mtime": 1792165085.2776303,
+    "seen": 1792168658.091676,
+    "ast_hash": "726e0a594c8ad8a0890c93498c9018ae",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/Incidents.test.tsx": {
+    "mtime": 1792085759.2088711,
+    "seen": 1792086512.5902712,
+    "ast_hash": "74253a9dcc98dc5470cc37d044181f2f",
+    "semantic_hash": ""
+  },
+  ".probe/f35-abra.mjs": {
+    "mtime": 1792086329.5118656,
+    "seen": 1792086512.589798,
+    "ast_hash": "9c4755f16cf9d946f2c52473747368ef",
+    "semantic_hash": ""
+  },
+  ".probe/f35-cuenta.mjs": {
+    "mtime": 1792086313.0361328,
+    "seen": 1792086512.5898015,
+    "ast_hash": "d8333c25fb89250cd8310af40580f300",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/DeclarationFlow.test.tsx": {
+    "mtime": 1792085619.3085861,
+    "seen": 1792086512.5902655,
+    "ast_hash": "7f40dd86abb8183e5893bd66ab937117",
+    "semantic_hash": ""
+  },
+  ".probe/f35-bloque.md": {
+    "mtime": 1792086348.2909117,
+    "seen": 1792086512.5903428,
+    "ast_hash": "0a7dce7a68d605e42b2a1293b2178b21",
+    "semantic_hash": ""
+  },
+  ".probe/f35-readme.md": {
+    "mtime": 1792086402.7521412,
+    "seen": 1792086512.5903442,
+    "ast_hash": "ce41d5ed95ac59c1a720f7ec3d36e572",
+    "semantic_hash": ""
+  },
+  ".probe/f36-estado.mjs": {
+    "mtime": 1792092289.3516052,
+    "seen": 1792099541.0406277,
+    "ast_hash": "1ebb361f453dda2be0c835e904cfd42e",
+    "semantic_hash": ""
+  },
+  ".probe/f36-planificable.mjs": {
+    "mtime": 1792092326.282076,
+    "seen": 1792099541.0406325,
+    "ast_hash": "8027ef4e93f81708ba219d16b9b799c6",
+    "semantic_hash": ""
+  },
+  ".probe/team-live.json": {
+    "mtime": 1792092262.0664942,
+    "seen": 1792099541.0406408,
+    "ast_hash": "0eeb7a7df1b84632738d1c775ed9f13a",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/planningPreview.ts": {
+    "mtime": 1792165085.2766259,
+    "seen": 1792168658.0916781,
+    "ast_hash": "f4fcdddc17d28464f35a2cd04792b6bd",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/PlanningPreview.test.tsx": {
+    "mtime": 1792167530.4348364,
+    "seen": 1792168658.0917532,
+    "ast_hash": "cbde7566a5b9aa5d581cfb0944275826",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/PlanningPreview.tsx": {
+    "mtime": 1792171272.2672355,
+    "seen": 1792173498.1067564,
+    "ast_hash": "9f63c634685fa3a90385d2cc406f6e26",
+    "semantic_hash": ""
+  },
+  "f36-01-estado-entrada-completo.png": {
+    "mtime": 1792098980.4619534,
+    "seen": 1792099541.0416934,
+    "ast_hash": "9fd3fc7c2737996351d05930c3e7c6f3",
+    "semantic_hash": ""
+  },
+  "f37-01-recursos-origen.png": {
+    "mtime": 1792165794.5877068,
+    "seen": 1792168658.0918577,
+    "ast_hash": "3e69975730fafad060503fb3f08297f7",
+    "semantic_hash": ""
+  },
+  "f37-02-recursos-a-declaracion.png": {
+    "mtime": 1792165804.6457913,
+    "seen": 1792168658.09186,
+    "ast_hash": "cad983da6370e1cb1b9b77ef8acae640",
+    "semantic_hash": ""
+  },
+  "f37-03-incidentes-origen.png": {
+    "mtime": 1792165842.4622085,
+    "seen": 1792168658.0918617,
+    "ast_hash": "9f74faaa3d2f0866b58d7ed1bd494737",
+    "semantic_hash": ""
+  },
+  "f37-04-incidentes-a-declaracion.png": {
+    "mtime": 1792165850.3402379,
+    "seen": 1792168658.0918639,
+    "ast_hash": "e76b3953f0eeb7ca343e031f38679014",
+    "semantic_hash": ""
+  },
+  "f37-05-declaracion-pendiente.png": {
+    "mtime": 1792165971.8287206,
+    "seen": 1792168658.0918655,
+    "ast_hash": "d39c315bf32b6bd9e13ea12f21a31bf2",
+    "semantic_hash": ""
+  },
+  "f37-06-declaracion-guardada.png": {
+    "mtime": 1792165989.2206671,
+    "seen": 1792168658.091868,
+    "ast_hash": "315b9aa229afbef9d8f912e7bb121c0c",
+    "semantic_hash": ""
+  },
+  "f37-07-siguiente-pendiente.png": {
+    "mtime": 1792166019.0318458,
+    "seen": 1792168658.0918696,
+    "ast_hash": "af580aff649dd46175654ad62c5d5be0",
+    "semantic_hash": ""
+  },
+  "f37-08-siguiente-avanza.png": {
+    "mtime": 1792166029.2342844,
+    "seen": 1792168658.0918715,
+    "ast_hash": "0b2f1a8f0d430ba3d8144e03529d1108",
+    "semantic_hash": ""
+  },
+  "f37-09-estado-origen.png": {
+    "mtime": 1792166042.4103577,
+    "seen": 1792168658.0918732,
+    "ast_hash": "7cf08c75c5d61c6b9e67a0159482b5c4",
+    "semantic_hash": ""
+  },
+  "f37-10-estado-a-declaracion.png": {
+    "mtime": 1792166051.9185653,
+    "seen": 1792168658.0918756,
+    "ast_hash": "e57347a271e04ea230490927e622b36a",
+    "semantic_hash": ""
+  },
+  "f37-11-retorno-estado.png": {
+    "mtime": 1792166058.0974772,
+    "seen": 1792168658.0918772,
+    "ast_hash": "7cf08c75c5d61c6b9e67a0159482b5c4",
+    "semantic_hash": ""
+  },
+  "f37-12-menu-directo.png": {
+    "mtime": 1792166069.0383108,
+    "seen": 1792168658.091879,
+    "ast_hash": "375ef444f0d95be94ea4eac602f9ac68",
+    "semantic_hash": ""
+  },
+  "f37-13-selector-consulta.png": {
+    "mtime": 1792166082.963066,
+    "seen": 1792168658.0918806,
+    "ast_hash": "40bcb2711ad3ffda9d8d270b849d7612",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/timeline/PlanResult.tsx": {
+    "mtime": 1792171355.6050272,
+    "seen": 1792173498.1065402,
+    "ast_hash": "0fc43f3b7581ed568066a7790257ab55",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/ui/figure.tsx": {
+    "mtime": 1792171263.2144454,
+    "seen": 1792173498.1065745,
+    "ast_hash": "488be5097834f87f32e4fe8fa22fa8ec",
+    "semantic_hash": ""
+  },
+  "frontend/src/hooks/usePlanResult.ts": {
+    "mtime": 1792170973.3137636,
+    "seen": 1792173498.1066015,
+    "ast_hash": "eb062defb1c09f5a4f527ed22e147e28",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/planResult.test.ts": {
+    "mtime": 1792171219.5528207,
+    "seen": 1792173498.1066535,
+    "ast_hash": "f1694b3de8d37a06e9477226288d15a4",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/planResult.ts": {
+    "mtime": 1792171133.125256,
+    "seen": 1792173498.1066566,
+    "ast_hash": "1d55eafd13c5bea8f0d4c1478916e54f",
+    "semantic_hash": ""
+  },
+  "f38-01-generacion-plan.png": {
+    "mtime": 1792172259.839777,
+    "seen": 1792173498.1069527,
+    "ast_hash": "c678b30878f7b67cdff7fc913d9d556c",
+    "semantic_hash": ""
+  },
+  "f38-02-resultado-visible.png": {
+    "mtime": 1792172300.4673011,
+    "seen": 1792173498.1069562,
+    "ast_hash": "050c90264f9111f7b3eca05f17f09b0d",
+    "semantic_hash": ""
+  },
+  "f38-03-calendario.png": {
+    "mtime": 1792172319.415108,
+    "seen": 1792173498.1069593,
+    "ast_hash": "58daaf04e124d78d679d7cc3ae1ffe2e",
+    "semantic_hash": ""
+  },
+  "f38-04-desplazamientos.png": {
+    "mtime": 1792172315.9704669,
+    "seen": 1792173498.1069622,
+    "ast_hash": "0a803fb81e17ab5af56604ff0e6b1936",
+    "semantic_hash": ""
+  },
+  "f38-05-capacidad.png": {
+    "mtime": 1792172312.2919652,
+    "seen": 1792173498.106965,
+    "ast_hash": "1d419b6d246f001c6d6f147ea01c65cd",
+    "semantic_hash": ""
+  },
+  "f38-06-renegociaciones.png": {
+    "mtime": 1792172942.6017594,
+    "seen": 1792173498.1069684,
+    "ast_hash": "66ceadd8f5d082b8457c748be242ca5c",
+    "semantic_hash": ""
+  }
+}
