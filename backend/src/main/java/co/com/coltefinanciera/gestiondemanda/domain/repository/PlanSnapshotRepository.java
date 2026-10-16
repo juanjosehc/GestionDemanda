@@ -98,6 +98,24 @@ public interface PlanSnapshotRepository {
     List<PlanReference> findLatestPerDeveloper();
 
     /**
+     * Todos los planes de un desarrollador, del mas antiguo al mas reciente.
+     *
+     * <p>Existe porque {@link #findLatestPerDeveloper} contesta "con que plan se trabaja hoy" y tira el
+     * resto, y hay una pregunta que necesita justo lo que tira: <em>que cambio entre este plan y el
+     * anterior</em>. Sin esta lectura, "el plan anterior de un tecnico" no es una cosa nombrable —no
+     * hay forma de obtener su identificador— y la pregunta no se puede ni formular.
+     *
+     * <p><strong>El orden es parte del contrato, no un detalle de la consulta.</strong> Quien compara
+     * elige "el anterior" por posicion, asi que el orden no puede quedar a criterio del motor de base
+     * de datos ni reordenarse despues: dos llamadas devuelven la misma lista, y un empate de sello se
+     * rompe por identificador —que no significa nada, pero desempata igual en todas partes—.
+     *
+     * <p>Un desarrollador sin planes devuelve una lista vacia y no un error: este puerto no sabe si un
+     * identificador corresponde a alguien, y contestar "no tiene planes" es lo unico que puede afirmar.
+     */
+    List<PlanReference> findByDeveloper(String developerId);
+
+    /**
      * Cuantos planes hay guardados, sin traerlos.
      *
      * <p>Cuenta filas, no planes distintos: guardar un plan no es idempotente, asi que una peticion

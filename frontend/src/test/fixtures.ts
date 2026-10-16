@@ -5,6 +5,7 @@ import type {
   PlanningMetadata,
 } from '@/types/declarations'
 import type {
+  DeveloperPlansResponse,
   PlanningFromGlpiResponse,
   PlanningInputResponse,
   PlanSnapshotResponse,
@@ -946,6 +947,194 @@ export function planRenegotiationsFixture(
     ...base,
     items: base.items.slice(0, 2).map((one) => ({ ...one, planId: PLAN_ID })),
     summary: { displaced: 2, pending: 1, agreed: 1 },
+    ...overrides,
+  }
+}
+
+/** El plan anterior de `PLAN_ID`: el que existia antes y con el que se compara. */
+export const PREVIOUS_PLAN_ID = '55555555-5555-5555-5555-555555555555'
+
+/**
+ * El plan **anterior** al del `planSnapshotFixture`, sobre el timeline de arriba.
+ *
+ * Existe para que la comparacion tenga dos fotos coherentes con las que trabajar y trae, a proposito,
+ * las cinco diferencias que el brief pregunta: `REQ-2` no estaba (entro), `REQ-6` estaba y ya no esta
+ * (salio), `REQ-6` estaba desplazado (su desplazamiento desaparecio), `REQ-1` estaba planificado y
+ * ahora esta desplazado (aparecio uno nuevo) y `REQ-1` cambio de caja. `INC-1` y `REQ-3` estan iguales
+ * en los dos, que es la parte que sigue igual.
+ *
+ * **Se sella antes del acuerdo del `planRenegotiationsFixture`** —`09:00` contra `09:30`— para que la
+ * pregunta 6 tenga una respuesta: un acuerdo registrado despues de que se calculara este plan. Si el
+ * sello fuera posterior, esa pregunta saldria vacia y la prueba pasaria por casualidad.
+ *
+ * Las asignaciones suman lo mismo que la capacidad de su timeline —8 horas el dia 5 y 2 el dia 6—,
+ * por la misma razon que en el fixture del plan nuevo: dos fixtures que se separan afirman cosas sobre
+ * datos que el backend no produce.
+ */
+export function previousPlanSnapshotFixture(
+  overrides: Partial<PlanSnapshotResponse> = {},
+): PlanSnapshotResponse {
+  return {
+    planId: PREVIOUS_PLAN_ID,
+    developerId: DEVELOPER_ID,
+    createdAt: '2026-10-06T09:00:00Z',
+    allocations: [
+      {
+        workItemId: 'INC-1',
+        workItemType: 'INCIDENTE',
+        developerId: DEVELOPER_ID,
+        date: '2026-10-05',
+        hours: 6,
+      },
+      {
+        workItemId: 'REQ-1',
+        workItemType: 'REQUERIMIENTO',
+        developerId: DEVELOPER_ID,
+        date: '2026-10-05',
+        hours: 2,
+      },
+      {
+        workItemId: 'REQ-6',
+        workItemType: 'REQUERIMIENTO',
+        developerId: DEVELOPER_ID,
+        date: '2026-10-06',
+        hours: 2,
+      },
+    ],
+    rescheduleEvents: [
+      {
+        timestamp: '2026-10-06T09:00:00Z',
+        incidentId: 'INC-1',
+        requirementId: 'REQ-6',
+        originalDate: '2026-10-05',
+        rescheduledDate: '2026-10-06',
+        appliedRule: 'SIN_CAPACIDAD_EN_LA_JORNADA',
+        severity: 'MEDIO',
+        reason: 'La jornada quedo sin capacidad disponible',
+      },
+    ],
+    conflicts: [
+      {
+        workItemId: 'REQ-3',
+        workItemType: 'REQUERIMIENTO',
+        reason: 'Sin capacidad en el horizonte de 10 dias',
+      },
+    ],
+    ...overrides,
+  }
+}
+
+/**
+ * La foto de la entrada del plan anterior: cuatro elementos, uno de ellos excluido.
+ *
+ * Trae `REQ-6`, que en el plan nuevo ya no esta, y no trae `REQ-2` ni `REQ-4`, que son los que
+ * entraron despues. `REQ-3` sigue estando y sigue sin caber: la parte que no cambio.
+ */
+export function previousPlanInputFixture(
+  overrides: Partial<PlanningInputResponse> = {},
+): PlanningInputResponse {
+  return {
+    planId: PREVIOUS_PLAN_ID,
+    developerId: DEVELOPER_ID,
+    incidents: [{ id: 'INC-1', estimatedHours: 6, status: 'ABIERTO', severity: 'MEDIO' }],
+    requirements: [
+      { id: 'REQ-1', estimatedHours: 2, plannedDate: '2026-10-05', status: 'ABIERTO' },
+      { id: 'REQ-3', estimatedHours: 8, plannedDate: '2026-10-09', status: 'ABIERTO' },
+      { id: 'REQ-6', estimatedHours: 2, plannedDate: '2026-10-05', status: 'ABIERTO' },
+    ],
+    source: 'GLPI',
+    extractedAt: '2026-10-06T08:59:00Z',
+    ...overrides,
+  }
+}
+
+/**
+ * La agenda del plan anterior, coherente con su foto y su plan.
+ *
+ * `REQ-1` sale **planificado** —tiene tramo y ningun evento—, que es lo que hace que en el plan nuevo
+ * cuente como desplazamiento aparecido. `REQ-6` sale desplazado, y su desplazamiento es el que
+ * desaparece: en el plan nuevo ni siquiera esta.
+ */
+export function previousTimelineFixture(
+  overrides: Partial<TimelinePlanResponse> = {},
+): TimelinePlanResponse {
+  return {
+    planId: PREVIOUS_PLAN_ID,
+    developerId: DEVELOPER_ID,
+    from: '2026-10-05',
+    to: '2026-10-06',
+    resources: [
+      {
+        developerId: DEVELOPER_ID,
+        capacity: [
+          { date: '2026-10-05', availableHours: 8, occupiedHours: 8, remainingHours: 0 },
+          { date: '2026-10-06', availableHours: 8, occupiedHours: 2, remainingHours: 6 },
+        ],
+      },
+    ],
+    items: [
+      {
+        workItemId: 'INC-1',
+        workItemType: 'INCIDENTE',
+        startsAt: '2026-10-05T09:00:00',
+        endsAt: '2026-10-05T15:00:00',
+        durationHours: 6,
+        developerId: DEVELOPER_ID,
+        estimatedHours: 6,
+        committedDate: null,
+        severity: 'MEDIO',
+        planningStatus: 'PLANIFICADO',
+        sourcePlanId: PREVIOUS_PLAN_ID,
+      },
+      {
+        workItemId: 'REQ-1',
+        workItemType: 'REQUERIMIENTO',
+        startsAt: '2026-10-05T15:00:00',
+        endsAt: '2026-10-05T17:00:00',
+        durationHours: 2,
+        developerId: DEVELOPER_ID,
+        estimatedHours: 2,
+        committedDate: '2026-10-05',
+        severity: null,
+        planningStatus: 'PLANIFICADO',
+        sourcePlanId: PREVIOUS_PLAN_ID,
+      },
+      {
+        workItemId: 'REQ-6',
+        workItemType: 'REQUERIMIENTO',
+        startsAt: '2026-10-06T09:00:00',
+        endsAt: '2026-10-06T11:00:00',
+        durationHours: 2,
+        developerId: DEVELOPER_ID,
+        estimatedHours: 2,
+        committedDate: '2026-10-05',
+        severity: null,
+        planningStatus: 'DESPLAZADO',
+        sourcePlanId: PREVIOUS_PLAN_ID,
+      },
+    ],
+    allocations: [],
+    ...overrides,
+  }
+}
+
+/**
+ * La lista de planes de un tecnico, con el anterior y el nuevo.
+ *
+ * **En el orden del backend y no en otro**: del mas antiguo al mas reciente. Es la lista de la que sale
+ * «el anterior» por posicion, asi que una prueba que la vea invertida esta probando lo contrario de lo
+ * que promete el contrato.
+ */
+export function developerPlansFixture(
+  overrides: Partial<DeveloperPlansResponse> = {},
+): DeveloperPlansResponse {
+  return {
+    developerId: DEVELOPER_ID,
+    plans: [
+      { planId: PREVIOUS_PLAN_ID, createdAt: '2026-10-06T09:00:00Z' },
+      { planId: PLAN_ID, createdAt: '2026-10-07T14:00:00Z' },
+    ],
+    scope: 'los planes guardados de un desarrollador, del mas antiguo al mas reciente',
     ...overrides,
   }
 }

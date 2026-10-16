@@ -150,3 +150,45 @@ export interface PlanInputRequirement {
   plannedDate: string
   status: string
 }
+
+/**
+ * Respuesta de `GET /api/planning/plans/{developerId}`: los planes guardados de un tecnico.
+ *
+ * Es la primera lectura de esta API que devuelve **una coleccion de planes** y no un plan: las demas o
+ * son de uno concreto o son agregados. Existe porque sin ella «el plan anterior» no es una cosa
+ * nombrable —`/metrics` publica el vigente de cada tecnico y descarta el resto—, y sin nombre no hay
+ * comparacion que construir.
+ *
+ * **`developerId` viaja una vez**, en la respuesta y no en cada fila: es constante en toda la lista.
+ * **No hay `total`**: seria `plans.length` con otro nombre.
+ */
+export interface DeveloperPlansResponse {
+  /** El tecnico que se consulto, tal como lo devolvio el backend. */
+  developerId: string
+  /**
+   * Sus planes, **del mas antiguo al mas reciente**.
+   *
+   * **El orden es parte del contrato, no un detalle de presentacion.** Quien compara elige «el
+   * anterior» por posicion sobre esta lista, y por eso la vista no la reordena: reordenarla seria la
+   * segunda definicion de «cual es el anterior».
+   *
+   * Una lista vacia significa «no tiene planes», no «no existe»: esta capa no tiene padron de tecnicos
+   * y no puede distinguirlos.
+   */
+  plans: readonly DeveloperPlan[]
+  /** Hasta donde mira la lista. Es la nota que explica por que puede estar acotada. */
+  scope: string
+}
+
+/**
+ * Un plan guardado, reducido a lo que hace falta para nombrarlo y ordenarlo.
+ *
+ * **No se declara la entrada ni el resultado.** Para comparar dos planes hay que leerlos enteros, y se
+ * leen por sus rutas de siempre —`/{planId}`, `/{planId}/input` y el timeline—, que ya estan
+ * declaradas. Esta lista solo contesta *cuales* hay y *desde cuando*.
+ */
+export interface DeveloperPlan {
+  planId: string
+  /** Cuando el motor calculo el plan. Es el sello con el que se fecha la comparacion. */
+  createdAt: string
+}

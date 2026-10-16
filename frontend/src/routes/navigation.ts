@@ -25,6 +25,15 @@ export const ROUTES = {
   calendar: '/calendario',
   /** Plantilla de la agenda de un plan. No se enlaza tal cual: se construye con calendarPath(). */
   calendarPlan: '/calendario/:planId',
+  /**
+   * Plantilla de la comparación de un plan con el anterior. Se construye con comparisonPath().
+   *
+   * **Lleva un solo identificador y no dos, y es la decisión de esta fase**: el plan anterior no se
+   * pide por la dirección, lo resuelve la pantalla a partir de la lista de planes de **ese** técnico.
+   * Con dos identificadores se podría componer a mano una comparación entre dos personas distintas, y
+   * con uno solo no hay forma de comparar un plan consigo mismo.
+   */
+  calendarComparison: '/calendario/comparar/:planId',
   incidents: '/incidentes',
   declarations: '/declaraciones',
   /** Donde se invoca la generacion de un plan desde GLPI. La ruta no planifica: llama a la que ya existia. */
@@ -45,6 +54,18 @@ export const ROUTES = {
 /** Ruta concreta del calendario para un plan, derivada de la plantilla para no repetir el literal. */
 export function calendarPath(planId: string): string {
   return ROUTES.calendarPlan.replace(':planId', encodeURIComponent(planId))
+}
+
+/**
+ * Ruta concreta de la comparación de un plan con el que le precede.
+ *
+ * Cuelga de `/calendario` a propósito: es una vista del calendario, y el menú la resalta y la titula
+ * como tal sin que haya que declarar una entrada nueva. Lo que no lleva es el identificador del plan
+ * anterior —lo resuelve la pantalla—, así que esta dirección no puede nombrar una pareja que el
+ * sistema no hubiera elegido.
+ */
+export function comparisonPath(planId: string): string {
+  return ROUTES.calendarComparison.replace(':planId', encodeURIComponent(planId))
 }
 
 /**

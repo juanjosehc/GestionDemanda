@@ -1,5 +1,6 @@
 import { apiGet, apiPost } from '@/services/apiClient'
 import type {
+  DeveloperPlansResponse,
   PlanningFromGlpiResponse,
   PlanningInputResponse,
   PlanSnapshotResponse,
@@ -56,4 +57,29 @@ export function fetchPlanSnapshot(planId: string, signal?: AbortSignal): Promise
  */
 export function fetchPlanInput(planId: string, signal?: AbortSignal): Promise<PlanningInputResponse> {
   return apiGet<PlanningInputResponse>(`/api/planning/${planId}/input`, signal)
+}
+
+/**
+ * `GET /api/planning/plans/{developerId}`: los planes guardados de un tecnico, del mas antiguo al mas
+ * reciente.
+ *
+ * Es una lectura de historial y no de resultado: devuelve identificadores y sellos, no la entrada ni lo
+ * que el motor decidio. Para comparar dos planes hay que leerlos enteros, y eso se hace por sus rutas
+ * de siempre.
+ *
+ * **El identificador va codificado en el camino.** Un tecnico puede tener un inicio de sesion con
+ * caracteres que en una direccion significan otra cosa —`#`, `?`, `/`—, y sin codificarlos la peticion
+ * pediria otro recurso o ninguno. Es el mismo trato que `declarationsService` le da al suyo.
+ *
+ * Una lista vacia es una respuesta valida: significa que ese tecnico no tiene planes guardados, no que
+ * no exista.
+ */
+export function fetchDeveloperPlans(
+  developerId: string,
+  signal?: AbortSignal,
+): Promise<DeveloperPlansResponse> {
+  return apiGet<DeveloperPlansResponse>(
+    `/api/planning/plans/${encodeURIComponent(developerId)}`,
+    signal,
+  )
 }

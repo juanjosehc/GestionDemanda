@@ -3,7 +3,7 @@ import { Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Calendar } from '@/pages/Calendar'
-import { ROUTES } from '@/routes/navigation'
+import { comparisonPath, ROUTES } from '@/routes/navigation'
 import {
   PLAN_ID,
   planInputFixture,
@@ -386,6 +386,18 @@ describe('Calendar', () => {
     const days = [...container.querySelectorAll<HTMLElement>('[data-slot="timeline-day"]')]
     expect(days.map((day) => day.dataset.working)).toEqual(['true', 'false'])
     expect(days[1].textContent).toContain('no laborable')
+  })
+
+  it('enlaza a la comparación con el plan anterior sin resolver nada aquí', async () => {
+    serve()
+    const container = await calendar()
+
+    // El identificador va ya resuelto en la dirección, así que el enlace no consulta nada para
+    // construirse. **Quien sabe si hay plan anterior es la otra pantalla**, que es la que tiene la
+    // lista: esta conserva sus cuatro lecturas y no aprende una quinta para pintar un enlace.
+    const link = container.querySelector<HTMLAnchorElement>('[data-slot="compare-with-previous"]')
+
+    expect(link).toHaveAttribute('href', comparisonPath(PLAN_ID))
   })
 
   it('no lee de más: cuatro direcciones, todas GET y ninguna del tablero', async () => {

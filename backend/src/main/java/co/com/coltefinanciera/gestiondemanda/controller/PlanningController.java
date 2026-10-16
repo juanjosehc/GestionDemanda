@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 
 import co.com.coltefinanciera.gestiondemanda.domain.enums.DeclaredGap;
 import co.com.coltefinanciera.gestiondemanda.dto.DeclaredGapDetailResponse;
+import co.com.coltefinanciera.gestiondemanda.dto.DeveloperPlansResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.DisplacedRequirementsResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.OperationalAlertResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanSnapshotResponse;
@@ -40,16 +41,17 @@ import co.com.coltefinanciera.gestiondemanda.service.PlanningService;
  * <p>Sigue siendo una superficie de validacion y no el contrato definitivo: existe para ejercitar
  * las reglas de negocio antes de que GLPI alimente datos reales, y el controlador solo delega.
  *
- * <p>Los doce endpoints son tres preguntas y nueve formas de responderlas. {@code simulate} pregunta
+ * <p>Los trece endpoints son tres preguntas y diez formas de responderlas. {@code simulate} pregunta
  * que pasaria; {@code plan} decide y lo deja escrito; {@code from-glpi} decide con los datos reales. Y
  * de lo escrito hay cinco lecturas de un plan —el plan entero ({@code /{planId}}), solo su agenda
  * ({@code /{planId}/blocks}), su agenda con la capacidad ya contada ({@code /{planId}/timeline}), que
  * es la que consume un timeline, solo su contexto ({@code /{planId}/context}) y solo su entrada
- * ({@code /{planId}/input})— mas cuatro que no son de ningun plan: {@code /metrics}, la fotografia del
- * conjunto, sus dos desgloses —{@code /metrics/declared/{gap}} y {@code /metrics/displaced}—, que
- * bajan de la cifra al elemento que la produce, y {@code /alerts}, que dice cuales de esas cifras
- * exigen que alguien mire. El reparto no es casual: lo que se guarda se puede volver a pedir, y lo que
- * solo se simula no.
+ * ({@code /{planId}/input})— mas cinco que no son de ningun plan: {@code /plans/{developerId}}, que
+ * dice <em>cuales</em> tiene un tecnico y por eso es lo que permite nombrar su plan anterior;
+ * {@code /metrics}, la fotografia del conjunto, sus dos desgloses —{@code /metrics/declared/{gap}} y
+ * {@code /metrics/displaced}—, que bajan de la cifra al elemento que la produce, y {@code /alerts}, que
+ * dice cuales de esas cifras exigen que alguien mire. El reparto no es casual: lo que se guarda se
+ * puede volver a pedir, y lo que solo se simula no.
  *
  * <p>Los tres endpoints que cuelgan de {@code /metrics} son el mismo movimiento en dos pasos: primero
  * una cifra, luego los elementos que la producen. El desglose no es otra metrica —no recalcula nada,
@@ -72,6 +74,20 @@ import co.com.coltefinanciera.gestiondemanda.service.PlanningService;
  * literal puntua por encima de una variable de captura, asi que {@code /metrics} gana siempre y en
  * cualquier orden de declaracion. No se da por sabido —una prueba lo fija—, porque el dia que dejara
  * de cumplirse lo que se rompe no es una ruta nueva, es la lectura del plan entero.
+ *
+ * <p>{@code /plans/{developerId}} tiene dos segmentos y por eso no compite con {@code /{planId}}, que
+ * tiene uno. Si compite con las cuatro sub-rutas de dos segmentos que cuelgan de un plan
+ * —{@code /{planId}/context}, {@code /{planId}/input}, {@code /{planId}/blocks} y
+ * {@code /{planId}/timeline}— y <strong>gana el plan, no el listado</strong>. La expectativa era la
+ * contraria —el literal {@code plans} pesa mas que la variable {@code {planId}}—, y la medida dice
+ * otra cosa: {@code GET /plans/blocks} contesta {@code 400 INVALID_PARAMETER} porque lo lee la ruta de
+ * bloques y {@code plans} no es un UUID. Se deja escrito tal como se midio, con una prueba que lo fija,
+ * en lugar de disimulado.
+ *
+ * <p>El efecto es acotado y no tiene arreglo por nombres: un tecnico que se llamara exactamente
+ * {@code context}, {@code input}, {@code blocks} o {@code timeline} no se podria listar, porque una
+ * variable de captura no distingue un nombre de una ruta. Ningun inicio de sesion de GLPI se llama
+ * asi, y el listado no depende de ellos para nada mas.
  */
 @RestController
 @RequestMapping("/api/planning")
@@ -262,6 +278,30 @@ public class PlanningController {
     @GetMapping("/alerts")
     public OperationalAlertResponse alerts() {
         return operationalAlertService.alerts();
+    }
+
+    /**
+     * {@code GET /api/planning/plans/{developerId}}
+     *
+     * <p>El historial de planes de un tecnico, del mas antiguo al mas reciente. Es la lectura que
+     * permite nombrar su plan anterior, y por tanto la que hace posible comparar dos planes.
+     *
+     * <p><strong>Es de solo lectura y no planifica.</strong> No es una forma de crear un plan —quien
+     * quiera uno sigue llamando a {@code POST /api/planning/from-glpi}— y no ejecuta el motor: lee las
+     * filas que ya existen. Devolver el listado es justo lo que no se le puede pedir a un endpoint de
+     * escritura, porque pedirlo crearia un plan guardado por cada vez que alguien abre la pantalla.
+     *
+     * <p>El nombre del tecnico va en la ruta y no en un parametro de consulta siguiendo el precedente
+     * de {@code /api/planning-metadata/declarations/{developerId}}, que es el mismo caso: el listado de
+     * lo que tiene un tecnico concreto.
+     *
+     * <p>Devuelve {@code 200} con lista vacia si el tecnico no tiene planes, y no {@code 404}: esta
+     * capa no tiene padron propio de tecnicos, asi que no puede distinguir «no existe» de «no tiene
+     * ninguno», y afirmar lo primero seria afirmar mas de lo que sabe.
+     */
+    @GetMapping("/plans/{developerId}")
+    public DeveloperPlansResponse plans(@PathVariable String developerId) {
+        return planningService.plans(developerId);
     }
 
     /**

@@ -46,6 +46,7 @@ import co.com.coltefinanciera.gestiondemanda.domain.rules.BusinessTimeCalculator
 import co.com.coltefinanciera.gestiondemanda.domain.rules.IncidentPolicy;
 import co.com.coltefinanciera.gestiondemanda.domain.rules.PlanningRules;
 import co.com.coltefinanciera.gestiondemanda.domain.rules.WorkingCalendar;
+import co.com.coltefinanciera.gestiondemanda.dto.DeveloperPlansResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanSnapshotResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningContextResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningInputResponse;
@@ -153,6 +154,38 @@ public class PlanningService {
         PlanSnapshot snapshot = planSnapshots.findById(planId)
                 .orElseThrow(() -> new PlanNotFoundException(planId));
         return toSnapshotResponse(snapshot);
+    }
+
+    /**
+     * {@code GET /api/planning/plans/{developerId}}: el historial de planes de un tecnico.
+     *
+     * <p>Cierra el hueco que dejaba la lectura de un plan concreto: se podia releer un plan sabiendo su
+     * identificador, pero no averiguar <em>cuales</em> tiene un tecnico. {@code /metrics} publica el
+     * vigente de cada uno y descarta el resto, asi que hasta ahora el plan anterior de nadie era
+     * obtenible. Sin esta lista, comparar dos planes no se puede ni plantear.
+     *
+     * <p><strong>No planifica y no escribe.</strong> Lee las filas que ya existen y las reduce a su
+     * identificador y su sello: no hay ninguna llamada al motor, asi que pedir el historial no puede
+     * crear un plan —que es lo que pasaria si el listado se pidiera a {@code POST /from-glpi}—.
+     *
+     * <p>Un tecnico sin planes devuelve una lista vacia, no un {@code 404}: esta capa no tiene padron
+     * propio de tecnicos —el que hay vive en la integracion y se resuelve contra GLPI—, asi que
+     * distinguir «no existe» de «no tiene planes» obligaria a que una lectura local dependiera del
+     * sistema ajeno.
+     */
+    public DeveloperPlansResponse plans(String developerId) {
+        List<DeveloperPlansResponse.Plan> plans = planSnapshots.findByDeveloper(developerId).stream()
+                .map(reference -> new DeveloperPlansResponse.Plan(reference.planId(), reference.createdAt()))
+                .toList();
+
+        // El alcance lo dice el propio payload y no solo el javadoc: guardar un plan no es idempotente,
+        // asi que dos filas pueden ser el mismo trabajo planificado dos veces (riesgo 70).
+        return new DeveloperPlansResponse(
+                developerId,
+                plans,
+                "todos los planes guardados de este desarrollador, del mas antiguo al mas reciente. "
+                        + "Guardar un plan no es idempotente: dos entradas pueden ser el mismo trabajo "
+                        + "planificado dos veces");
     }
 
     /**

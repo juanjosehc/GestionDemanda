@@ -1,4 +1,5 @@
 import { remainingState } from '@/lib/capacity'
+import type { BadgeVariant } from '@/components/ui/badge'
 import type { PlanningCapacity } from '@/types/planningMetrics'
 import type { RenegotiationItem } from '@/types/renegotiations'
 import type { RescheduleEvent } from '@/types/planningMetrics'
@@ -35,6 +36,26 @@ import type { IncidentSeverity, TimelineCapacity, TimelineItem, WorkItemType } f
  * entro, y el quinto —la renegociacion— no esta aqui a proposito: **el motor no la produce**.
  */
 export type PlanVerdict = 'PLANIFICADO' | 'DESPLAZADO' | 'FUERA' | 'EXCLUIDO'
+
+/**
+ * Un color por veredicto, y los cuatro salen del motor.
+ *
+ * El mapa es **total** sobre los cuatro valores: anadir un veredicto sin darle color no compila. El
+ * orden de los colores es el de la gravedad —fuera es rojo, desplazado ambar, planificado informativo
+ * y excluido neutro—, y ninguno se deduce de una regla: el veredicto lo produjo el motor al escribir
+ * el plan.
+ *
+ * Vive aqui y no dentro de la tabla porque **dos pantallas pintan las mismas cuatro cajas** —el
+ * calendario y la comparacion de dos planes—, y un color distinto para el mismo veredicto en dos
+ * pantallas seria la vista contradiciendose a si misma. Es el mismo motivo por el que
+ * `STATUS_VARIANTS` vive en `lib/renegotiations`.
+ */
+export const VERDICT_VARIANTS: Record<PlanVerdict, BadgeVariant> = {
+  FUERA: 'danger',
+  DESPLAZADO: 'warning',
+  EXCLUIDO: 'secondary',
+  PLANIFICADO: 'info',
+}
 
 /** Un elemento del plan, con lo que se sabe de el y por que acabo donde acabo. */
 export interface PlanElement {

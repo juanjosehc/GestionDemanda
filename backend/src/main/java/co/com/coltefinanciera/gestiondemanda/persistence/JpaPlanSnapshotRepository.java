@@ -164,11 +164,12 @@ public class JpaPlanSnapshotRepository implements PlanSnapshotRepository {
 
     /**
      * {@code ponytail:} se trae la tabla entera y se agrupa en memoria, que es O(planes totales) por
-     * peticion. Se sostiene porque la tabla tiene tres columnas y los planes son de decenas; y porque
-     * un {@code GROUP BY} no saldria mas barato —no hay indice sobre {@code created_at}, asi que seria
-     * el mismo recorrido con un orden encima— ni devolveria el identificador del ganador, que haria
-     * falta resolver con una segunda consulta. Cuando el volumen lo pida, la via es un indice
-     * {@code (developer_id, created_at)} y la consulta de maximo por grupo, o una vista.
+     * peticion. Sigue sin reescribirse porque la agrupacion no es la consulta que esta fase necesitaba
+     * —para eso esta {@link #findByDeveloper}—, y porque un {@code GROUP BY} sobre esta tabla no saldria
+     * mas barato ni devolveria el identificador del ganador sin una segunda consulta. El indice
+     * {@code (developer_id, created_at)} de la entidad **no** acelera esta: la consulta no filtra por
+     * desarrollador, y por eso sigue leyendo la tabla completa. Cuando el volumen lo pida, la via es la
+     * consulta de maximo por grupo o una vista.
      */
     @Override
     @Transactional(readOnly = true)
@@ -180,6 +181,21 @@ public class JpaPlanSnapshotRepository implements PlanSnapshotRepository {
                         (uno, otro) -> VIGENTE.compare(uno, otro) >= 0 ? uno : otro,
                         TreeMap::new))
                 .values().stream()
+                .toList();
+    }
+
+    /**
+     * El historial de planes de un desarrollador, del mas antiguo al mas reciente.
+     *
+     * <p>El orden lo pone la consulta y aqui no se reordena: es la unica lectura de la que depende
+     * "cual es el plan anterior", y tenerla definida dos veces —en el repositorio derivado y en un
+     * {@code sorted()} de este metodo— seria tener dos respuestas a la misma pregunta.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<PlanReference> findByDeveloper(String developerId) {
+        return planRows.findByDeveloperIdOrderByCreatedAtAscIdAsc(developerId).stream()
+                .map(plan -> new PlanReference(plan.getId(), plan.getDeveloperId(), plan.getCreatedAt()))
                 .toList();
     }
 

@@ -8,6 +8,7 @@ import { Declarations } from '@/pages/Declarations'
 import { Incidents } from '@/pages/Incidents'
 import { MetricDetail } from '@/pages/MetricDetail'
 import { NotFound } from '@/pages/NotFound'
+import { PlanComparison } from '@/pages/PlanComparison'
 import { Planning } from '@/pages/Planning'
 import { PlanningPreview } from '@/pages/PlanningPreview'
 import { Renegotiations } from '@/pages/Renegotiations'
@@ -25,6 +26,7 @@ export function AppRoutes() {
         <Route path={ROUTES.resources} element={<Resources />} />
         <Route path={ROUTES.calendar} element={<Calendar />} />
         <Route path={ROUTES.calendarPlan} element={<Calendar />} />
+        <Route path={ROUTES.calendarComparison} element={<PlanComparison />} />
         <Route path={ROUTES.incidents} element={<Incidents />} />
         <Route path={ROUTES.declarations} element={<Declarations />} />
         <Route path={ROUTES.planning} element={<Planning />} />

@@ -1,17 +1,13 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { PlanResultSummary, PlanTraceability } from '@/components/timeline/PlanResult'
 import { ResourceTimeline } from '@/components/timeline/ResourceTimeline'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { usePlanInput, usePlanSnapshot } from '@/hooks/usePlanResult'
-import { useRenegotiations } from '@/hooks/useRenegotiations'
-import { useTimeline } from '@/hooks/useTimeline'
-import { planOutcome } from '@/lib/planResult'
-import { calendarPath } from '@/routes/navigation'
-import { ApiError } from '@/services/apiClient'
+import { usePlanOutcome } from '@/hooks/usePlanOutcome'
+import { calendarPath, comparisonPath } from '@/routes/navigation'
 import type { FormEvent } from 'react'
 
 /**
@@ -22,26 +18,15 @@ import type { FormEvent } from 'react'
  * por que, y como quedo la capacidad. Las dos mitades leen las mismas filas publicadas, asi que no
  * pueden discrepar.
  *
- * Se lee de cuatro sitios y ninguno toca GLPI: el plan releido —la unica lectura que publica los
- * conflictos—, la foto de su entrada, la agenda y los acuerdos. Los dos ultimos ya se pedian en otras
- * pantallas, y el de acuerdos comparte clave de cache, asi que no es una peticion nueva.
+ * Las cuatro lecturas y su cuenta viven en `usePlanOutcome`, que es lo que comparte con la pantalla de
+ * comparacion: las dos tienen que contar un plan con la misma vara. **Esta pantalla no gana ninguna
+ * lectura por tener un enlace a la comparacion**: quien resuelve si hay plan anterior es la otra, que
+ * es la que tiene la lista.
  */
 function PlanResult({ planId }: { planId: string }) {
-  const snapshot = usePlanSnapshot(planId)
-  const input = usePlanInput(planId)
-  const timeline = useTimeline(planId)
-  const renegotiations = useRenegotiations()
+  const state = usePlanOutcome(planId)
 
-  // El 404 de la foto de la entrada **no es un fallo**: los planes anteriores a la Fase 8 no la
-  // tienen, y el contrato lo dice —vacio significa que no consta, no que fuera vacia—. Cualquier otro
-  // error si lo es, y por eso se distinguen en vez de tratar los dos como «no hay foto».
-  const inputMissing = input.error instanceof ApiError && input.error.status === 404
-  const inputFailed = input.isError && !inputMissing
-
-  const data = snapshot.data
-  const capacity = (timeline.data?.resources ?? []).flatMap((resource) => resource.capacity)
-
-  if (snapshot.isPending && !data) {
+  if (state.status === 'cargando') {
     return (
       <div className="space-y-3">
         <Skeleton className="h-6 w-56" />
@@ -50,32 +35,36 @@ function PlanResult({ planId }: { planId: string }) {
     )
   }
 
-  if (!data) {
+  // «No existe» y «no se pudo leer» se pintan igual aquí —las dos son «no hay plan que resumir»— y la
+  // distinción queda para quien tenga algo distinto que hacer con ella.
+  if (state.status !== 'listo') {
     return (
       <p data-slot="plan-result-missing" className="text-sm text-muted-foreground">
-        {snapshot.error instanceof Error
-          ? snapshot.error.message
-          : `No hay un plan guardado con el identificador ${planId}.`}
+        {state.message}
       </p>
     )
   }
 
-  const outcome = planOutcome({
-    snapshot: data,
-    input: input.data ?? null,
-    items: timeline.data?.items ?? [],
-    capacity,
-    renegotiations: renegotiations.data?.items ?? [],
-  })
+  const { snapshot, outcome, inputMissing, inputFailed, renegotiationsFailed } = state
 
   return (
     <div className="space-y-6">
       <PlanResultSummary
         outcome={outcome}
-        createdAt={data.createdAt}
-        developerId={data.developerId}
-        planId={data.planId}
+        createdAt={snapshot.createdAt}
+        developerId={snapshot.developerId}
+        planId={snapshot.planId}
       />
+
+      <p className="text-sm">
+        <Link
+          to={comparisonPath(snapshot.planId)}
+          data-slot="compare-with-previous"
+          className="underline underline-offset-2 hover:text-foreground"
+        >
+          Comparar con el plan anterior
+        </Link>
+      </p>
 
       {/* La entrada que no consta y la que no se pudo leer son dos frases distintas, y solo una de
           las dos es cierta. Un fallo de red no puede leerse como un hueco del registro. */}
@@ -95,7 +84,7 @@ function PlanResult({ planId }: { planId: string }) {
 
       {/* Un fallo de la lectura de acuerdos no borra el resto: la tabla se pinta sin la columna de
           estado y lo dice, en vez de desaparecer entera. */}
-      {renegotiations.isError && (
+      {renegotiationsFailed && (
         <p data-slot="plan-renegotiations-error" className="text-xs text-destructive">
           No fue posible leer los acuerdos, así que la columna de renegociación queda sin estado.
         </p>

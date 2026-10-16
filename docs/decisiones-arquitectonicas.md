@@ -5981,3 +5981,166 @@ acuerdos de ESTE plan: 3 de 3 filas publicadas
 **Y un residuo que se declara en vez de maquillarse**: la demostración **sí escribió** —generó planes, que es lo que la fase viene a leer—, y un plan guardado **no se puede borrar**: no existe endpoint para ello. Los planes de la demostración quedan en la base con su identificador, como quedaron los de las fases anteriores. **Ni un token de GLPI se imprimió y ninguna sonda contra GLPI escribió nada.**
 
 **Lo que esta fase no tocó, dicho explícitamente**: ni el algoritmo de planificación, ni las reglas de capacidad, ni los desplazamientos, ni las renegociaciones, ni el modelo de capacidad, ni la integración con GLPI, ni una regla de negocio, ni **una sola línea del backend**. El diff es enteramente del frontend: **catorce ficheros —cinco nuevos** (la lógica pura del resultado y sus pruebas, el bloque de resultado, el átomo de cifra y los dos hooks de lectura) y **nueve modificados** (los tipos de planificación, el servicio, la pantalla del calendario y sus pruebas, la rejilla, las pruebas compartidas y **los tres importadores del átomo** —la pantalla de planificación, la vista previa del estado de entrada y la de declaración, que lo importaban de una página—).
+
+# Fase 39 — Qué cambió entre dos planes
+
+## Qué se hizo, en una frase
+
+El backend guardaba planes desde la Fase 8 y desde la Fase 38 se podía **leer el resultado de uno**; lo que no existía era **la lectura del cambio**. Esta fase construye la pantalla que contesta **«¿qué cambió entre estos dos planes?»** comparando un plan guardado con **el que le precede del mismo técnico**, una pregunta por bloque —qué tickets entraron, cuáles salieron, qué capacidad cambió, qué desplazamientos aparecieron, cuáles desaparecieron, qué acuerdos surgieron y qué parte sigue igual—, **sin recalcular nada y sin regenerar información**: el motor no corre en el navegador y cada cifra sale de **restar lo que los dos planes ya publicaron**. Añade **un endpoint de solo lectura** —sin él, «el plan anterior» no existe como cosa nombrable— y **una pantalla a la que se llega desde el Calendario**. **`PlanningEngine` no tiene una línea de diferencia y ninguna prueba existente se tocó.**
+
+## El análisis obligatorio: qué se puede comparar, y qué no
+
+### 1. Qué identifica a un plan, y qué lo hace comparable
+
+`planId` es un `UUID.randomUUID()` que el adaptador asigna al guardar, y `createdAt` un `Instant.now(clock)` por guardado: **guardar no es idempotente** y cada llamada deja una fila. Los identificadores sustitutos de las tablas hijas cambian en cada plan, así que **la clave de unión es `workItemId`** —el identificador de ticket de GLPI, copiado como texto a las cinco tablas que cuelgan de `plan_id`, y como `requirement_id` a los eventos—: es el mismo texto en todos los planes en que aparece el mismo elemento. **Los tramos no se emparejan por su fecha de inicio**: la identidad de un tramo es `(workItemId, startsAt)` y esa fecha es justo lo que se compara.
+
+Lo que hace legítima la comparación es que **el timeline sirve `estimatedHours` y `committedDate` desde la foto guardada** y no desde la declaración viva: las dos cifras son del momento de cada plan, no del momento en que se mira.
+
+### 2. El hallazgo que decide el diseño: «el plan anterior» no existe como cosa nombrable
+
+El repositorio de planes estaba vacío, el puerto no tenía un `findByDeveloper`, y los doce endpoints eran de un plan concreto o de agregados: **`findLatestPerDeveloper()` colapsa a uno por técnico y descarta al perdedor.** El plan **vigente** sí era obtenible —`GET /api/planning/metrics` publica su identificador—, pero **el de antes no existía por HTTP de ninguna forma**. Sin una lectura nueva, «comparar con el plan anterior» no se podía construir, y por eso la fase estrena **una**, de solo lectura.
+
+### 3. Las siete preguntas, en términos de conjuntos
+
+| # | Pregunta | Conjunto sobre los dos resultados |
+| --- | --- | --- |
+| 1 | ¿Qué tickets entraron? | los del actual cuyo `workItemId` no está en el universo del anterior |
+| 2 | ¿Qué tickets salieron? | simétrico |
+| 3 | ¿Qué capacidad cambió? | la resta de los cinco números publicados, con su signo |
+| 4 | ¿Qué desplazamientos aparecieron? | desplazado en el actual y no en el anterior |
+| 5 | ¿Qué desplazamientos desaparecieron? | simétrico |
+| 6 | ¿Qué renegociaciones nuevas surgieron? | acuerdos con sello posterior al del plan anterior |
+| 7 | ¿Qué parte sigue igual? | los que están en los dos, partidos por si su fila cambió |
+
+### 4. Qué no puede reconstruirse, y se declara
+
+**Las reglas congeladas**, que viven en `/{planId}/context` y que la Fase 38 decidió no leer (decisión 176.6). **El total de tickets que GLPI entregó** (riesgo 122): «recibidos» es la foto de la entrada. **Los descartes del validador** (decisión 99), que no se guardan con el plan. Y **las renegociaciones solo a medias**: `GET /api/renegotiations` no acepta un identificador de plan y su conjunto sale de `findLatestPerDeveloper()`, así que sus filas hablan **únicamente del plan vigente de cada técnico**; la tabla no tiene `plan_id` y el brief prohíbe tocarla. Lo único que queda en pie es **el tiempo** —el acuerdo publica su sello, y lo sella el servidor—.
+
+### 5. El punto más frágil: el libro de idempotencia
+
+Todo el diseño descansa en que dos planes guardados son dos fotos comparables, **y no lo son del todo**. El libro de desplazamientos reclamados es global, **no lleva identificador de plan** y solo lo escribe el motor: cuando el par causa-requerimiento ya estaba reclamado, **el evento no se emite**, aunque el trabajo se haya movido. Para toda lectura persistida, ese requerimiento «está planificado».
+
+Sobre esta pantalla eso significa que **su caso de uso principal puede producir diferencias que no son cambios**, y las produce justo en la quinta pregunta. **Medido en vivo en esta fase, y es la demostración más útil que dejó**: dos generaciones seguidas del mismo escenario, con la agenda idéntica, dieron **cuatro asignaciones y tres eventos** la primera y **las mismas cuatro asignaciones y cero eventos** la segunda; la comparación de esos dos planes dice **«con diferencias»** con **cero entrantes, cero salientes, los cinco deltas de capacidad en cero** y **tres desplazamientos «desaparecidos»**. **No hay arreglo posible desde el frontend ni desde ninguna lectura nueva —el evento no existe— y tocar el motor está prohibido por el brief.** La salida honesta es la que se tomó: **decirlo en la pantalla y en la evidencia**, con las palabras del riesgo 177.
+
+## Las decisiones
+
+### 177. La comparación resta dos planes leídos, y para poder nombrar «el anterior» estrena una lectura
+
+**177.1 — La comparación resta, no recalcula.** Recibe **dos resultados ya contados** —no las fuentes, que obligarían a contarlos otra vez por lado, que es literalmente recalcular— y hace aritmética de conjuntos. Nada de lo que decide la pantalla lo decide una regla del motor reescrita en el navegador: cada cifra es **la longitud de una lista publicada o la resta de dos números publicados**. Es la decisión 87 otra vez, y es lo que hace que la respuesta sea auditable.
+
+**177.2 — Se añade un endpoint de solo lectura para poder nombrar «el anterior».** `GET /api/planning/plans/{developerId}` lista los planes de un técnico **del más antiguo al más reciente**. No ejecuta el motor, no escribe nada y no toca GLPI. **Es la primera lectura de historial del backend** y existe porque sin ella el plan anterior no es obtenible: no hay forma de nombrarlo, y una pantalla de comparación que no puede nombrar lo que compara no es una pantalla de comparación.
+
+**177.3 — Variable de camino y no parámetro de consulta.** El precedente de la casa para «el listado de un técnico» ya existía, y con la variable de camino no hace falta estrenar el primer parámetro de consulta del repositorio **ni un manejador nuevo de parámetro faltante**, que sería el único `4xx` de esta API sin el contrato de error que todas las demás usan. La ruta nueva tiene dos segmentos y no compite con la de un plan, que tiene uno: la especificidad que ya fijan las pruebas de los otros dos conjuntos de endpoints queda intacta.
+
+**177.4 — El orden de la lista es parte del contrato, no un detalle.** Quien compara elige «el anterior» **por posición**, así que el orden se fija en la consulta con sus dos criterios de ordenación —sin el desempate, dos planes del mismo instante saldrían en el orden que elija la base— y **el navegador no reordena**: reordenar sería la segunda definición de «cuál es el anterior».
+
+**177.5 — La pareja la decide el sistema, no la dirección.** La ruta lleva **un solo identificador** y el anterior se resuelve dentro. Eso da tres cosas que la alternativa —dos identificadores en la dirección— no da: **el Calendario no gana ninguna lectura**, los dos planes son **siempre del mismo técnico** (así no se puede componer a mano una comparación entre dos personas), y **desaparece el caso degenerado** de comparar un plan consigo mismo.
+
+**177.6 — La clave de unión es el ticket, y «sigue igual» compara lo que la fila enseña.** No solo el veredicto: también la fecha compromiso, lo comprometido, la estimación y, si está desplazado, sus dos fechas. **Un elemento con la misma caja pero otra fecha no sigue igual** —moverse de día sin cambiar de caja es una de las cosas que el brief pregunta y un diff por veredicto se la comería entera—. Y **el mismo ticket puede salir en dos listas a la vez** —entró y además nace desplazado—, así que las afirmaciones de las pruebas van contra la casilla de cada fila y no contra su texto: una búsqueda por texto encontraría dos y fallaría por ambigüedad.
+
+**177.7 — La sexta pregunta se contesta por tiempo, porque por pertenencia no se puede.** La definición honesta que queda es **de tiempo y no de estado**: un acuerdo registrado **después de que se calculara el plan anterior**. Se computa con lo persistido y lo que ya viaja —el sello del acuerdo contra el sello del plan—, apoyándose en el filtro que el contador de resultado **ya hacía** para atar cada acuerdo a su plan. **Ninguna lectura nueva y ninguna clave nueva.** La comparación de sellos es numérica y no de texto: en texto, un instante con fracción ordena **después** de uno sin ella, y eso es falso. Y tiene **dos límites que se escriben en la pantalla**: la cifra no distingue un acuerdo de una **necesidad** de acordar —se rotula «acuerdos registrados después del plan anterior», y la fila del desplazamiento lleva su estado, tomado del mismo sitio que en el Calendario—, y **solo se contesta si el plan mirado es el vigente de su técnico**; si no lo es, la respuesta honesta es **«no consta»** en vez de un cero que se leería como «nadie ha renegociado nada».
+
+**177.8 — Las cifras de la comparación no reutilizan los bloques de un plan.** El resumen y la tabla de trazabilidad son «Estado del Plan», y montarlos dos veces es duplicarlo, que es justo lo que el brief prohíbe; además sus casillas **no están separadas por plan**, así que dos copias dejarían a la primera ganando todas las búsquedas en silencio. **No se les añade un parámetro para distinguirlas**: sería flexibilidad para un consumidor que no existe. La comparación estrena casillas con su propio prefijo, y ninguna colisiona con las del Calendario ni con las de la rejilla. **La rejilla tampoco se monta.**
+
+**177.9 — Lo que ya existía se reutiliza, y ninguna forma se declara dos veces.** El contador del resultado, el tipo de sus fuentes, el átomo de cifra, la clasificación de un día por su capacidad restante (la comparación **resta** sus dos números, no vuelve a decidir qué día está saturado), el formato de fecha, de instante y de horas, la insignia con su mapa de estados, el estado vacío y el cliente HTTP. **El mapa de colores de los cuatro veredictos se muda a la lógica pura** y deja de vivir dentro de la tabla de trazabilidad: **dos pantallas pintan las mismas cuatro cajas** —el calendario y la comparación— y un color distinto para el mismo veredicto en dos pantallas sería la vista contradiciéndose a sí misma; es el mismo motivo por el que el mapa de estados de renegociación ya vivía fuera de su pantalla. **Ninguna dependencia nueva, ningún tipo duplicado y ninguna prueba existente debilitada.**
+
+## Las pruebas
+
+**El frontend pasa de 220 pruebas en 14 archivos a 253 en 16.** Las **33 nuevas** se reparten en tres ficheros: **20 en `lib/planComparison.test.ts`** —la lógica pura, sin montar nada—, **12 en `PlanComparison.test.tsx`** y **una más en `Calendar.test.tsx`, que pasa de 17 a 18**. **Ninguna prueba existente se borró, se debilitó ni se editó**, y el conjunto de direcciones del Calendario **sigue siendo cuatro**.
+
+**El backend pasa de 370 a 380** —diez pruebas nuevas, **0 fallos y 3 omitidas, las mismas de siempre—**: **ocho en `PlanningPlanListEndpointsTest.java`**, nuevo, y **dos en `JpaPlanSnapshotRepositoryTest.java`, que pasa de 29 a 31**. **Ningún fichero de prueba del backend se editó**: ninguna prueba enumera rutas ni cuenta endpoints, y la ruta nueva no compite con la de un plan.
+
+**Los ocho casos que el brief nombra, uno a uno.**
+
+| # | Caso | Dónde | Qué afirma |
+| --- | --- | --- | --- |
+| 1 | tickets añadidos | `planComparison.test.ts` | los que están en el actual y no en el anterior, y su cifra y sus filas en la pantalla |
+| 2 | tickets eliminados | `planComparison.test.ts` | el simétrico, **y que el que sigue en los dos no cuenta como entrante** |
+| 3 | misma capacidad | `planComparison.test.ts` | los cinco deltas en cero y el veredicto «sin diferencias» |
+| 4 | capacidad diferente | `planComparison.test.ts` | el delta **es la resta de lo publicado**, con su signo |
+| 5 | desplazamientos nuevos | ambos | desplazado en el actual y no en el anterior, con sus dos fechas y la regla del motor |
+| 6 | renegociaciones nuevas | `planComparison.test.ts` | las selladas después del plan anterior, **y que una anterior no se cuenta** |
+| 7 | estado vacío | `PlanComparison.test.tsx` | dos planes sin elementos: se dice y **no se inventa un cero** |
+| 8 | plan previo inexistente | `PlanComparison.test.tsx` | el primer plan de un técnico no tiene anterior, y se dice |
+
+**Las que sostienen el resto.** Que la pantalla **no lee de más**: ocho direcciones, todas de lectura y ninguna del tablero —el servidor de la prueba **lanza ante cualquier otra**, y la igualdad es exacta y no por prefijo, porque pedir el plan equivocado tampoco debe pasar—. Que **un fallo no borra el resto**: si la lectura de acuerdos se cae, las otras seis preguntas siguen contestadas. Que **un identificador mal formado es un fallo y no una ausencia**, y no se disfraza de hueco del registro. Que **la lista de planes ni se pide** cuando el plan no existe, porque sin plan no hay técnico del que pedirla. Y dos pruebas de la lectura nueva en el backend que afirman lo que la pantalla necesita: **que el orden es el del más antiguo al más reciente**, que **no mezcla técnicos**, que **un técnico sin planes devuelve lista vacía y no un error**, y que **listar no guarda nada** —contrastado contra el contador de planes generados de la métrica operativa—.
+
+**Una trampa del contexto de Spring, anotada porque se pagó**: el esquema se crea y se destruye una vez por contexto y el contexto se comparte con el resto de las pruebas de endpoints, así que las filas de otras pruebas son visibles. Por eso los técnicos de estas pruebas llevan identificadores que ninguna otra usa y **no se borra nada**: un borrado desde esta clase rompería los conteos de la métrica operativa si corriera después, porque las tablas hijas no tienen clave foránea.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 181 | **Dos generaciones seguidas producen diferencias que no son cambios** | **Medio, y medido en vivo en esta fase** | El libro de idempotencia es global y no lleva identificador de plan, así que la segunda generación no vuelve a auditar el par ya reclamado y sus desplazamientos se leen «planificado». Es el **riesgo 177** —de la fase anterior, del motor— entrando por la puerta nueva, y **no se corrige aquí porque tocar el motor está prohibido**. Se declara **en la pantalla y en la evidencia**: la lista de desplazamientos desaparecidos lleva su aviso con esas palabras, y la medición está hecha sobre dos planes reales |
+| 182 | **Con la foto de entrada ausente en uno de los dos planes, entrantes y salientes no son una cuenta sino un suelo** | **Bajo: la ausencia se declara en vez de disimularse** | Sin foto, el universo de un plan son solo sus asignaciones y sus conflictos, así que puede haber más de los que se ven. **Entrantes y salientes no deciden el veredicto** —dos planes iguales dan «sin diferencias» aunque la lista enseñe algo— y la lista se pinta con su nota, porque la lista es cierta; lo que no puede es afirmar que eso sea todo el cambio |
+| 183 | **El backend estrena su primera lectura de historial** | **Bajo: es de solo lectura y no toca nada más** | No ejecuta el motor, no escribe, no consulta GLPI y no altera ninguna ruta existente. Tiene su índice por técnico y su fecha, y ocho pruebas que fijan el orden, el aislamiento entre técnicos, la lista vacía y que listar no genera planes |
+| 184 | **Los acuerdos se filtran por sello y no por pertenencia al plan** | **Bajo, y la ventana se ve** | Un acuerdo posterior al plan mirado también entra, aunque fuera de un plan intermedio. Es lo que la pregunta pide —lo que surgió entre los dos— y cada fila trae su propio sello, así que la ventana es auditable a la vista. El límite duro es el otro: **solo se contesta si el plan mirado es el vigente de su técnico** |
+| 185 | **El orden dentro de un mismo instante lo decide el motor de base de datos** | **Bajo: solo se le pide que dos llamadas devuelvan lo mismo** | El desempate se escribe explícitamente, porque sin él dos planes del mismo instante saldrían en un orden que la base elige. Aun así, el desempate por identificador sustituto puede diferir entre el motor de pruebas y el de producción; **la promesa es la repetibilidad, no un orden concreto entre iguales** |
+| 186 | **Comparar un plan que no es el vigente deja la sexta pregunta sin respuesta** | **Bajo: se dice, no se rellena** | La lectura de acuerdos recorre el plan vigente de cada técnico, así que al mirar un plan antiguo sus filas hablan de otro desplazamiento. La pantalla escribe **«no consta»** en vez de un cero, que afirmaría que nadie acordó nada |
+| 187 | **Un cambio de tipo de ticket entre los dos planes no se ve** | **Bajo: es preferible a la alternativa** | La clave de unión es el identificador y no la pareja identificador-tipo, así que un mismo ticket que pasara de incidente a requerimiento se leería como «sigue igual» y no como un cambio. **Meter el tipo en la clave sería peor**: convertiría un cambio de tipo en un «entró y salió» falso, que es un cambio que no ocurrió |
+
+## Limitaciones
+
+1. **El total de tickets que GLPI entregó** sigue sin publicarse (riesgo 122): «recibidos» es la foto de la entrada, y son dos números distintos.
+2. **Los descartes del validador de GLPI no se guardan con el plan** (decisión 99): un ticket descartado en las dos generaciones **no aparece ni como entrante ni como saliente**; para esta vista, no existe.
+3. **La sexta pregunta solo se contesta si el plan mirado es el vigente de su técnico.**
+4. **El contexto congelado de los dos planes no se compara**: dos planes con las mismas entradas y **reglas distintas** —otro horizonte, otro umbral— saldrían como «sin diferencias» aunque el cambio esté en las reglas. **Es la limitación que más se nota en una auditoría**, junto con el **riesgo 177** —heredado, no de esta fase—, y por eso está escrita en la pantalla y no solo aquí.
+5. **Un plan es de un desarrollador**: la comparación es del historial de una persona, no de dos, y la pregunta por el equipo se contesta en recursos.
+6. **Ninguna de las siete preguntas distingue «no cambió» de «no se sabe»** cuando falta una lectura: se degrada a la segunda, explícitamente.
+7. **Un día cerrado no aparece en vivo**: la agenda publica capacidad solo para los días que el motor tocó (riesgo 179, medido en la fase anterior), así que la comparación de capacidad hereda ese techo.
+8. **El calendario sin plan sigue pidiendo un identificador a mano** (riesgo 180).
+
+## La verificación explícita: «¿Qué cambió entre estos dos planes?»
+
+**Se contestó con la aplicación corriendo, con navegador real y sobre la instancia real —en solo lectura salvo las generaciones de plan que se declaran—, y las respuestas salen de la pantalla, no de este documento.**
+
+**La puerta de entrada existe y llega con el identificador resuelto.** Desde `/calendario/946a743f…` la pantalla del calendario ofrece el enlace **«Comparar con el plan anterior»**, cuyo destino ya es `/calendario/comparar/946a743f…` —el identificador va en la dirección, no en un botón que consulta y luego navega—. **El Calendario no aprendió si hay anterior**: lo resuelve la pantalla de comparación, que es la que tiene la lista, y por eso el calendario conserva sus cuatro lecturas y su invariante de no leer de más sin editarla.
+
+**Y la respuesta, sobre un par real de planes guardados del mismo técnico** —`5bace408…` del 12:36 y `946a743f…` del 12:38—:
+
+```
+LO QUE LA PANTALLA ENSEÑA:
+  elementos en el anterior  1        elementos en el actual  6
+  entraron                  6        salieron                1
+
+  ENTRARON   REQ-F38E-4 FUERA · REQ-F38E-1/-2/-3 DESPLAZADO ·
+             REQ-F38E-5 EXCLUIDO · INC-F38E PLANIFICADO
+  SALIÓ      REQ-F38D-1 PLANIFICADO
+
+  CAPACIDAD (anterior -> actual -> cambio)
+    horas disponibles    8 h ->  24 h ->  +16 h
+    horas ocupadas       4 h ->  20 h ->  +16 h
+    horas libres         4 h ->   4 h ->    0 h
+    días saturados         0 ->     2 ->     +2
+    días sobrepasados      0 ->     0 ->      0
+
+  DESPLAZAMIENTOS QUE APARECIERON   REQ-F38E-1, REQ-F38E-2, REQ-F38E-3
+     19 oct -> 20 oct, 19 oct -> 20 oct, 20 oct -> 21 oct
+     regla REPLANIFICACION_INMEDIATA, incidente de severidad alta
+  DESPLAZAMIENTOS QUE DESAPARECIERON  ninguno
+  ACUERDOS POSTERIORES AL ANTERIOR    REQ-F38E-1 (ACORDADA)
+```
+
+**¿Qué cambió entre estos dos planes?** Salieron uno y entraron seis, tres de ellos ya nacieron desplazados, **la jornada disponible pasó de ocho horas a veinticuatro y las usadas de cuatro a veinte, con dos días saturados donde antes no había ninguno**, y el nuevo plan dejó un requerimiento fuera del horizonte con el motivo que redactó el motor y descartó otro por su propio estado. **El plan anterior tenía un solo elemento y el actual seis**, y **el único ticket que el anterior conocía ya no está en la foto del nuevo**. Nada de eso se calculó aquí: son restas y longitudes de listas publicadas.
+
+**Un caso «sin diferencias» de verdad, con contenido y no con dos planes vacíos.** Dos planes guardados del mismo escenario —`e75f35d3…` y `4fe75b16…`, separados por 150 milisegundos— dan **cuatro elementos en cada orilla, cero entrantes, cero salientes, los cinco deltas de capacidad en cero** y los cuatro elementos en **«lo que sigue igual»**, incluido el que no cupo. La pantalla dice **«Los dos planes dicen lo mismo: nada cambió entre ellos»**. **Y el contraste importa**: dos planes vacíos no dicen «sin diferencias», dicen que **no hay nada que comparar** —medido sobre el par del técnico 160, cuyos dos planes guardados están vacíos—, porque afirmar una igualdad sobre dos agendas vacías sería afirmar algo que nadie comprobó.
+
+**Un caso vacío y un caso sin anterior**, los dos capturados: el par de dos planes sin elementos, que dice que **un cero aquí no significaría «no cambió nada» sino que no había nada que cambiar**; y el primer plan guardado de un técnico, que dice con esas palabras que **no hay un plan anterior con el que compararlo** y ofrece el calendario del plan como salida.
+
+**Y el punto frágil, medido en vez de supuesto.** Dos generaciones seguidas del mismo escenario para el mismo técnico —`25aa9add…` y `e64e57fe…`, sin ninguna escritura de por medio y con la agenda intacta— dieron **cuatro asignaciones y tres eventos** la primera y **las mismas cuatro asignaciones y cero eventos** la segunda. La comparación de esos dos planes dice:
+
+```
+  elementos 4 y 4 · entraron 0 · salieron 0
+  los cinco deltas de capacidad: 0, 0, 0, 0, 0
+  DESPLAZAMIENTOS QUE DESAPARECIERON  REQ-F39B-1, REQ-F39B-2, REQ-F39B-3
+  LO QUE SIGUE EN LOS DOS, PERO CAMBIÓ  los mismos tres, desplazado -> planificado
+  veredicto: CON DIFERENCIAS
+```
+
+**Dos agendas idénticas y la pantalla dice que cambiaron tres cosas.** No es un fallo de la vista y no tiene arreglo desde ella: **el evento no existe en el plan nuevo**, así que ninguna lectura puede saber que el trabajo se movió. **Es el riesgo 177 manifestándose vivo por la puerta nueva**, y la pantalla lo dice en su sitio —«un desplazamiento que desaparece no siempre es un cambio real: el motor no vuelve a auditar un par incidente-requerimiento que ya reclamó en una generación anterior (riesgo 177)»— porque **una pantalla de auditoría que calla eso es peor que no tenerla**.
+
+**Las cinco capturas que el brief pide**, hechas y verificadas: `f39-01-entrada-comparacion.png` —el calendario con el enlace de entrada—, `f39-02-comparacion-con-diferencias.png` —la comparación con diferencias, con los desplazamientos nuevos y los cinco cambios de capacidad en la misma pantalla—, `f39-03-comparacion-sin-diferencias.png` —cuatro elementos por orilla y todos los deltas en cero—, `f39-04-comparacion-sin-elementos.png` y `f39-05-primer-plan-sin-anterior.png` —los dos estados sin respuesta—, más `f39-06-riesgo-177-dos-generaciones.png`, que es la medición del punto frágil. Están en `.playwright-mcp/`, que sí está en el `.gitignore`, y en copias de la raíz que quedan sin versionar: **no se commitean ni unas ni otras**, porque el repositorio no tiene ni un PNG versionado y esta fase no cambia esa convención.
+
+**Y un residuo que se declara en vez de maquillarse.** La demostración **sí escribió**: cuatro planes, dos por cada escenario, con identificadores propios, y **un plan guardado no se puede borrar** —no existe endpoint para ello—, así que quedan en la base como quedaron los de las fases anteriores. La primera tentativa se hizo por el camino de GLPI y **el backend contestó que no tiene un usuario con ese identificador**, así que la demostración se hizo por el endpoint de escenario, que es el mismo motor, las mismas tablas y las mismas lecturas, y **registra su procedencia como «escrito por quien llama» en vez de «extraído de GLPI»** —que es exactamente lo que la foto de la entrada de esos planes dice—. **Ni un token de GLPI se imprimió y ninguna sonda contra GLPI escribió nada.**
+
+**Lo que esta fase no tocó, dicho explícitamente**: ni el algoritmo de planificación, ni las reglas de capacidad, ni los desplazamientos, ni las renegociaciones, ni el modelo de capacidad, ni la integración con GLPI, ni una regla de negocio. **El motor no tiene una línea de diferencia**; el backend crece en **un endpoint de solo lectura con sus piezas** —el puerto, la consulta derivada, el adaptador, el índice, el contrato de respuesta, el servicio y la ruta— y **ninguna prueba existente se editó**.

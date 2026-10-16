@@ -5,28 +5,12 @@ import { Figure } from '@/components/ui/figure'
 import { formatInstant } from '@/lib/format'
 import { STATUS_VARIANTS } from '@/lib/renegotiations'
 import { formatDay, formatHours } from '@/lib/timeline'
-import { outside, verdictOf } from '@/lib/planResult'
+import { VERDICT_VARIANTS, outside, verdictOf } from '@/lib/planResult'
 import { ROUTES } from '@/routes/navigation'
-import type { BadgeVariant } from '@/components/ui/badge'
-import type { PlanElement, PlanOutcome, PlanVerdict } from '@/lib/planResult'
+import type { PlanElement, PlanOutcome } from '@/lib/planResult'
 
 /** Lo que se pinta donde el backend no publico nada. No es un cero: es la ausencia. */
 const MISSING = '—'
-
-/**
- * Un color por veredicto, y los cuatro salen del motor.
- *
- * El mapa es **total** sobre los cuatro valores: anadir un veredicto sin darle color no compila. El
- * orden de los colores es el de la gravedad —fuera es rojo, desplazado ambar, planificado informativo
- * y excluido neutro—, y ninguno se deduce de una regla: el veredicto lo produjo el motor al escribir
- * el plan.
- */
-const VERDICT_VARIANTS: Record<PlanVerdict, BadgeVariant> = {
-  FUERA: 'danger',
-  DESPLAZADO: 'warning',
-  EXCLUIDO: 'secondary',
-  PLANIFICADO: 'info',
-}
 
 interface PlanResultSummaryProps {
   outcome: PlanOutcome
@@ -328,8 +312,11 @@ export function PlanTraceability({ outcome }: PlanTraceabilityProps) {
  * Un desplazado trae la auditoria entera —de que fecha a que fecha, con que regla— y un elemento
  * fuera trae la frase del conflicto. Los dos textos los redacto el motor: aqui no se reescriben ni se
  * resumen en una palabra.
+ *
+ * Se exporta por la misma razon que los colores: la fila de la comparacion necesita decir exactamente
+ * esto, y copiarlo seria la segunda redaccion del mismo hecho.
  */
-function ElementReason({ element }: { element: PlanElement }) {
+export function ElementReason({ element }: { element: PlanElement }) {
   if (element.reschedule) {
     return (
       <span data-slot="plan-element-event" className="flex flex-wrap items-center gap-2">

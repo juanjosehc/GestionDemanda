@@ -651,6 +651,56 @@ class JpaPlanSnapshotRepositoryTest {
     }
 
     /**
+     * El historial de un desarrollador, que es la lectura que faltaba.
+     *
+     * <p>La vigencia de arriba contesta «con que plan se trabaja hoy» y tira el resto. Hay una pregunta
+     * que necesita justo lo que tira —que cambio entre este plan y el anterior— y sin esta lectura «el
+     * plan anterior de un tecnico» no es una cosa nombrable. Lo que se comprueba aqui es que la lista
+     * este bien formada: ordenada por sello, con la suya sola y con los tres campos de cada fila.
+     */
+    @Test
+    @DisplayName("El historial de un desarrollador sale del mas antiguo al mas reciente, y solo el suyo")
+    void elHistorialDeUnDesarrolladorSaleDelMasAntiguoAlMasReciente() {
+        // Se guardan al reves a proposito: si el orden lo pusiera el orden de guardado, esta prueba
+        // pasaria por casualidad y no diria nada sobre el sello.
+        PlanSnapshot tercero = repository.save(
+                "dev-1", CREADO_EN.plusSeconds(7200), resultadoCompleto(), contexto(), entrada());
+        PlanSnapshot primero = repository.save(
+                "dev-1", CREADO_EN, resultadoCompleto(), contexto(), entrada());
+        // El de otro desarrollador se guarda en medio: es el que tiene que quedarse fuera.
+        repository.save("dev-2", CREADO_EN.plusSeconds(60), otroResultado(), contexto(), entrada());
+        PlanSnapshot segundo = repository.save(
+                "dev-1", CREADO_EN.plusSeconds(3600), otroResultado(), contexto(), entrada());
+
+        assertThat(repository.findByDeveloper("dev-1"))
+                .extracting(PlanReference::planId)
+                .containsExactly(primero.id(), segundo.id(), tercero.id());
+        // Cada fila trae su tecnico, que es lo que permite saber que la lista es de alguien y no una
+        // tabla de planes recortada.
+        assertThat(repository.findByDeveloper("dev-1"))
+                .extracting(PlanReference::developerId)
+                .containsOnly("dev-1");
+    }
+
+    /**
+     * Un tecnico sin planes no es un error.
+     *
+     * <p>Este puerto no sabe si un identificador corresponde a alguien —el padron de personas vive en
+     * otra capa y se resuelve contra GLPI—, asi que lo unico que puede afirmar es «no tiene planes», y
+     * lo afirma con una lista vacia. Devolver un {@code Optional} o fallar obligaria a quien llama a
+     * decidir sobre algo que aqui no se sabe.
+     */
+    @Test
+    @DisplayName("Un desarrollador sin planes tiene un historial vacio, no un error")
+    void unDesarrolladorSinPlanesTieneUnHistorialVacio() {
+        repository.save("dev-1", CREADO_EN, resultadoCompleto(), contexto(), entrada());
+
+        // Las dos formas de no tener nada: un tecnico que existe en otra tabla y uno que no existe.
+        assertThat(repository.findByDeveloper("dev-2")).isEmpty();
+        assertThat(repository.findByDeveloper("nadie")).isEmpty();
+    }
+
+    /**
      * La entrada de las pruebas.
      *
      * <p>Lleva cuatro elementos y no dos a proposito: un incidente resuelto y un requerimiento
