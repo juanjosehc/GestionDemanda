@@ -4,6 +4,7 @@ import type {
   DeclarationUpdateRequest,
   DeveloperDeclarationsResponse,
   PlanningMetadata,
+  TeamDeclarationsResponse,
 } from '@/types/declarations'
 
 /**
@@ -30,6 +31,35 @@ export function fetchDeclarations(
 ): Promise<DeveloperDeclarationsResponse> {
   return apiGet<DeveloperDeclarationsResponse>(
     `/api/planning-metadata/declarations/${encodeURIComponent(developerId)}`,
+    signal,
+  )
+}
+
+/**
+ * Las declaraciones de varias personas en **una** peticion.
+ *
+ * Es la lectura del timeline del equipo, donde la capa de pendientes necesita a todas las personas
+ * con plan vigente a la vez. La ruta por persona sigue siendo la de la pantalla de declaracion.
+ *
+ * El parametro se repite —`?developerId=a&developerId=b`— y no se une con comas: los identificadores
+ * son datos de fuera y una coma dentro de uno no tiene por que partir la lista. `URLSearchParams`
+ * hace la codificacion, que es lo que evita que un login con caracteres raros rompa la URL.
+ *
+ * Sin personas no se llama: el hook que la usa queda deshabilitado, porque preguntar por nadie no es
+ * una lectura que el backend tenga que contestar.
+ */
+export function fetchTeamDeclarations(
+  developerIds: readonly string[],
+  signal?: AbortSignal,
+): Promise<TeamDeclarationsResponse> {
+  const query = new URLSearchParams()
+
+  for (const developerId of developerIds) {
+    query.append('developerId', developerId)
+  }
+
+  return apiGet<TeamDeclarationsResponse>(
+    `/api/planning-metadata/declarations?${query.toString()}`,
     signal,
   )
 }

@@ -2,6 +2,8 @@ package co.com.coltefinanciera.gestiondemanda.service;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -16,6 +18,7 @@ import co.com.coltefinanciera.gestiondemanda.dto.DeveloperDeclarationsResponse.D
 import co.com.coltefinanciera.gestiondemanda.dto.DeveloperDeclarationsResponse.DiscardView;
 import co.com.coltefinanciera.gestiondemanda.dto.DeveloperDeclarationsResponse.Source;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningMetadataResponse;
+import co.com.coltefinanciera.gestiondemanda.dto.TeamDeclarationsResponse;
 import co.com.coltefinanciera.gestiondemanda.exception.GlpiDeveloperNotFoundException;
 import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiDiscardedItem;
 import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiPlanningRequestFactory;
@@ -93,6 +96,52 @@ public class PlanningDeclarationService {
         return new DeveloperDeclarationsResponse(
                 new DeveloperView(developerId, user.displayName()), items,
                 new Source(Source.GLPI, Source.DECLARATION));
+    }
+
+    /**
+     * Las declaraciones de varias personas, en una sola lectura.
+     *
+     * <p><strong>Es un envase de {@link #declarationsFor(String)}, no una segunda clasificacion.</strong>
+     * Cada persona se resuelve con exactamente el mismo codigo y el mismo validador; si esto tuviera
+     * su propia copia, la pantalla de declaracion y el timeline podrian llegar a decir cosas distintas
+     * del mismo ticket.
+     *
+     * <p><strong>Un identificador que GLPI no conoce no tumba la lectura.</strong> Se recoge en
+     * {@code unknownDevelopers} y las demas personas salen igual. Es el mismo trato que el {@code 404}
+     * por persona, trasladado al lote: quien pidio el lote tiene que poder decir <em>cual</em> no se
+     * pudo leer. Cualquier otro fallo —GLPI caido— sube tal cual y deja la respuesta entera en error,
+     * porque un lote parcial haria creer que las personas que faltan no tienen pendientes.
+     *
+     * <p><strong>Sin repetir a nadie.</strong> La lista se deduplica conservando el orden en que se
+     * pidio, que es el mismo en que sale: dos veces la misma persona seria dos sesiones con GLPI para
+     * devolver el mismo cuerpo.
+     *
+     * <p><strong>Se recorre en serie, y ese es el techo.</strong> Cada persona son dos lecturas al
+     * sistema ajeno. Es correcto para el punado de personas que tienen plan vigente; para el padron
+     * entero el llamador debe seguir usando la ruta por persona, que el navegador lanza en paralelo.
+     */
+    public TeamDeclarationsResponse declarationsFor(List<String> developerIds) {
+        List<DeveloperDeclarationsResponse> developers = new ArrayList<>();
+        List<String> unknown = new ArrayList<>();
+
+        for (String developerId : new LinkedHashSet<>(developerIds)) {
+            if (developerId == null || developerId.isBlank()) {
+                continue;
+            }
+
+            try {
+                developers.add(declarationsFor(developerId));
+            } catch (GlpiDeveloperNotFoundException ex) {
+                // El mensaje de la excepcion ya nombra el identificador; aqui basta con recogerlo para
+                // que la pantalla diga cuantas personas no se pudieron leer.
+                unknown.add(developerId);
+            }
+        }
+
+        log.info("Declaraciones de {} tecnicos: {} leidos, {} desconocidos",
+                developers.size() + unknown.size(), developers.size(), unknown.size());
+
+        return new TeamDeclarationsResponse(developers, unknown);
     }
 
     /**

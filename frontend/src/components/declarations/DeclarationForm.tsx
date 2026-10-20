@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDeclaration, useSaveDeclaration } from '@/hooks/useDeclarations'
 import { formatDeclaredHours } from '@/lib/declarations'
+import { readFirmante, rememberFirmante } from '@/lib/firmante'
 import type { DeclarationItem, DeclarationUpdateRequest, PlanningMetadata } from '@/types/declarations'
 
 /** Estilo de los tres campos. Es el mismo que usa el selector de filtros, con alto de control. */
@@ -51,7 +52,16 @@ interface FieldsProps {
   item: DeclarationItem
   /** Lo declarado hoy, leido justo antes de pintar el formulario. */
   declaration: PlanningMetadata | null
+  /**
+   * Apila los tres campos en una columna.
+   *
+   * En la pantalla caben tres a lo ancho; en el panel lateral de 448 px cada uno quedaria en 111 px
+   * y la fecha se corta. No es un segundo formulario: es la misma rejilla con otro punto de corte.
+   */
+  stacked?: boolean
   onClose: () => void
+  /** Avisa de que hubo escritura, para que la pantalla ofrezca el resto del ciclo. */
+  onSaved?: () => void
 }
 
 /**
@@ -62,10 +72,12 @@ interface FieldsProps {
  * padre lo identifica con `key`—, que es lo que devuelve los campos a su sitio sin arrastrar lo que
  * se hubiera escrito para otro.
  */
-function Fields({ item, declaration, onClose }: FieldsProps) {
+function Fields({ item, declaration, stacked = false, onClose, onSaved }: FieldsProps) {
   const [estimatedHours, setEstimatedHours] = useState(() => initialHours(declaration))
   const [committedDate, setCommittedDate] = useState(() => declaration?.committedDate ?? '')
-  const [changedBy, setChangedBy] = useState('')
+  // El firmante se recuerda entre formularios: es la misma persona la que opera la pantalla, y
+  // teclearlo en cada ticket era la friccion que el lote tambien quita.
+  const [changedBy, setChangedBy] = useState(() => readFirmante())
 
   const save = useSaveDeclaration()
   const create = item.declaration === null
@@ -79,20 +91,30 @@ function Fields({ item, declaration, onClose }: FieldsProps) {
         values: valuesOf(estimatedHours, committedDate, changedBy),
       },
       // Se cierra al guardar: lo que el usuario tiene que ver despues es la fila ya refrescada.
-      { onSuccess: onClose },
+      {
+        onSuccess: () => {
+          rememberFirmante(changedBy)
+          onSaved?.()
+          onClose()
+        },
+      },
     )
   }
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className={stacked ? 'grid gap-4' : 'grid gap-4 sm:grid-cols-3'}>
         <label className="space-y-1">
           <span className="text-xs text-muted-foreground">Horas estimadas</span>
+          {/* El foco entra donde se empieza a escribir. El formulario se monta cuando alguien pulsa
+              Declarar —o cuando llega la lectura previa—, así que no roba el foco de la pantalla al
+              cargar: solo cuando está a la vista. */}
           <input
             type="number"
             step="0.01"
             min="0.01"
             max="999999.9999"
+            autoFocus
             value={estimatedHours}
             onChange={(event) => setEstimatedHours(event.target.value)}
             className={FIELD_CLASS}
@@ -124,7 +146,7 @@ function Fields({ item, declaration, onClose }: FieldsProps) {
 
       <p className="text-xs text-muted-foreground">
         {create
-          ? 'Hay que declarar al menos una de las dos cosas: una estimación sin fecha no es media planificación, y el motor necesita las dos.'
+          ? 'La estimación la pone el desarrollo y la fecha se acuerda con quien pide el trabajo. Hay que declarar al menos una de las dos: una estimación sin fecha no es media planificación, y el motor necesita las dos.'
           : 'La modificación reemplaza lo declarado, así que se envían siempre los dos valores. Vaciar un campo lo retira; dejar el otro quieto exige reenviarlo, y es lo que este formulario hace.'}
       </p>
 
@@ -153,7 +175,11 @@ function Fields({ item, declaration, onClose }: FieldsProps) {
 
 interface DeclarationFormProps {
   item: DeclarationItem
+  /** Una columna en vez de tres: lo pide el panel lateral, donde no caben tres campos. */
+  stacked?: boolean
   onClose: () => void
+  /** Avisa de que hubo escritura, para que la pantalla ofrezca el resto del ciclo. */
+  onSaved?: () => void
 }
 
 /**
@@ -168,7 +194,7 @@ interface DeclarationFormProps {
  * Sin fila no hay nada que leer y no se pide nada: la creación es un `POST` y el `409` es la
  * respuesta correcta si alguien se adelantó.
  */
-export function DeclarationForm({ item, onClose }: DeclarationFormProps) {
+export function DeclarationForm({ item, stacked, onClose, onSaved }: DeclarationFormProps) {
   const hasDeclaration = item.declaration !== null
   const { data, isPending, isError, error, refetch } = useDeclaration(
     item.workItemId,
@@ -215,7 +241,9 @@ export function DeclarationForm({ item, onClose }: DeclarationFormProps) {
             key={item.workItemId}
             item={item}
             declaration={data ?? null}
+            stacked={stacked}
             onClose={onClose}
+            onSaved={onSaved}
           />
         )}
       </CardContent>

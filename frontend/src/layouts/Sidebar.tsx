@@ -2,7 +2,7 @@ import { Layers } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
-import { NAV_ITEMS, ROUTES } from '@/routes/navigation'
+import { MENU_ITEMS, ROUTES } from '@/routes/navigation'
 
 interface SidebarProps {
   /** Barra colapsada (solo iconos). Aplica unicamente en pantallas lg y superiores. */
@@ -35,15 +35,16 @@ export function Sidebar({ collapsed, mobileOpen, onNavigate }: SidebarProps) {
         </div>
       </div>
 
-      {/* Navegacion */}
+      {/* Navegacion. Son cuatro entradas desde la Fase 50; el resto de pantallas se abre desde el
+          Timeline en el momento en que hace falta, no desde aqui. */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {NAV_ITEMS.map((item) => (
+        {MENU_ITEMS.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
-            /* `end` tambien en Planificacion: «Estado del plan» cuelga de su ruta, asi que sin el
-               las dos entradas saldrian resaltadas a la vez al visitar la vista previa. */
-            end={item.to === ROUTES.dashboard || item.to === ROUTES.planning}
+            /* `end` en la raiz: el timeline del equipo vive en `/` y sin `end` estaria resaltado en
+               todas las pantallas —toda ruta empieza por ahi—. */
+            end={item.to === ROUTES.teamTimeline}
             onClick={onNavigate}
             title={collapsed ? item.label : undefined}
             className={({ isActive }) =>

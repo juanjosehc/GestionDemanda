@@ -114,8 +114,8 @@ function serve({
  * Monta la pantalla y espera a su contenido: el titular solo se pinta cuando ya hay lecturas que
  * enseñar, así que esperarlo es esperar a que las consultas hayan llegado.
  */
-async function preview() {
-  const { container } = renderWithClient(<PlanningPreview />)
+async function preview(route?: string) {
+  const { container } = renderWithClient(<PlanningPreview />, { route })
 
   await screen.findByText('Estado de entrada, persona a persona')
 
@@ -375,5 +375,53 @@ describe('el estado de entrada del plan', () => {
     expect(container.querySelector('[data-developer="dev-003"]')).toBeNull()
     expect(figureOf(container, 'preview-active')).toBe(2)
     expect(container.querySelector('[data-slot="preview-people"]')?.textContent).toBe('2 de 3')
+  })
+
+  /**
+   * La Fase 50 llega aquí desde la fila de cobertura del Timeline, con el técnico en la dirección.
+   * La pantalla no cambia: contesta por esa persona en lugar de por el equipo.
+   */
+  it('con un técnico en la dirección contesta solo por esa persona', async () => {
+    serve({
+      work: {
+        [ANA]: [ticketWith('SIN_ESTIMACION', '901')],
+        [CARLOS]: [ticketWith('PLANIFICABLE', '908')],
+        [DIANA]: [ticketWith('SIN_COMPROMISO', '902')],
+      },
+    })
+
+    const container = await preview('/planificar/estado?tecnico=dev-002')
+
+    // Una sola fila, la de Carlos, y las cifras contadas sobre ella.
+    const rows = rowsOf(container)
+    expect(rows).toHaveLength(1)
+    expect(rowOf(container, CARLOS)).toBeDefined()
+    expect(
+      container.querySelector('[data-slot="preview-people"]')?.textContent,
+    ).toBe('1 de 1')
+
+    // Se dice a quién se está contestando y cómo volver a la vista del equipo.
+    const aviso = container.querySelector('[data-slot="preview-technician"]') as HTMLElement
+    expect(aviso.textContent).toContain('dev-002')
+    expect(within(aviso).getByRole('link', { name: /Ver todo el equipo/ })).toHaveAttribute(
+      'href',
+      '/planificar/estado',
+    )
+
+    // Sin equipo no hay nada que conmutar: el conmutador desaparece en vez de mentir.
+    expect(container.querySelector('[data-slot="team-mode-switch"]')).toBeNull()
+  })
+
+  it('dice cuándo el padrón no conoce al técnico pedido', async () => {
+    serve({ work: { [ANA]: [ticketWith('PLANIFICABLE', '908')] } })
+
+    const container = await preview('/planificar/estado?tecnico=999')
+
+    expect(container.textContent).toContain('El padrón no conoce a este técnico')
+    expect(container.querySelector('[data-slot="entry-person-row"]')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Ver todo el equipo' })).toHaveAttribute(
+      'href',
+      '/planificar/estado',
+    )
   })
 })

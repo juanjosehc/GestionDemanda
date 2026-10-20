@@ -1,5 +1,7 @@
 package co.com.coltefinanciera.gestiondemanda.controller;
 
+import java.util.List;
+
 import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -17,6 +20,7 @@ import co.com.coltefinanciera.gestiondemanda.dto.PlanningMetadataHistoryResponse
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningMetadataRequest;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningMetadataResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningMetadataUpdateRequest;
+import co.com.coltefinanciera.gestiondemanda.dto.TeamDeclarationsResponse;
 import co.com.coltefinanciera.gestiondemanda.service.PlanningDeclarationService;
 import co.com.coltefinanciera.gestiondemanda.service.PlanningMetadataService;
 
@@ -95,5 +99,26 @@ public class PlanningMetadataController {
     @GetMapping("/declarations/{developerId}")
     public DeveloperDeclarationsResponse declarations(@PathVariable String developerId) {
         return declarationService.declarationsFor(developerId);
+    }
+
+    /**
+     * Lo mismo, para varias personas en una sola lectura.
+     *
+     * <p><strong>Es la ruta del timeline.</strong> La pantalla de declaracion sigue preguntando por un
+     * tecnico; el timeline del equipo pregunta por todos los que tienen plan vigente de una vez,
+     * porque pintar la capa de pendientes no justifica una peticion por fila.
+     *
+     * <p>El parametro se repite —{@code ?developerId=a&developerId=b}— en vez de venir separado por
+     * comas: los identificadores son datos de fuera y una coma dentro de un login no tiene por que
+     * partir la lista en dos.
+     *
+     * <p>Un identificador que GLPI no conoce no da {@code 404}: sale en {@code unknownDevelopers} y
+     * el resto de la respuesta se sirve igual. La ruta por persona conserva su {@code 404}, que es lo
+     * que necesita la pantalla de declaracion para decir que el identificador esta mal.
+     */
+    @GetMapping("/declarations")
+    public TeamDeclarationsResponse declarations(
+            @RequestParam("developerId") List<String> developerIds) {
+        return declarationService.declarationsFor(developerIds);
     }
 }

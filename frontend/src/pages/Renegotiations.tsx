@@ -1,16 +1,19 @@
 import { AlertTriangle, CalendarRange, FilterX, Handshake } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { RenegotiationForm } from '@/components/renegotiations/RenegotiationForm'
 import { RenegotiationHistory } from '@/components/renegotiations/RenegotiationHistory'
 import { RenegotiationTable } from '@/components/renegotiations/RenegotiationTable'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Modal } from '@/components/ui/modal'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useRenegotiations } from '@/hooks/useRenegotiations'
 import { formatInstant } from '@/lib/format'
-import { ANY_STATUS, FILTER_OPTIONS, matchesFilter } from '@/lib/renegotiations'
+import { ANY_STATUS, FILTER_OPTIONS, STATUS_VARIANTS, matchesFilter } from '@/lib/renegotiations'
 import type { RenegotiationFilter } from '@/lib/renegotiations'
 
 /** Esqueleto de la carga: la misma forma que el contenido, para que no haya salto de altura. */
@@ -49,9 +52,42 @@ function RenegotiationsSkeleton() {
  */
 export function Renegotiations() {
   const { data, isPending, isError, error, refetch } = useRenegotiations()
+  const [params] = useSearchParams()
   const [filter, setFilter] = useState<RenegotiationFilter>(ANY_STATUS)
-  const [selected, setSelected] = useState<string | null>(null)
-  const [editing, setEditing] = useState(false)
+
+  /**
+   * La fila con la que abre la pantalla, si alguien llegó desde un tramo del timeline.
+   *
+   * Es una **siembra y no un estado gobernado por la dirección**: se lee una vez, al montar, y a
+   * partir de ahí manda lo que la persona hace en pantalla. Sincronizar los dos sentidos obligaría a
+   * reescribir la dirección en cada clic, y no hace falta para que el enlace funcione.
+   *
+   * Si el ticket no está en la lista —dejó de estar desplazado, o se acordó desde otra máquina— la
+   * selección no encuentra fila y la pantalla se abre como siempre. No se inventa un formulario para
+   * un elemento que el backend no publica.
+   */
+  const ticket = params.get('ticket')
+  const [selected, setSelected] = useState<string | null>(ticket)
+  const [editing, setEditing] = useState(ticket !== null)
+
+  /*
+   * El botón de la fila que abrió el modal, para devolverle el foco al cerrarlo. Se guarda el
+   * elemento pulsado y no `document.activeElement`: con un clic disparado desde código el foco no
+   * viaja, y aun así el cierre tiene que devolverlo a la misma fila.
+   */
+  const openerRef = useRef<HTMLElement | null>(null)
+
+  function open(workItemId: string, opener: HTMLElement) {
+    openerRef.current = opener
+    // La selección se conserva al cerrar: es la fila de la que habla el historial que queda debajo.
+    setSelected(workItemId)
+    setEditing(true)
+  }
+
+  function close() {
+    setEditing(false)
+    openerRef.current?.focus()
+  }
 
   const loading = isPending && !data
 
@@ -92,11 +128,6 @@ export function Renegotiations() {
   // puede cerrar un formulario a medio escribir.
   const selectedItem = data.items.find((item) => item.workItemId === selected) ?? null
 
-  function open(workItemId: string) {
-    setSelected(workItemId)
-    setEditing(true)
-  }
-
   return (
     <div className="space-y-6">
       <p className="text-xs text-muted-foreground">
@@ -128,15 +159,10 @@ export function Renegotiations() {
       </div>
 
       {/*
-        El formulario y el historial van arriba de la tabla, como en la pantalla de declaracion: al
-        elegir una fila, lo que hay que hacer con ella aparece sin buscarlo. El formulario se cierra
-        al guardar y la fila sigue elegida, de modo que el historial —que se relee— enseña el cambio
-        recien registrado sin tener que volver a abrir nada.
+        El historial se queda en la página, bajo la tabla: es información que se consulta después de
+        guardar, no un formulario que haya que buscar. La escritura —registrar o reemplazar— vive en
+        el modal, que se abre sobre la fila y no la empuja hacia abajo.
       */}
-      {selectedItem && editing && (
-        <RenegotiationForm item={selectedItem} onClose={() => setEditing(false)} />
-      )}
-
       {selectedItem && <RenegotiationHistory item={selectedItem} />}
 
       {visible.length === 0 ? (
@@ -162,6 +188,45 @@ export function Renegotiations() {
             <RenegotiationTable items={visible} selected={selected} onSelect={open} />
           </CardContent>
         </Card>
+      )}
+
+      {/*
+        La acción individual es un modal y no una tarjeta en el flujo: pulsar una fila ya no alarga
+        la página ni obliga a bajar a buscar el formulario. El diálogo trae el ticket que se está
+        operando —identificador, persona, plan y estado— y dentro va el mismo formulario de siempre,
+        sin su marco, con la lectura fresca y el `POST`/`PUT` que ya decidía.
+      */}
+      {selectedItem && editing && (
+        <Modal
+          labelledBy="renegociacion-titulo"
+          closeLabel="Cerrar el acuerdo"
+          onClose={close}
+          header={
+            <>
+              <h2
+                id="renegociacion-titulo"
+                className="flex flex-wrap items-center gap-2 text-sm font-medium"
+              >
+                {selectedItem.renegotiation
+                  ? 'Reemplazar la fecha acordada'
+                  : 'Registrar el acuerdo'}
+                <Badge variant={STATUS_VARIANTS[selectedItem.status]}>{selectedItem.status}</Badge>
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                <span className="font-mono">{selectedItem.workItemId}</span> ·{' '}
+                {selectedItem.developerId} · plan{' '}
+                <span className="font-mono">{selectedItem.planId}</span>
+              </p>
+            </>
+          }
+        >
+          <RenegotiationForm
+            key={selectedItem.workItemId}
+            item={selectedItem}
+            bare
+            onClose={close}
+          />
+        </Modal>
       )}
 
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">

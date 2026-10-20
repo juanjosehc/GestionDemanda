@@ -94,6 +94,23 @@ export interface DeclarationItem {
   declaration: PlanningMetadata | null
 }
 
+/**
+ * Respuesta de `GET /api/planning-metadata/declarations?developerId=...`: varias personas en una
+ * sola lectura.
+ *
+ * **Es el mismo cuerpo por persona, repetido en un viaje.** Cada elemento de `developers` es
+ * exactamente un `DeveloperDeclarationsResponse`, así que la clasificación sigue siendo la del
+ * backend y esta capa no la reinterpreta.
+ *
+ * `unknownDevelopers` no es un error: es la lista de identificadores que GLPI no conoce —el `404`
+ * de la ruta por persona, trasladado al lote—. Se publica aparte para poder decir *cuántas* personas
+ * no se leyeron sin inventarles una respuesta vacía.
+ */
+export interface TeamDeclarationsResponse {
+  developers: DeveloperDeclarationsResponse[]
+  unknownDevelopers: string[]
+}
+
 /** Respuesta completa de `GET /api/planning-metadata/declarations/{developerId}`. */
 export interface DeveloperDeclarationsResponse {
   /** El tecnico tal como lo conoce GLPI. `name` puede venir nulo: un usuario sin nombre usable. */

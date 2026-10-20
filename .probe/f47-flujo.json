@@ -1,0 +1,91 @@
+{
+  "capturedAt": "2026-10-19T20:09Z",
+  "source": "Playwright sobre http://localhost:5173/ con backend real y GLPI real",
+  "nota": "Las horas son UTC. La instancia local muestra la hora de Colombia (UTC-5).",
+  "stages": [
+    {
+      "stage": "linea base",
+      "at": "20:01Z",
+      "coverage": "2 de 87 tickets activos en el plan (2,3%) · 83 recuperables mediante declaración · cobertura potencial 85 de 87 (97,7%)",
+      "causes": ["Falta información: 83", "Sin acuerdo: 1", "No incluido en el último plan: 1"],
+      "callList": [
+        "1. Maury Marmolejo Din 10 bloqueados · quedaría en 10 de 10",
+        "2. Cesar Giraldo Muñoz 9 bloqueados · quedaría en 9 de 9",
+        "3. Nilson Cortes 9 bloqueados · quedaría en 9 de 9",
+        "4. Jose Luis Garces Gonzalez 8 bloqueados · quedaría en 8 de 9",
+        "5. Abraham Arana Aldana 7 bloqueados · quedaría en 9 de 10"
+      ]
+    },
+    {
+      "stage": "declaracion 33219",
+      "at": "20:02Z",
+      "ticket": "33219",
+      "developerId": "MaurMarm",
+      "values": { "estimatedHours": 8, "committedDate": "2026-10-24", "changedBy": "verificacion-fase-47" },
+      "result": "fila PLANIFICABLE; resumen de la persona: 10 activos, 1 declarado, 9 pendientes, 0 sin estimación, 0 sin compromiso",
+      "formClosed": true,
+      "error": null
+    },
+    {
+      "stage": "timeline tras declarar, sin regenerar plan",
+      "at": "20:03Z",
+      "coverage": "2 de 86 tickets activos en el plan (2,3%) · 81 recuperables mediante declaración · cobertura potencial 83 de 86 (96,5%)",
+      "causes": ["Falta información: 81", "Sin acuerdo: 1", "No incluido en el último plan: 2"],
+      "maury": "9 sin declaración · 1 no incluido en el último plan | 10 activos | 1 declarado | 1 planificable | 10 pendientes | 9 recuperables | 0 de 10 en el plan",
+      "hallazgo": "Declarar no subió la cobertura: convirtió un P1 en P4. El activo bajó de 87 a 86 por GLPI, no por la declaración."
+    },
+    {
+      "stage": "plan generado para MaurMarm",
+      "at": "20:04Z",
+      "planId": "d5e66ce6-7e1b-4bb8-abab-72fb27ef3f7b",
+      "allocations": [{ "workItemId": "33219", "date": "2026-10-26", "hours": 8 }],
+      "rescheduleEvents": [{
+        "requirementId": "33219",
+        "originalDate": "2026-10-24",
+        "rescheduledDate": "2026-10-26",
+        "appliedRule": "CAPACIDAD_DIARIA_EXCEDIDA",
+        "reason": "La jornada ya estaba comprometida por trabajo previo."
+      }],
+      "conflicts": 0,
+      "discards": 64
+    },
+    {
+      "stage": "timeline tras generar el plan",
+      "at": "20:05Z",
+      "coverage": "2 de 86 tickets activos en el plan (2,3%) · 81 recuperables mediante declaración · cobertura potencial 83 de 86 (96,5%)",
+      "causes": ["Falta información: 81", "Sin acuerdo: 2", "No incluido en el último plan: 1"],
+      "hallazgo": "El motor colocó el ticket pero lo desplazó del 24 al 26: sin acuerdo registrado, no cuenta como cubierto."
+    },
+    {
+      "stage": "acuerdo de renegociación 33219",
+      "at": "20:08Z",
+      "fechaAcordada": "2026-10-26",
+      "acordo": "verificacion-fase-47",
+      "result": "ACORDADA; desplazados 5, pendientes 3, acordadas 2"
+    },
+    {
+      "stage": "timeline tras registrar el acuerdo",
+      "at": "20:09Z",
+      "coverage": "3 de 86 tickets activos en el plan (3,5%) · 81 recuperables mediante declaración · cobertura potencial 84 de 86 (97,7%)",
+      "causes": ["Falta información: 81", "Sin acuerdo: 1", "No incluido en el último plan: 1"],
+      "maury": "9 sin declaración | 10 activos | 1 declarado | 1 planificable | 9 pendientes | 9 recuperables | 1 de 10 en el plan | 10%"
+    }
+  ],
+  "metricFinding": {
+    "observed": "La cobertura potencial bajó de 85 a 83-84 durante el ciclo y volvió a 84 al final.",
+    "reason": "potential = covered + P1. Un ticket declarado sale de P1 y entra en P4, que no suma; solo suma cuando el plan lo coloca y la fecha se acuerda.",
+    "consequence": "La métrica castiga declarar y no cuenta el trabajo ya planificable que el plan no incluyó (P4).",
+    "measuredGap": "A las 20:09Z había 1 P4 planificable fuera del cálculo: el techo real era 85 de 86, no 84."
+  },
+  "residue": {
+    "planningMetadata": "33219 con 8 h y 2026-10-24, firmado por verificacion-fase-47",
+    "plan": "d5e66ce6-7e1b-4bb8-abab-72fb27ef3f7b",
+    "renegotiation": "33219 ACORDADA el 2026-10-26 por verificacion-fase-47",
+    "note": "No existe endpoint DELETE (riesgo 158); el residuo queda documentado."
+  },
+  "screenshots": [
+    ".probe/f47-cobertura-despues.png",
+    ".probe/f47-declaracion-guardada.png",
+    ".probe/f47-renegociacion-acordada.png"
+  ]
+}

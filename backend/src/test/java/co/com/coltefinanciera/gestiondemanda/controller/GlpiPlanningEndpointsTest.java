@@ -2,6 +2,8 @@ package co.com.coltefinanciera.gestiondemanda.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -124,7 +126,7 @@ class GlpiPlanningEndpointsTest {
     private void glpiResponde(GlpiTicket... tickets) {
         when(glpiPlanningSource.findUser(DEVELOPER))
                 .thenReturn(Optional.of(new GlpiUser(7, "ana", "Perez", "Ana")));
-        when(glpiPlanningSource.ticketsOf("7")).thenReturn(List.of(tickets));
+        when(glpiPlanningSource.activeTicketsOf("7")).thenReturn(List.of(tickets));
     }
 
     private String planificarDesdeGlpi() throws Exception {
@@ -155,6 +157,19 @@ class GlpiPlanningEndpointsTest {
                 .andExpect(jsonPath("$.plan.rescheduleEvents[0].requirementId").value("502"))
                 .andExpect(jsonPath("$.plan.rescheduleEvents[0].appliedRule")
                         .value("UMBRAL_INCIDENTE_EXCEDIDO"));
+    }
+
+    @Test
+    @DisplayName("from-glpi planifica con los tickets activos y no lee el historico cerrado")
+    void planificaSoloConLosTicketsActivos() throws Exception {
+        glpiResponde(incidencia(501, null), peticion(502, null));
+
+        planificarDesdeGlpi();
+
+        // La lista que se declara y la que se planifica salen de la misma pregunta. Leer el historico
+        // entero volveria a abrir la brecha que la Fase 51 cierra.
+        verify(glpiPlanningSource).activeTicketsOf("7");
+        verify(glpiPlanningSource, never()).ticketsOf(anyString());
     }
 
     @Test
@@ -269,7 +284,7 @@ class GlpiPlanningEndpointsTest {
     void glpiInalcanzableResponde503() throws Exception {
         when(glpiPlanningSource.findUser(anyString())).thenReturn(Optional.of(
                 new GlpiUser(7, "ana", "Perez", "Ana")));
-        when(glpiPlanningSource.ticketsOf("7")).thenThrow(
+        when(glpiPlanningSource.activeTicketsOf("7")).thenThrow(
                 new GlpiUnreachableException("Response timeout after 5000ms", null));
 
         mockMvc.perform(post("/api/planning/from-glpi")

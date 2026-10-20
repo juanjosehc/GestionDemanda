@@ -54,9 +54,9 @@
     "semantic_hash": "68ac5368714667fb27d9a846b477c7ae"
   },
   "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningController.java": {
-    "mtime": 1791489362.0687962,
-    "seen": 1791921478.9358175,
-    "ast_hash": "eff6ac8c347514713f5e5e0cb431b175",
+    "mtime": 1792178653.3555126,
+    "seen": 1792181038.1781533,
+    "ast_hash": "2f5338288f60fb66436983409f556081",
     "semantic_hash": ""
   },
   "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningMetadataController.java": {
@@ -252,10 +252,10 @@
     "semantic_hash": "1cb866309e10f4f61d56d3383e3aa3f3"
   },
   "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/repository/PlanSnapshotRepository.java": {
-    "mtime": 1791399160.6729312,
-    "seen": 1791470349.3841732,
-    "ast_hash": "743823e92bc08cf4b19ea77354c5880a",
-    "semantic_hash": "743823e92bc08cf4b19ea77354c5880a"
+    "mtime": 1792178173.381949,
+    "seen": 1792181038.179345,
+    "ast_hash": "40dbd9f8f381d6555f9ae308633ce382",
+    "semantic_hash": ""
   },
   "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/domain/repository/PlanningMetadataRepository.java": {
     "mtime": 1791482771.4795482,
@@ -528,10 +528,10 @@
     "semantic_hash": ""
   },
   "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaPlanSnapshotRepository.java": {
-    "mtime": 1791399208.2773025,
-    "seen": 1791470349.3842757,
-    "ast_hash": "efbcfd4cdd2a039e4829709b80ee618e",
-    "semantic_hash": "efbcfd4cdd2a039e4829709b80ee618e"
+    "mtime": 1792178180.7660728,
+    "seen": 1792181038.179588,
+    "ast_hash": "16679484a05147df3602bff833b7d505",
+    "semantic_hash": ""
   },
   "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaPlanningMetadataRepository.java": {
     "mtime": 1791482800.8335392,
@@ -546,16 +546,16 @@
     "semantic_hash": "7fca300a02ea05c7a321092818838f77"
   },
   "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanSnapshotEntity.java": {
-    "mtime": 1791225502.8209393,
-    "seen": 1791470349.3842833,
-    "ast_hash": "16fe8590afc393e5e9f7ed09511dd21d",
-    "semantic_hash": "16fe8590afc393e5e9f7ed09511dd21d"
+    "mtime": 1792178186.344051,
+    "seen": 1792181038.1796021,
+    "ast_hash": "88e5afcbf8cd23a7573cd5f3ddc5ab2a",
+    "semantic_hash": ""
   },
   "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanSnapshotJpaRepository.java": {
-    "mtime": 1791225553.8051524,
-    "seen": 1791470349.3842857,
-    "ast_hash": "24fe1f326c702fbcf3c672222761de70",
-    "semantic_hash": "24fe1f326c702fbcf3c672222761de70"
+    "mtime": 1792178173.4948642,
+    "seen": 1792181038.1796076,
+    "ast_hash": "bb885ccbe6e867d22ba10144b97e676e",
+    "semantic_hash": ""
   },
   "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/persistence/PlanningConflictEntity.java": {
     "mtime": 1791225503.3094265,
@@ -726,10 +726,10 @@
     "semantic_hash": ""
   },
   "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/service/PlanningService.java": {
-    "mtime": 1791399281.6624837,
-    "seen": 1791470349.3843565,
-    "ast_hash": "08fe14b354d3805b3dfec87ff2aef1b2",
-    "semantic_hash": "08fe14b354d3805b3dfec87ff2aef1b2"
+    "mtime": 1792178247.9135826,
+    "seen": 1792181038.1797256,
+    "ast_hash": "68a3fc727f85450732c450a66d2902da",
+    "semantic_hash": ""
   },
   "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/GestionDemandaApplicationTests.java": {
     "mtime": 1791225724.347649,
@@ -846,10 +846,10 @@
     "semantic_hash": ""
   },
   "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaPlanSnapshotRepositoryTest.java": {
-    "mtime": 1791399521.6657355,
-    "seen": 1791470349.3844056,
-    "ast_hash": "2909efceb23a2a3c2d1419e53adfbf09",
-    "semantic_hash": "2909efceb23a2a3c2d1419e53adfbf09"
+    "mtime": 1792178463.2290149,
+    "seen": 1792181038.1798275,
+    "ast_hash": "f0865503713f1339d88717eb63a70dac",
+    "semantic_hash": ""
   },
   "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/persistence/JpaPlanningMetadataRepositoryTest.java": {
     "mtime": 1791483581.678887,
@@ -1032,15 +1032,15 @@
     "semantic_hash": "3c7c954fd3d86e9705b99532bf85a73c"
   },
   "frontend/src/pages/Calendar.test.tsx": {
-    "mtime": 1792171827.4713461,
-    "seen": 1792173498.1066947,
-    "ast_hash": "5bdeb2a4de1eb6def721aa11a9b4e11c",
+    "mtime": 1792179217.8136759,
+    "seen": 1792181038.1807027,
+    "ast_hash": "97d5316e566a556b323c80d54cc24c76",
     "semantic_hash": ""
   },
   "frontend/src/pages/Calendar.tsx": {
-    "mtime": 1792171436.227877,
-    "seen": 1792173498.1066978,
-    "ast_hash": "dcc2c9383f6113f529dc77eb6fe25a7b",
+    "mtime": 1792179209.8450735,
+    "seen": 1792181038.1807063,
+    "ast_hash": "156def145bc3ea82587036c7d403c943",
     "semantic_hash": ""
   },
   "frontend/src/pages/Dashboard.test.tsx": {
@@ -1080,15 +1080,15 @@
     "semantic_hash": "8258a4b3210202437a5743f9124d600e"
   },
   "frontend/src/routes/AppRoutes.tsx": {
-    "mtime": 1792098382.0752728,
-    "seen": 1792099541.0415652,
-    "ast_hash": "a4a225f0187c694458a9cf1f1d96f271",
+    "mtime": 1792179449.7722368,
+    "seen": 1792181038.1811771,
+    "ast_hash": "268abecb7ef65d154f8155a93dc3d612",
     "semantic_hash": ""
   },
   "frontend/src/routes/navigation.ts": {
-    "mtime": 1792165085.2886615,
-    "seen": 1792168658.0917718,
-    "ast_hash": "9332a2759fc1c76d3c2e967dc9340d84",
+    "mtime": 1792179198.0686078,
+    "seen": 1792181038.1811807,
+    "ast_hash": "7dcdb7b7ae0a602c0d8106ffb1751195",
     "semantic_hash": ""
   },
   "frontend/src/services/apiClient.ts": {
@@ -1116,9 +1116,9 @@
     "semantic_hash": "5631f44753e7ef0a65d05f1c637312ba"
   },
   "frontend/src/test/fixtures.ts": {
-    "mtime": 1792171175.8703036,
-    "seen": 1792173498.1068146,
-    "ast_hash": "5e0de77c4cf5b9c5e87c21902d6853d3",
+    "mtime": 1792178985.4374785,
+    "seen": 1792181038.181447,
+    "ast_hash": "06703a1bd6b80b18650a4a6c35ca821c",
     "semantic_hash": ""
   },
   "frontend/src/test/render.tsx": {
@@ -1182,9 +1182,9 @@
     "semantic_hash": "3a844117a42756250e24a711d12e4ea0"
   },
   "README.md": {
-    "mtime": 1792173364.5833302,
-    "seen": 1792173498.1068833,
-    "ast_hash": "faf2d9a0e6692ad3a4741d03fb630bef",
+    "mtime": 1792180977.9777482,
+    "seen": 1792181038.181811,
+    "ast_hash": "c0eb55dd15c5e07b8e947eceefa29cde",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
@@ -1194,9 +1194,9 @@
     "semantic_hash": "a8cebd5830dc0a85953c3c52d9f74c4f"
   },
   "docs/decisiones-arquitectonicas.md": {
-    "mtime": 1792173548.452913,
-    "seen": 1792173588.081384,
-    "ast_hash": "e32705b6d1b6377132abaaa0847271db",
+    "mtime": 1792180942.291984,
+    "seen": 1792181038.1818366,
+    "ast_hash": "4b477f8ae77dd1f5b14b4fe27561976f",
     "semantic_hash": ""
   },
   "frontend/index.html": {
@@ -1692,9 +1692,9 @@
     "semantic_hash": ""
   },
   "frontend/src/services/planningService.ts": {
-    "mtime": 1792170963.700769,
-    "seen": 1792173498.1068015,
-    "ast_hash": "a048ce892a8fa1bd0384ffd84bf10da3",
+    "mtime": 1792178924.4921541,
+    "seen": 1792181038.1812658,
+    "ast_hash": "1931527c78255e8ada964efe34cf86b8",
     "semantic_hash": ""
   },
   "frontend/src/services/teamService.ts": {
@@ -1704,9 +1704,9 @@
     "semantic_hash": ""
   },
   "frontend/src/types/planning.ts": {
-    "mtime": 1792170953.6351304,
-    "seen": 1792173498.1068377,
-    "ast_hash": "98c5e4a09118871b76d9e1e727c54109",
+    "mtime": 1792178911.130658,
+    "seen": 1792181038.1817288,
+    "ast_hash": "2902d8dc29d4cc01d1c4d81accdd9cb7",
     "semantic_hash": ""
   },
   "frontend/src/types/team.ts": {
@@ -1902,9 +1902,9 @@
     "semantic_hash": ""
   },
   "frontend/src/components/timeline/PlanResult.tsx": {
-    "mtime": 1792171355.6050272,
-    "seen": 1792173498.1065402,
-    "ast_hash": "0fc43f3b7581ed568066a7790257ab55",
+    "mtime": 1792179769.2902884,
+    "seen": 1792181038.180203,
+    "ast_hash": "b9857591c5574056acee33051ef7d081",
     "semantic_hash": ""
   },
   "frontend/src/components/ui/figure.tsx": {
@@ -1926,9 +1926,9 @@
     "semantic_hash": ""
   },
   "frontend/src/lib/planResult.ts": {
-    "mtime": 1792171133.125256,
-    "seen": 1792173498.1066566,
-    "ast_hash": "1d55eafd13c5bea8f0d4c1478916e54f",
+    "mtime": 1792179750.7105277,
+    "seen": 1792181038.1806643,
+    "ast_hash": "4237aac24d9b019552b649291daa3807",
     "semantic_hash": ""
   },
   "f38-01-generacion-plan.png": {
@@ -1965,6 +1965,90 @@
     "mtime": 1792172942.6017594,
     "seen": 1792173498.1069684,
     "ast_hash": "66ceadd8f5d082b8457c748be242ca5c",
+    "semantic_hash": ""
+  },
+  "backend/src/main/java/co/com/coltefinanciera/gestiondemanda/dto/DeveloperPlansResponse.java": {
+    "mtime": 1792178232.7788692,
+    "seen": 1792181038.179387,
+    "ast_hash": "2d717c3893b8db7378e9c31df07ff5bb",
+    "semantic_hash": ""
+  },
+  "backend/src/test/java/co/com/coltefinanciera/gestiondemanda/controller/PlanningPlanListEndpointsTest.java": {
+    "mtime": 1792178574.8817487,
+    "seen": 1792181038.1797678,
+    "ast_hash": "6e4e96679a7092924cfd6e610f144e09",
+    "semantic_hash": ""
+  },
+  "frontend/src/hooks/usePlanList.ts": {
+    "mtime": 1792178933.5492744,
+    "seen": 1792181038.1802726,
+    "ast_hash": "fb224b80415b8d1f8c1d916c156870a7",
+    "semantic_hash": ""
+  },
+  "frontend/src/hooks/usePlanOutcome.ts": {
+    "mtime": 1792179191.7069752,
+    "seen": 1792181038.180277,
+    "ast_hash": "4cef54196ce5899456ddaedc8d56574b",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/planComparison.test.ts": {
+    "mtime": 1792179586.3263636,
+    "seen": 1792181038.1806493,
+    "ast_hash": "d5742f916a14d499c66daf0e2b381d14",
+    "semantic_hash": ""
+  },
+  "frontend/src/lib/planComparison.ts": {
+    "mtime": 1792179312.494228,
+    "seen": 1792181038.1806538,
+    "ast_hash": "17e60149f65c74f68a197810ea090c50",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/PlanComparison.test.tsx": {
+    "mtime": 1792179665.029106,
+    "seen": 1792181038.1808228,
+    "ast_hash": "8a3fcdb6ee64948e7a61b9bd77ee6733",
+    "semantic_hash": ""
+  },
+  "frontend/src/pages/PlanComparison.tsx": {
+    "mtime": 1792179782.5492342,
+    "seen": 1792181038.1808264,
+    "ast_hash": "1a8c39e8b3596cab93a09b975e2a2fce",
+    "semantic_hash": ""
+  },
+  "f39-01-entrada-comparacion.png": {
+    "mtime": 1792180529.034068,
+    "seen": 1792181038.1821046,
+    "ast_hash": "a9357a45318ab92b9bdfdfd394e77ee8",
+    "semantic_hash": ""
+  },
+  "f39-02-comparacion-con-diferencias.png": {
+    "mtime": 1792180382.258506,
+    "seen": 1792181038.1821082,
+    "ast_hash": "544916284692a4bf37a3451e8d47b966",
+    "semantic_hash": ""
+  },
+  "f39-03-comparacion-sin-diferencias.png": {
+    "mtime": 1792180471.525549,
+    "seen": 1792181038.182111,
+    "ast_hash": "8a69a3cfb668470769ef85bffed79e1f",
+    "semantic_hash": ""
+  },
+  "f39-04-comparacion-sin-elementos.png": {
+    "mtime": 1792180612.058753,
+    "seen": 1792181038.1821146,
+    "ast_hash": "5986b5d841dbe0ee651a14e6064f2faa",
+    "semantic_hash": ""
+  },
+  "f39-05-primer-plan-sin-anterior.png": {
+    "mtime": 1792180623.922137,
+    "seen": 1792181038.1821177,
+    "ast_hash": "4a1375f16ac83c8cc5d12d473a09a30e",
+    "semantic_hash": ""
+  },
+  "f39-06-riesgo-177-dos-generaciones.png": {
+    "mtime": 1792180590.2788985,
+    "seen": 1792181038.182121,
+    "ast_hash": "3cd494c6fe872cdd55a06f01f14e091c",
     "semantic_hash": ""
   }
 }

@@ -6144,3 +6144,1672 @@ LO QUE LA PANTALLA ENSEÑA:
 **Y un residuo que se declara en vez de maquillarse.** La demostración **sí escribió**: cuatro planes, dos por cada escenario, con identificadores propios, y **un plan guardado no se puede borrar** —no existe endpoint para ello—, así que quedan en la base como quedaron los de las fases anteriores. La primera tentativa se hizo por el camino de GLPI y **el backend contestó que no tiene un usuario con ese identificador**, así que la demostración se hizo por el endpoint de escenario, que es el mismo motor, las mismas tablas y las mismas lecturas, y **registra su procedencia como «escrito por quien llama» en vez de «extraído de GLPI»** —que es exactamente lo que la foto de la entrada de esos planes dice—. **Ni un token de GLPI se imprimió y ninguna sonda contra GLPI escribió nada.**
 
 **Lo que esta fase no tocó, dicho explícitamente**: ni el algoritmo de planificación, ni las reglas de capacidad, ni los desplazamientos, ni las renegociaciones, ni el modelo de capacidad, ni la integración con GLPI, ni una regla de negocio. **El motor no tiene una línea de diferencia**; el backend crece en **un endpoint de solo lectura con sus piezas** —el puerto, la consulta derivada, el adaptador, el índice, el contrato de respuesta, el servicio y la ruta— y **ninguna prueba existente se editó**.
+
+# Fase 40 — El timeline del equipo es la pantalla de entrada
+
+## Qué se hizo, en una frase
+
+La aplicación abría en un tablero de indicadores y la agenda vivía dentro de un plan: para ver **qué está haciendo cada persona** había que nombrar un plan, y para ver al equipo había que recorrer planes uno a uno. Esta fase **cambia la puerta de entrada** —`/` deja de ser el tablero y pasa a ser la agenda de todo el equipo— y estrena **una lectura de solo lectura** que arma **una sola ventana** sobre los planes vigentes de todos los técnicos, de modo que la primera pantalla responde **quién tiene trabajo, en qué está, cuánto tiene libre y qué quedó pendiente sin pedir un plan, un identificador ni una selección**. La rejilla, la capacidad, el estado del plan y la declaración son los que ya existían: esta fase **compone**, no reconstruye. **`PlanningEngine` no tiene una línea de diferencia.**
+
+## El análisis obligatorio: por qué no bastaba con recorrer planes
+
+### 1. La agenda de un plan no se puede concatenar
+
+`GET /api/planning/{planId}/timeline` calcula su ventana como **el mínimo y el máximo de los tramos de ese plan**. Pegar las respuestas de varios técnicos produce **una agenda por persona con una ventana distinta**: quien tiene un plan de dos días queda con dos columnas y quien tiene uno de cinco con cinco. Las filas dejarían de compartir eje y la vista no respondería «cuánto tiempo tiene libre» —la pregunta es relativa a la misma ventana para todos—. **La ventana tiene que calcularse una vez, sobre todos los tramos de todos los planes vigentes**, y cada persona medirse contra ella con **su propio calendario congelado**, que es lo que el plan guardó.
+
+### 2. Lo que ya existía y se podía reutilizar
+
+| Pieza | Dónde estaba | Qué se hizo |
+| --- | --- | --- |
+| `findLatestPerDeveloper()` | repositorio de planes | se recorre tal cual; **es la definición de «plan vigente»** |
+| `timeline(planId)` | servicio | se llama una vez por plan; no se reescribe la composición de un plan |
+| `TimelinePlanResponse` | contrato de salida | **se reutilizan sus tipos** `TimelineResource`, `TimelineCapacity`, `TimelineItem` |
+| `TimelineGrid` | componente | ya era multi-recurso; **se la usa con varias filas**, con dos props nuevas |
+| `TimelineCapacity` | modelo | sigue publicándose día a día; la pantalla no la recalcula |
+| `useTeamDeclarations` | hook | ya existía para el equipo; **es la fuente de la capa pendiente** |
+| `isActive` | `lib/incidents` | decide qué ticket cuenta como trabajo vivo |
+| `declarationPath()` | `routes/navigation` | arma el enlace de vuelta a la declaración |
+| `EmptyState`, `Badge`, `Skeleton` | `components/ui` | estados vacíos, motivos y carga |
+
+### 3. Qué falta para responder las cuatro preguntas
+
+- **Quién tiene trabajo / en qué está**: los tramos, con su identificador y su estado.
+- **Cuánto tiempo tiene libre**: la capacidad por día que el plan ya publica.
+- **Qué sigue pendiente**: esto **no estaba en ninguna lectura**. Los tramos dicen lo que el motor colocó; lo que quedó fuera solo se sabe cruzando **los tickets que GLPI tiene asignados** con **lo que el plan vigente contiene**. Las dos lecturas existen por separado desde las fases anteriores; el cruce, no.
+
+### 4. La ventana, y por qué no se recalcula nada
+
+La ventana se calcula **una vez** como el mínimo y el máximo de **todos los tramos de todos los planes vigentes**. Con ella se pide la capacidad de cada técnico usando **su calendario congelado** y **sus propios bloques**. Es exactamente el mismo cálculo que ya hace la agenda de un plan (`availableHours`, `occupiedHours`, `remainingHours` por día); lo único distinto es el rango. **No hay ninguna regla nueva**: el motor no corre, no se replanifica, no se rellenan huecos y no se inventan días.
+
+### 5. La ruta: dos segmentos frente a una captura
+
+`/api/planning/team/timeline` y `/api/planning/{planId}/timeline` tienen **los dos dos segmentos** y solo se distinguen en el primero. La expectativa de Spring es que **un segmento literal gane a una variable de captura**, pero aquí la diferencia es de un solo segmento y el daño sería grande: si ganara la captura, la ruta nueva se leería como un plan llamado `team` y contestaría `400`. **No se dio por sabido: hay una prueba MockMvc que lo fija**, y su nombre lo dice —`laRutaLiteralNoLaCapturaElPatronConVariable`—.
+
+## Las decisiones
+
+### 178. La agenda del equipo es una ventana común sobre planes que ya existen
+
+**178.1 — Se compone, no se recalcula.** El servicio recorre `findLatestPerDeveloper()`, lee cada plan con las tres piezas que ya existen —resultado, entrada y contexto— y **reutiliza `timeline(planId)`** para obtener sus tramos. No se ejecuta el motor, no se escribe nada y no se consulta GLPI. Lo único que esta fase calcula es **la ventana del equipo**, que por definición no se puede sacar de un plan solo.
+
+**178.2 — La ventana es del equipo, el calendario es de cada uno.** Los días y el eje de horas son comunes —una columna compartida es lo que permite comparar filas—, pero la capacidad de cada persona se mide contra **su calendario congelado** y sus propios bloques. Dos técnicos con calendarios distintos siguen siendo comparables en la misma rejilla, y cada celda dice lo que el plan de esa persona publicó, no una media del equipo.
+
+**178.3 — Un plan incompleto se salta; el resto del equipo se pinta igual.** Esta es **la única lectura de la superficie que no falla por un plan incompleto**: si a un plan vigente le falta su contexto o su entrada, no entra en la composición y los demás siguen. En `/{planId}/timeline` el mismo caso es un `404`, y con razón: **quien pide un plan concreto nombró algo y tiene derecho a saber que no está**. Aquí nadie nombró nada, y tumbar la pantalla de entrada por una fila es peor que pintar las demás.
+
+**178.4 — La respuesta publica qué planes entraron.** Además de la ventana, los recursos y los tramos, el contrato lleva `plans[]` con el técnico, el identificador y el rango propio de cada plan vigente. **Sin eso, un plan saltado sería invisible**: la respuesta diría «este es el equipo» sin que nadie pudiera comprobar de qué planes salió. Con eso, la composición es auditable.
+
+**178.5 — Los recursos salen ordenados por técnico, y el orden es explícito.** El mapa que arma la capacidad ya viene ordenado porque el repositorio resuelve con un `TreeMap`, pero **eso es un detalle del repositorio y no algo que esta lectura deba heredar**. El servicio ordena por `developerId` antes de responder, para que dos llamadas devuelvan la misma fila en el mismo sitio.
+
+**178.6 — Sin planes, `200` con listas vacías y ventana nula.** No es un error: es «hoy no hay ningún plan vigente», que es una respuesta completa. La pantalla lo dice con esas palabras y ofrece generar uno; **no inventa un error para un estado del sistema**.
+
+**178.7 — La ruta vive junto a la de un plan y se prueba, no se supone.** La colisión es más estrecha que la de `/metrics` o `/alerts` —dos segmentos contra dos—, así que la precedencia por especificidad **está fijada por una prueba**: si algún día dejara de cumplirse, lo que se rompe no es la ruta nueva, es `/{planId}/timeline`, que se leería como un plan llamado `team`.
+
+### 179. La pantalla de entrada deja de ser el tablero
+
+**179.1 — `/` es el timeline del equipo; el tablero se muda a `/tablero`.** El tablero **sigue existiendo y sigue en el menú**: mide el estado del sistema —planes vigentes, carencias, incidentes—, que es una pregunta distinta de «qué está haciendo el equipo ahora». Lo que cambia es **cuál contesta primero**, y la respuesta del brief es que abrir la aplicación debe contestar la segunda.
+
+**179.2 — La pantalla no pide nada a cambio.** No hay `planId`, ni UUID, ni selector, ni botón previo. La ruta es la raíz y no lleva parámetros. Una prueba lo hace comprobable: **el servidor de la prueba lanza ante cualquier dirección que no sea una de las suyas**, así que pedir la agenda de un plan no pasaría desapercibido.
+
+**179.3 — Las dos lecturas nuevas son independientes y ninguna bloquea a la otra.** La rejilla se arma con los planes guardados, que son datos del propio sistema; los pendientes consultan GLPI, que puede no responder. **Si GLPI no contesta, la agenda sigue en pie** y el panel dice que no se pudo leer —el mismo reparto que ya hace el tablero, y por eso el tablero sobrevive a una caída de GLPI—.
+
+**179.4 — Abre en densidad compacta.** En la agenda de un plan hay una sola fila y el detalle importa; en la del equipo hay una fila por persona y **lo que importa es cuántas se ven de un vistazo**. El control de zoom sigue en pantalla: lo único que cambia es el valor inicial, con una prop nueva y un valor por defecto que deja intacta la agenda de un plan.
+
+**179.5 — Un bloque corto deja de recortarse a media línea.** La densidad compacta mide 26 px por hora, así que un tramo de una hora no tiene sitio para tres líneas. En vez de recortar el texto, **se deja de pintar lo que no cabe**: el identificador siempre cabe, la hora desde 34 px y las etiquetas desde 54. **El resto sigue en el `title` del bloque**, así que ningún dato desaparece: cambia de sitio.
+
+### 180. El trabajo pendiente se deriva, no se calcula
+
+**180.1 — La capa pendiente es un cruce en el navegador, no una regla nueva.** `lib/pending.ts` **no decide qué es planificable**: esa clasificación la publica el backend en `declarationStatus`. La capa solo la lee y la cruza con los tramos del plan vigente. **Ninguna regla del motor se reescribe**, y la única lógica nueva es una pertenencia a conjunto.
+
+**180.2 — Dos motivos, porque se arreglan en sitios distintos.** `SIN_DECLARACION` —el ticket está asignado y todavía no se puede planificar— se arregla declarando; `FUERA_DEL_PLAN` —ya se puede planificar y no entró— se arregla replanificando. **Un solo motivo con texto al lado habría escondido esa diferencia.**
+
+**180.3 — El estado de declaración manda sobre la pertenencia.** Un ticket que un plan viejo todavía contiene y que hoy no se puede planificar **sigue pendiente**: lo que hay en el plan es un resto, no trabajo colocado. Si ganara la pertenencia, la capa diría que todo está en su sitio justo cuando no lo está.
+
+**180.4 — Una declaración que falta deja la lista vacía, no llena de pendientes.** No es lo mismo «no hay nada pendiente» que «no se pudo leer». Por eso el panel **distingue mirando el estado de la consulta** y escribe «sin leer» con su cuenta, en vez de afirmar un cero que nadie comprobó.
+
+**180.5 — Solo cuenta trabajo activo, con la guarda que ya existía.** Un ticket resuelto o cerrado no es trabajo pendiente. La exclusión la decide `isActive`, que ya tenía el resto de la aplicación; **la capa no estrena una segunda noción de «activo»**.
+
+**180.6 — Cada pendiente enlaza a su declaración, con la vuelta puesta.** El enlace lleva técnico, ticket y `volver`, construidos con `declarationPath()`. Es lo que convierte «abre Declaración y busca la fila a ojo» en un clic, y **la ruta de vuelta es la propia raíz**, no una pantalla intermedia.
+
+### 181. La rejilla sirve a dos vistas y se arregla donde fallaba
+
+**181.1 — La agrupación por fecha era por rejilla y no por fila.** `TimelineGrid` ya era multi-recurso, pero agrupaba los tramos por fecha **sin mirar de quién era cada uno**: con una sola fila no se notaba; con varias, cada fila pintaba los tramos de todas. **El arreglo va en el componente compartido**, no en la pantalla nueva —el defecto era de la rejilla, no del consumidor—. Está fijado por una prueba de la pantalla que afirma que cada fila contiene sus tramos y no los del otro.
+
+**181.2 — Dos props nuevas, con valores por defecto que no cambian a nadie.** `names` traduce identificador a nombre y `pending` avisa cuántos pendientes tiene cada fila; ambas opcionales. La agenda de un plan, que no las pasa, **se sigue comportando exactamente igual**, y sus pruebas no se editaron.
+
+**181.3 — Los nombres tienen dos fuentes, y manda la del equipo.** El plan se guarda con lo que se tecleó al pedirlo, que puede ser el login o el número de GLPI; el padrón nombra por las dos claves. **La declaración sirve de relleno** para quien el padrón no conoce —un plan guardado puede mencionar a alguien que no está en el grupo— y el padrón **sobrescribe** cuando las dos saben el nombre, porque el padrón es la lectura del equipo.
+
+**181.4 — Un pendiente no se puede pintar en una columna, y no se finge.** No tiene tramo ni hora, así que no tiene sitio en la rejilla. La fila lleva su aviso —**dónde** hay pendientes— y el panel los pone uno a uno —**cuáles**—. Inventarles una columna o una duración sería inventar planificación.
+
+## Las pruebas
+
+**El frontend pasa de 253 pruebas en 16 archivos a 272 en 18.** Las **19 nuevas** están en tres ficheros: **10 en `TeamTimeline.test.tsx`**, **9 en `lib/pending.test.ts`** —de las cuales una cubre la agrupación por técnico—. **Ninguna prueba existente se borró ni se debilitó**; `Planning.test.tsx`, `Calendar.test.tsx` y las de la rejilla siguen pasando.
+
+**El backend pasa de 380 a 386** —**6 pruebas nuevas en `TeamTimelineEndpointsTest.java`, 0 fallos**—. Fijan lo que la pantalla necesita del contrato: que la ventana es **una sola y común** aunque los planes tengan rangos distintos, que cada técnico trae su capacidad, que **un plan incompleto no tumba al resto**, que **sin planes hay `200` y ventana nula**, que los recursos salen ordenados y que **la ruta literal no la captura el patrón con variable**.
+
+**Lo que las pruebas de la pantalla afirman, una a una**: que abre **sin pedir el identificador de ningún plan** —el servidor lanza ante una dirección que no sirva, y además se comprueba sobre las llamadas que no hubo ninguna `/api/planning/<uuid>/timeline`—; que nombra con el padrón y **rellena con la declaración** a quien el padrón no conoce; que abre compacta; que **la capacidad existe también en días sin trabajo**, porque la ventana es del equipo y no del plan de cada uno; que **cada fila pinta solo sus tramos**; que enseña **los dos motivos** del pendiente y **a quién le toca**; que cada pendiente enlaza a su declaración con técnico, ticket y vuelta; que **la agenda sobrevive a una declaración caída**; que sin planes dice eso y no un error; y que un fallo de la agenda se enseña tal cual.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 188 | **Una consulta de declaración por persona** | **Medio en equipos grandes** | El panel hace N lecturas —una por fila—, igual que ya hace el tablero. React Query las cachea y las comparte por técnico; si el equipo crece, el camino es un endpoint por lote, que hoy no existe y no se inventó para un problema que aún no se mide |
+| 189 | **Un plan vigente incompleto desaparece de la agenda** | **Bajo, y es visible** | Se salta en vez de tumbar la pantalla, y `plans[]` publica qué planes entraron, así que la composición se puede auditar. **La alternativa —fallar entera— haría que la pantalla de entrada dependiera de la fila peor mantenida** |
+| 190 | **La ventana depende de qué planes existan** | **Bajo, y es la definición del producto** | La ventana es el rango de lo planificado: un día que ningún plan tocó no tiene columna. Es lo que hace comparables las filas, y también lo que impide enseñar el futuro sin plan. La pantalla no afirma que fuera de la ventana no haya trabajo |
+| 191 | **Los nombres pueden faltar** | **Bajo: se degrada al identificador** | Si ni el padrón ni la declaración conocen a alguien —GLPI caído y plan heredado—, la fila enseña su identificador en vez de una fila vacía. **Nunca se inventa un nombre** |
+| 192 | **Planes de demostración antiguos siguen en la base** | **Bajo: ensucian la lectura, no la corrompen** | No existe endpoint para borrar un plan y **borrar datos de usuario sin pedirlo está fuera de lo que esta fase puede hacer**. Se declaran como limitación y se dejan; en una instalación limpia no aparecen |
+| 193 | **La precedencia de rutas es de Spring y no de esta fase** | **Bajo: fijada por prueba** | Si cambiara, la prueba falla antes que la aplicación. Se eligió probar la suposición en vez de anotarla |
+
+## Limitaciones
+
+1. **La capa pendiente depende de GLPI.** Sin respuesta, el panel dice «sin leer» y no puede afirmar que todo esté en su sitio; la agenda sigue funcionando.
+2. **Un pendiente no tiene sitio en la rejilla.** Se marca en su fila y se lista aparte, porque no tiene tramo ni hora que pintar.
+3. **La ventana es la de lo planificado.** Días fuera de todo plan no aparecen; la vista no promete el futuro.
+4. **No hay capacidad por persona editable, ni arrastrar, ni edición directa**: fuera de alcance por brief, y el motor no se toca.
+5. **Una persona sin plan vigente aparece solo si algún plan del equipo la menciona.** La fuente es «planes vigentes», no el padrón entero.
+6. **Los planes de demostración anteriores dejan filas con identificadores desconocidos** y declaraciones `404`; el panel las cuenta como «sin leer» en vez de esconderlas.
+7. **El cruce de pendientes es por el plan vigente, no por historial**: un ticket que quedó fuera de un plan viejo y entró en el vigente no es pendiente, y viceversa.
+
+## La verificación explícita: ¿se puede empezar el día desde aquí?
+
+**Sí, y se comprobó con la aplicación corriendo.** Al abrir `http://localhost:5173/` sin escribir nada, la traza de red muestra **solo** `GET /api/planning/team/timeline`, `GET /api/team` y una declaración por persona: **ninguna llamada a `/api/planning/{planId}/timeline`**. La pantalla enseña **ocho personas planificadas y 17 tramos**, cada una con su nombre, su capacidad día a día —disponible, ocupado y libre, con el día saturado en rojo—, sus tramos y, debajo, **el trabajo pendiente con sus dos motivos y el enlace a la declaración de cada ticket**.
+
+**Las capturas**, en la raíz y sin versionar, como las de las fases anteriores: `f40-01-timeline-equipo-entrada.png` —la entrada, con varias personas y la capacidad visible—, `f40-01b-timeline-equipo-full.png` —la rejilla completa—, `f40-02-trabajo-pendiente.png` —el panel con «sin declaración» y «fuera del plan»— y `f40-03-pendiente-a-declaracion.png` —el enlace resolviendo a la declaración del ticket con la vuelta puesta—.
+
+**Lo que esta fase no tocó**, dicho explícitamente: ni el algoritmo de planificación, ni las reglas de capacidad, ni los desplazamientos, ni las renegociaciones, ni el modelo de capacidad, ni la integración con GLPI. **El motor no tiene una línea de diferencia**; el backend crece en **un endpoint de solo lectura y sus piezas**, y el frontend en **una pantalla, un hook y una capa de cruce**, más los dos arreglos de la rejilla que la vista multi-persona hizo visibles.
+
+# Fase 41 — El timeline deja de ser un mapa: la causa, el pendiente y la acción
+
+## Qué se hizo, en una frase
+
+La Fase 40 puso la agenda del equipo en la puerta, pero un tramo todavía solo decía **qué** estaba colocado y **cuándo**. Esta fase hace que el timeline diga también **por qué** —la causa que el plan auditó al mover un tramo y el trabajo que el motor no pudo ubicar, con el motivo que él mismo redactó—, **qué falta** —un tercer motivo de pendiente, «sin acuerdo», con una precedencia declarada sobre los otros dos— y **qué hacer** —declarar, renegociar, abrir el plan y compararlo desde el propio tramo—. No se reconstruyó nada: el motor, las reglas, las renegociaciones, los acuerdos y la persistencia se reutilizan tal cual. **`PlanningEngine` no tiene una línea de diferencia.**
+
+## El análisis obligatorio: qué le faltaba a un tramo para explicarse
+
+### 1. La trazabilidad existía y solo se podía leer por otra puerta
+
+El plan ya guarda un `RescheduleEvent` por cada pareja (incidente, requerimiento) que desplazó: fecha original, fecha nueva, regla aplicada, incidente, severidad copiada y motivo. Hasta esta fase, leerla exigía pedir `/api/renegociaciones` o el plan entero. **No faltaba el dato; faltaba el sitio.** Llevarlo junto al tramo es lo que permite que la rejilla diga «este bloque está aquí porque aquel incidente le quitó la jornada» sin una segunda llamada y **sin volver a deducirlo**: los dos extremos de fecha y la regla son los del evento guardado, y el texto sale de la misma traducción de regla que usa la simulación.
+
+### 2. El trabajo que no cupo no tenía sitio en ninguna pantalla
+
+El plan ya publica `conflicts` —lo que entró al motor y el motor dejó fuera—, con el motivo que redactó. La agenda del equipo no los publicaba: enseñaba **lo colocado**, y la capa pendiente enseñaba **lo que GLPI tiene asignado**, así que un requerimiento planificable que el motor no pudo ubicar no aparecía en ninguna de las dos. **Es un tercer conjunto, y se publica como tal**: la lista viaja con el identificador de la persona, del elemento, su tipo y el motivo, ordenada para que dos llamadas devuelvan lo mismo.
+
+### 3. La capa pendiente tenía dos motivos y le faltaba el que existe dentro del plan
+
+La Fase 40 dejó `SIN_DECLARACION` y `FUERA_DEL_PLAN`. Los dos describen trabajo que **no está** en la agenda. Pero hay un tercer caso que sí está y sigue pendiente: un requerimiento que el plan movió de fecha y que **todavía nadie acordó**. Se ve en la rejilla como un tramo desplazado y en la lista de renegociaciones como `PENDIENTE_DE_ACUERDO`, pero no aparecía en el panel de pendientes, que es el sitio donde se mira «qué queda por hacer». El motivo se renombró a `SIN_CAPACIDAD` —ya no describe solo «fuera del plan», describe por qué no entró— y nació `SIN_ACUERDO`.
+
+### 4. Las acciones ya existían; lo que no existía era el punto de partida
+
+`DeclarationForm`, el flujo de renegociación, el calendario de un plan y la comparación con el anterior **ya existían y ya tenían sus rutas**. Lo que faltaba era poder llegar a ellos **desde el sitio donde se ve el problema**: un tramo de la agenda. Esta fase no estrena formularios ni endpoints de escritura: estrena **enlaces construidos con las funciones que ya armaban direcciones** (`declarationPath`, `renegotiationPath`, `calendarPath`, `comparisonPath`) y una sola pieza nueva de lectura en el destino —que Renegociaciones siembre su selección con el ticket de la dirección—.
+
+### 5. El inventario de pantallas, y el cambio de responsabilidad
+
+El brief pide evaluar explícitamente cada pantalla y aplicar el cambio de responsabilidad. Esto es lo que se decidió, uno a uno:
+
+| Pantalla | Responsabilidad antes | Responsabilidad ahora |
+| --- | --- | --- |
+| **Timeline del equipo** (`/`) | No existía | **La respuesta completa.** Quién, en qué, cuánto libre, qué falta, por qué se movió y desde dónde se actúa |
+| **Recursos** (`/recursos`) | La vista consolidada del equipo | **Información auxiliar**: personas, carga y alertas. Su lectura ya no es la primera |
+| **Incidentes** (`/incidentes`) | El listado de incidentes y requerimientos | **La cola de trabajo**: qué está abierto y qué le falta a cada ticket |
+| **Estado del plan** (`/planificar/estado`) | La vista previa de la entrada del motor | **La capa de pendientes**: qué recibiría el motor si se generara el plan ahora. Más cerca del timeline que de la generación |
+| **Planificación** (`/planificar`) | La pantalla de generación | **El motor, a pedido**: cómo se genera el plan que el timeline muestra. Sigue siendo el sitio donde se escribe, y por eso no es la entrada |
+| **Calendario** (`/calendario/:planId`) | La agenda de un plan | **Un zoom de la misma agenda**: el mismo modo, un solo plan, día a día |
+| **Comparación** (`/calendario/comparar/:planId`) | Una vista del calendario | **Un modo del timeline**: se llega desde un tramo, no desde la lista de planes. La pantalla no cambió; cambió su puerta |
+| **Declaración** (`/declaraciones`) | El formulario de estimación y compromiso | **La acción de un pendiente**. Sigue siendo el mismo formulario |
+| **Renegociación** (`/renegociaciones`) | El registro de acuerdos | **La acción de un desplazamiento**. Acepta el ticket en la dirección y siembra su selección |
+| **Dashboard** (`/tablero`) | La pantalla de entrada | **La salud del sistema**: planes, carencias, alertas. Deja de ser la primera respuesta, sigue en el menú |
+| **Alertas** (`/alertas`) | El centro de alertas | Sin cambio: condiciones del conjunto, no de un tramo |
+
+**El cambio se hace con descripciones y con el punto de partida, no moviendo pantallas.** Ninguna ruta desapareció y ninguna pantalla se reescribió por este motivo: lo que cambió es **desde dónde se llega** y **qué se dice que es cada una** en el menú, que es lo que un gestor lee antes de decidir si entra.
+
+## Las decisiones
+
+### 182. La causa del desplazamiento viaja con el tramo, y no se vuelve a deducir
+
+**182.1 — El tramo lleva su auditoría, no una copia de ella.** `TimelineItem` gana `displacement` con fecha original, fecha nueva, regla aplicada, incidente, severidad y motivo. Los valores salen de la misma lectura que usa `/api/renegociaciones`; **el texto, de la misma función que traduce la regla en la simulación**. Reescribirlo en la vista habría sido la segunda versión de una explicación que ya tiene dueño.
+
+**182.2 — Cuando hay varios eventos, viaja el último.** Un requerimiento puede moverse más de una vez. El que explica la fecha que se está viendo es **el último guardado**, y el desempate está escrito: por instante y, si coinciden, por identificador. Enseñar el primero explicaría una fecha que ya no existe.
+
+**182.3 — La severidad es la de la foto y no la de GLPI de hoy.** El evento la copió cuando se movió el requerimiento. Un incidente reclasificado después **no puede reescribir por qué se movió algo el mes pasado**: el plan se lee como quedó.
+
+**182.4 — El tramo mudo sigue siendo mudo.** Un bloque que no se movió no lleva `displacement` inventado ni un «sin causa»: sencillamente no viaja. **La ausencia es el dato.**
+
+### 183. El trabajo que no cupo viaja con el motivo que redactó el motor
+
+**183.1 — Se compone de lo ya persistido.** La lectura del equipo recorre los planes vigentes y agrega sus `conflicts` con el identificador de su técnico. **No se recalcula nada**: el motor ya dijo qué no entraba y por qué.
+
+**183.2 — Solo lo que entró al motor.** La lista publica lo que el plan descartó, no lo que nunca recibió. Lo que no llegó a la entrada no está guardado en ninguna parte y no se infiere: **la respuesta no afirma lo que no puede sostener**. La limitación se declara en el contrato.
+
+**183.3 — Se ordena por persona y elemento.** Igual que los recursos, para que dos llamadas devuelvan la misma lista.
+
+### 184. Tres motivos de pendiente, y la precedencia es P1 > P2 > P3
+
+**184.1 — Un motivo por fila.** Un ticket puede estar en más de una situación a la vez —no se puede planificar *y* además no está en el plan— y la capa le asigna **uno solo**, porque una fila con dos rótulos no dice qué hacer primero.
+
+**184.2 — La precedencia es la del orden en que se arreglan.** `SIN_DECLARACION` primero: sin estimación o sin compromiso no hay nada que planificar, y hablar de capacidad sería hablar de un paso que todavía no se puede dar. `SIN_CAPACIDAD` después: se puede planificar y el plan vigente no lo colocó, así que lo que toca es replanificar. `SIN_ACUERDO` al final: está en el plan, colocado en otro día, y falta que alguien lo acepte.
+
+**184.3 — El orden es también el de la acción.** Cada motivo deja **una sola acción posible**: declarar, replanificar o acordar. Eso es lo que convierte el panel en una lista de trabajo y no en una lista de diagnósticos.
+
+**184.4 — El estado de declaración sigue mandando sobre la pertenencia.** Un ticket que un plan viejo todavía contiene y que hoy no se puede planificar **sigue pendiente**: lo que hay en el plan es un resto. Es la guarda de la Fase 40, conservada.
+
+**184.5 — Los acuerdos se indexan, no se deducen.** `pendingAgreements` recorre la lectura de renegociaciones y construye un conjunto de pares (técnico, elemento) con estado `PENDIENTE_DE_ACUERDO`. **No se decide aquí si el desplazamiento está cubierto**: eso ya lo calcula el backend. Si la lectura no llegó, el conjunto queda vacío y el panel lo dice con su cuenta de «sin leer», en vez de afirmar que todo está en su sitio.
+
+### 185. El tramo es un punto de partida, no un formulario
+
+**185.1 — El tramo se puede elegir, y se elige con el teclado.** Con `onSelect`, cada bloque se pinta como `<button>` y no como caja con un `onClick`: así llega con el tabulador y el lector de pantalla lo anuncia como lo que es. La agenda de un plan, que no pasa la prop, **sigue siendo la misma caja de antes**.
+
+**185.2 — El detalle trae la causa completa y no un resumen.** Identificador, tipo, estado, persona, horario, horas, compromiso, **fecha original, fecha nueva, regla aplicada, incidente causante y motivo**, y la fila de renegociación con su estado. El motivo completo está también en el `title` del bloque: **esconderlo porque no cabe no es lo mismo que no tenerlo**.
+
+**185.3 — Cuatro acciones, y cada una solo cuando tiene sentido.** Declarar lleva a la declaración con técnico, ticket y vuelta. Renegociar aparece **solo si el tramo se movió o tiene renegociación**: ofrecerlo para un bloque quieto sería ofrecer un formulario sin causa. Abrir detalle lleva al calendario del plan del que salió el tramo. Comparar lleva a la comparación con el plan anterior. **Ninguna acción estrena pantalla.**
+
+**185.4 — Renegociaciones siembra su selección con la dirección.** `?ticket=` abre la fila y el formulario del acuerdo. Es **el mismo formulario** que se usa desde su listado: no hay una segunda escritura ni una segunda validación.
+
+**185.5 — El modo de comparación se alcanza desde el tramo.** La pantalla de comparación no cambió. Lo que cambia es que ahora se llega desde una barra del timeline y no desde la lista de planes, que es lo que la convierte en **un modo del timeline**.
+
+**185.6 — La causa se pinta también dentro del bloque.** Cuando el tramo tiene altura suficiente, una línea monoespaciada dice `dd/mm → dd/mm · INCIDENTE`. Lo que no cabe se deja de pintar —el identificador siempre cabe, la hora desde los 34 px, la causa desde los 34, las etiquetas desde los 54— y **sigue en el `title`**. Ningún dato desaparece: cambia de sitio.
+
+### 186. La navegación cambia de responsabilidad, no de pantallas
+
+**186.1 — La entrada del menú no cambia; cambia lo que se dice de cada una.** Las descripciones de Recursos, Calendario, Incidentes, Estado del plan, Planificación y Renegociación se reescribieron para expresar su responsabilidad nueva. **Es la parte del cambio que un lector ve**, y por eso no se dejó implícita.
+
+**186.2 — Ninguna ruta desapareció.** El módulo auxiliar sigue siendo auxiliar, no se retiró. Lo que se decidió es **qué contesta primero** y **para qué se entra** en cada pantalla; retirar una pantalla que alguien usa sería otra decisión y no se tomó.
+
+**186.3 — Lo que sigue dependiendo de pantallas auxiliares se declara.** Generar un plan, declarar con un formulario completo, registrar un acuerdo y comparar dos planes **siguen viviendo fuera del timeline**. El timeline los enlaza, no los absorbe. Absorber la escritura habría reconstruido flujos que funcionan, que es exactamente lo que el brief prohíbe.
+
+## Las pruebas
+
+**El backend pasa de 386 a 388** —**2 pruebas nuevas en `TeamTimelineEndpointsTest.java`, 0 fallos**— y el resto de la suite queda en **388 pruebas, 32 archivos, 0 fallos, 3 omitidas**. Las dos nuevas fijan lo que la pantalla necesita del contrato:
+
+- **El tramo desplazado trae su causa auditada.** Un incidente de 6 h sin severidad y un requerimiento de 4 h producen un desplazamiento determinista —de `2026-10-05` a `2026-10-06`, regla `UMBRAL_INCIDENTE_EXCEDIDO`, incidente `EQ4-INC`—. La prueba **compara el motivo del tramo con el que publica `/api/renegotiations`**: si la traducción de la regla se separara en dos sitios, falla. También afirma que el incidente causante **no viaja con desplazamiento propio**.
+- **El trabajo que no cupo viaja con su motivo.** Un plan con un solo día y una jornada de 6 h no ubica un requerimiento de 16 h: no hay tramo, y el conflicto aparece como `REQUERIMIENTO` con el texto exacto **«Sin capacidad en el horizonte de 1 dias»**, que es el que redactó el motor.
+
+**El frontend pasa de 272 pruebas en 18 archivos a 281 en los mismos 18.** Las **9 nuevas** se reparten así: **5 en `TeamTimeline.test.tsx`** y **4 en `lib/pending.test.ts`**. **Ninguna prueba existente se borró ni se debilitó**; la suite completa pasa con `tsc --noEmit` sin errores y `oxlint` limpio.
+
+**Lo que las pruebas de la pantalla afirman, una a una**: que abrir un tramo desplazado enseña **su causa y sus tres acciones**; que un tramo quieto **no ofrece renegociar**; que un desplazamiento `PENDIENTE_DE_ACUERDO` aparece como **«sin acuerdo»** y enlaza a la renegociación con el ticket; que **el trabajo que no cupo se enseña con su motivo**; y que **el propio bloque dice de qué fecha a qué fecha se movió**.
+
+**Lo que las pruebas de la capa afirman**: que `SIN_ACUERDO` se asigna solo a lo que está en el plan esperando fecha; que la **precedencia se respeta** —un ticket sin declaración y fuera del plan cuenta como sin declaración, uno planificable y fuera como sin capacidad, uno dentro y pendiente de acuerdo como sin acuerdo—; que `pendingAgreements` **indexa solo los pendientes de acuerdo por técnico** y deja fuera los ya acordados; y que **una lectura que no llegó no inventa acuerdos**.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 194 | **El desplazamiento que viaja es el último evento guardado** | **Bajo: es el que explica la fecha visible** | Si un requerimiento se movió varias veces, el tramo enseña el último. El historial completo sigue en `/api/renegotiations` y en el plan; la vista no lo reemplaza, lo resume. **Riesgo 177 sigue vivo**: una generación posterior puede no volver a auditar un par ya reclamado, y entonces el tramo pierde su causa |
+| 195 | **Un `SIN_CAPACIDAD` puede significar dos cosas** | **Medio, y se declara** | La capa usa ese motivo tanto para lo que el motor descartó por capacidad como para lo planificable que **nunca llegó a la entrada**. La lista de conflictos distingue el primer caso con su texto; el segundo no se puede distinguir desde la respuesta, porque no está guardado. **La pantalla no afirma más de lo que la respuesta sostiene** |
+| 196 | **La consulta de renegociaciones es global** | **Bajo: una llamada por equipo** | La capa pide `/api/renegotiations` una vez y la indexa por técnico. Si el volumen creciera, el camino es un filtro por persona; hoy no se mide y no se inventó |
+| 197 | **Renegociaciones lee `?ticket=` una sola vez** | **Bajo: es el mismo patrón que Declaración** | La selección se siembra al montar y a partir de ahí manda el estado local. Cambiar la dirección sin desmontar no reabre el formulario, igual que en Declaración, y es lo que evita que cerrar un formulario lo reabra |
+| 198 | **Cuatro acciones en una barra pueden ser demasiadas** | **Bajo: tres de ellas dependen del tramo** | Renegociar solo aparece si el tramo se movió; las otras tres siempre tienen sentido. Si el uso mostrara ruido, el camino es agruparlas, no separar pantallas |
+
+## Limitaciones
+
+1. **El trabajo que nunca entró al motor no se distingue del que no cupo.** Comparten el rótulo «sin capacidad»; solo el primero viaja en la lista de conflictos con el texto del motor.
+2. **El desplazamiento se resume en el último evento.** El historial completo no viaja con el tramo.
+3. **Las pantallas auxiliares siguen siendo necesarias** para generar un plan, declarar, registrar un acuerdo y comparar. El timeline las enlaza; no las absorbe.
+4. **La causa solo se ve en tramos con altura suficiente.** En la densidad compacta, un tramo de una hora no tiene sitio; el `title` y el panel de detalle la conservan.
+5. **Los técnicos que existen en un plan y no en el padrón** no tienen declaración que leer: el panel los cuenta como «sin leer» y el enlace de declarar abre la pantalla sin listado.
+6. **Un plan incompleto desaparece de la agenda y sus conflictos con él**, igual que en la Fase 40.
+
+## La verificación explícita: las doce comprobaciones del brief
+
+**Se hicieron con la aplicación corriendo —backend en `:8080`, frontend en `:5173`—, con navegador real, sobre los planes ya guardados. No se ejecutó el motor y no se escribió ningún plan.**
+
+| # | Qué se comprobó | Resultado |
+|---|---|---|
+| 1 | Abre directamente en el Timeline | `http://localhost:5173/` sirve **«Timeline del equipo»** sin pasar por el tablero |
+| 2 | Varias personas visibles | **8 personas planificadas**, una fila por persona |
+| 3 | Capacidad visible | Cada celda dice **«8 disp · 3 ocup · 5 libre»** del día, con la barra de ocupación |
+| 4 | Trabajo planificado visible | **17 tramos** posicionados por hora, con identificador y estado |
+| 5 | Trabajo pendiente visible | **«24 en el equipo · 3 sin leer»**, agrupado por persona y con su motivo |
+| 6 | Incidentes visibles | `INC-13-1`, `INC-ABRA-1`, `INC-F38E` con su icono y su severidad |
+| 7 | Requerimientos visibles | `67923`, `67677`, `REQ-F38E-1..3` en sus franjas |
+| 8 | Desplazamientos visibles | Línea en el bloque **«19/10 → 20/10 · INC-ABRA-1»** y estado *Desplazado* en ámbar |
+| 9 | Renegociaciones visibles | El detalle trae la fila **«Pendiente de acuerdo»**; el panel marca **«Sin acuerdo»** |
+| 10 | Declaración desde el timeline | «Declarar» lleva a `/declaraciones?tecnico=AbraAran&ticket=67923&volver=%2F`, con el técnico elegido y **el formulario del ticket abierto** |
+| 11 | Renegociación desde el timeline | «Renegociar» lleva a `/renegociaciones?ticket=67923`, con la fila seleccionada, el formulario abierto y **la causa que publica el plan** debajo |
+| 12 | Sin necesidad de `planId` | La traza solo pide `GET /api/planning/team/timeline`, `GET /api/team`, `GET /api/renegotiations` y una declaración por persona: **ninguna `/api/planning/{planId}/timeline`** |
+
+**Además, la acción «Comparar» se verificó desde un tramo**: abre `/calendario/comparar/946a743f…` con **«Qué cambió entre dos planes»** para los dos planes de ese técnico. Es la comparación de siempre, alcanzada desde la agenda.
+
+**Las capturas**, en la raíz y sin versionar, como las de las fases anteriores: `f40-01-timeline-equipo.png` —la entrada completa—, `f40-03-pendiente-y-sin-hueco.png` —el panel de pendientes con los **tres** motivos y el trabajo que no cupo con su motivo—, `f40-04-detalle-tramo.png` —el detalle con la causa, las cuatro acciones y el acuerdo pendiente—, `f40-05-declarar-desde-timeline.png` —la declaración sembrada desde el tramo— y `f40-06-renegociar-desde-timeline.png` —la renegociación sembrada, con el desplazamiento que publica el plan—.
+
+**Lo que esta fase no tocó**, dicho explícitamente: ni el algoritmo de planificación, ni las reglas de capacidad, ni los desplazamientos, ni las renegociaciones, ni el modelo de capacidad, ni la integración con GLPI, ni la persistencia. **El motor no tiene una línea de diferencia**; el backend crece en **dos campos de solo lectura** —`displacement` en el tramo y `conflicts` en la respuesta del equipo— y el frontend en **la acción del tramo, el tercer motivo y la descripción de cada módulo**.
+
+# Fase 42 — El timeline consolida: una lectura para el equipo y un pendiente con causa
+
+## Qué se hizo, en una frase
+
+Esta fase no estrena pantalla ni rediseña el timeline: **quita el patrón de N lecturas por técnico** —la capa de pendientes pasa a leer las declaraciones del equipo en **una sola petición**— y **convierte «Pendiente» en una causa explícita**, separando las cuatro preguntas que el gestor tenía mezcladas: **falta información**, **fuera por capacidad**, **sin acuerdo** y **no incluido en la última planificación**. El panel dice el reparto en una línea y cada fila dice qué falta y dónde se arregla. **`PlanningEngine`, las reglas de capacidad, los desplazamientos, las renegociaciones y la integración con GLPI no tienen una línea de diferencia.**
+
+## El análisis obligatorio: de dónde salían las N lecturas y por qué «Pendiente» no era una respuesta
+
+### 1. La capa de pendientes necesitaba a todo el equipo y lo pedía persona a persona
+
+`useTeamDeclarations` existía y era correcto para su caso —nombrar el padrón sin atar `/metrics` a GLPI—, pero el timeline lo heredó sin revisar el coste: **una petición por persona con plan vigente**, y cada una son dos lecturas contra GLPI (resolver el usuario y traer sus tickets activos). Con ocho personas con plan son ocho peticiones y dieciséis viajes a GLPI; con cuarenta y dos, ochenta y cuatro. **La pregunta del brief —«¿cuántas llamadas hace el Timeline?»— tenía una respuesta que crecía con el equipo**, y eso contradice que el timeline sea la pantalla de entrada.
+
+### 2. «Fuera del plan» escondía dos hechos distintos
+
+La Fase 41 tenía `SIN_CAPACIDAD` para todo lo planificable que no estaba en el plan. Ahí caben dos cosas que no son la misma:
+
+- **El motor lo recibió y no cupo.** Queda registrado en `conflicts` con el motivo que él mismo redactó. Es una decisión de capacidad.
+- **El motor nunca lo recibió.** El plan guarda lo que recibió y lo que rechazó, **no lo que nunca le dieron**. Ese trabajo es planificable hoy y no aparece en ninguna parte del plan.
+
+Llamar «capacidad» a las dos era afirmar sobre la segunda algo que nadie comprobó. **La lista de conflictos es la única evidencia de la primera**, y es la que separa P2 de P4.
+
+### 3. La clasificación adecuada ya existía; lo que faltaba era no perderla
+
+El backend publica **cinco estados de declaración** desde la Fase 23 —`PLANIFICABLE`, `SIN_ESTIMACION`, `SIN_COMPROMISO`, `SIN_DECLARACION`, `NO_TRADUCIBLE`—, pero la capa de pendientes los colapsaba en un solo motivo. «Sin estimación» y «sin compromiso» se arreglan con datos distintos y por personas distintas; colapsarlos era perder información que la respuesta ya traía. **La causa de información es el `declarationStatus` del backend, sin traducción.**
+
+### 4. El resumen es la respuesta a la pregunta del gestor
+
+Un total de «24 pendientes» no permite decidir: no dice si el problema se resuelve pidiendo datos o generando otro plan. **El reparto por grupo sí**, y por eso el panel lo publica antes que el detalle.
+
+### 5. Lo que no se tocó, y por qué
+
+El brief prohíbe expresamente tocar el motor, las reglas de capacidad, los desplazamientos, las renegociaciones y la integración con GLPI. Esta fase **solo lee**: un endpoint nuevo de solo lectura en el backend y una capa de derivación en el frontend. **No hay entidad, tabla, columna, migración ni dependencia nueva.** La planificación, los acuerdos y el catálogo del equipo siguen siendo los mismos contratos de las fases anteriores.
+
+## Los contratos, uno a uno
+
+### Backend
+
+**`GET /api/planning-metadata/declarations?developerId=a&developerId=b`** — nuevo.
+
+```json
+{
+  "developers": [ /* un DeveloperDeclarationsResponse exacto por persona legible */ ],
+  "unknownDevelopers": ["login-que-glpi-no-conoce"]
+}
+```
+
+- **Es el mismo cuerpo por persona, repetido en un viaje.** No hay un contrato paralelo: cada elemento de `developers` es exactamente lo que devuelve `GET /declarations/{developerId}`, con su `declarationStatus` calculado por el mismo validador.
+- **`unknownDevelopers` no es un error.** Es el `404` de la ruta por persona trasladado al lote. Se publica aparte para poder decir *cuántas* personas no se leyeron sin inventarles una respuesta vacía.
+- **Un fallo real —GLPI caído— sí tumba la respuesta.** La distinción es deliberada: un identificador que no existe es esperable y no invalida a los demás; una caída del sistema de origen significa que **no se sabe nada de nadie**, y devolver medio lote lo disfrazaría.
+- **La ruta por persona sigue viva y con su `404`.** La usa la pantalla de declaración y el padrón entero.
+
+**`GET /api/planning/team/timeline`** — sin cambios. Ya publicaba `conflicts`, que es lo que esta fase empieza a usar.
+
+### Frontend
+
+- `TeamDeclarationsResponse`, `fetchTeamDeclarations`, `useTeamDeclarationsBatch`, `teamDeclarationsQueryKey` y `declarationsByDeveloper`.
+- `lib/pending.ts` gana `PendingCause`, `PENDING_GROUP`, `PENDING_GROUP_LABEL`, `PENDING_CAUSE_LABEL`, `PENDING_CAUSE_DETAIL`, `conflictsByDeveloper` y `pendingGroups`; `pendingOf` y `teamPending` reciben la lista de conflictos.
+- `TeamTimeline` pide el lote una vez, indexa por identificador, pasa los conflictos a la capa y pinta el resumen y la causa de cada fila.
+
+## Las decisiones
+
+### 187. Las declaraciones del equipo se leen en una sola petición
+
+**187.1 — El lote reutiliza el contrato por persona y no lo rediseña.** Cada elemento de `developers` es el `DeveloperDeclarationsResponse` que ya existía, con la misma clasificación y los mismos descartes. El lote cambia **cómo** se pide, no **qué** se dice: si mañana el validador distingue un estado nuevo, llega igual por las dos rutas y la vista lo enseña sin tocar nada.
+
+**187.2 — Un identificador desconocido no tumba la respuesta.** El `404` esperable se captura por persona y viaja en `unknownDevelopers`. La persona desaparece de `developers` —no recibe una declaración vacía inventada— y la pantalla lo cuenta como «sin leer». Un fallo que no es «no existe» (GLPI inalcanzable, error de lectura) **sí** tumba el lote entero: no saber nada de nadie no es lo mismo que no conocer a uno.
+
+**187.3 — El parámetro se repite, no se une con comas.** Los identificadores son datos de fuera —un login de GLPI— y una coma dentro de uno no tiene por qué partir la lista. `?developerId=a&developerId=b` se codifica con `URLSearchParams`, que además evita que un carácter raro rompa la dirección.
+
+**187.4 — El lote se pide una vez y sin repetidos.** El servicio deduplica conservando el orden (`LinkedHashSet`) y descarta los vacíos. Una persona pedida dos veces se lee una vez, y su `findUser` se llama una vez; hay una prueba que lo cuenta.
+
+**187.5 — La ruta literal no la captura el patrón de un elemento.** Spring resuelve `/declarations` antes que `/{workItemId}` por precedencia de patrones, pero eso es una propiedad del framework y no del contrato: **una prueba la fija** pidiendo el lote y comprobando que no responde `PLANNING_METADATA_NOT_FOUND` con `workItemId: "declarations"`.
+
+**187.6 — El techo está medido y declarado, y por eso el lote es del timeline.** El servicio lee **en serie** contra GLPI —dos viajes por persona—. Para las ocho personas con plan vigente del timeline es correcto y suficiente; para el padrón entero —41 personas, 18 operativas— serían decenas de sesiones encadenadas. **Las pantallas del padrón entero (Recursos, Incidentes, Estado del plan) siguen usando la lectura por persona en paralelo**, que es más rápida allí; el lote existe donde el número de personas es pequeño y el de peticiones importa. El techo se declara en el javadoc del servicio y del hook.
+
+### 188. Un pendiente tiene una causa, no un rótulo
+
+**188.1 — La causa es el hecho guardado y el grupo se deriva de ella.** `PendingItem` guarda **una** causa —siete valores— y el grupo P1–P4 se obtiene con una única tabla (`PENDING_GROUP`). No se guardan los dos: así no pueden discrepar, y añadir un estado nuevo al backend es añadir una fila a la tabla, no dos.
+
+**188.2 — Las cuatro causas de información son el `declarationStatus` del backend.** `SIN_ESTIMACION`, `SIN_COMPROMISO`, `SIN_DECLARACION` y `NO_TRADUCIBLE` se copian tal cual. La vista **no decide** si un ticket es planificable mirando sus campos: esa regla tiene dueño desde la Fase 23 y aquí solo se transporta.
+
+**188.3 — P2 y P4 se separan con la lista de conflictos del plan.** Si un ticket planificable no tiene tramo:
+
+- está en `conflicts` → **`FUERA_POR_CAPACIDAD`** (P2): el motor lo conoció y lo dejó fuera;
+- no está → **`NO_INCLUIDO_EN_EL_PLAN`** (P4): el plan nunca lo recibió.
+
+Es la única forma de distinguirlos: el plan guarda lo que rechazó, no lo que nunca le dieron.
+
+**188.4 — P4 no afirma cuándo apareció el trabajo.** El nombre dice «no incluido en el último plan» y el detalle dice «no estaba cuando se calculó», **nada más**. No se puede demostrar si el ticket se creó después de generar el plan o si existía y no se envió; afirmar lo primero sería inventar una cronología que el plan no guarda. Lo que sí se sostiene es que **hoy es planificable y el plan vigente no lo tiene**.
+
+**188.5 — La precedencia se lee de arriba abajo y es la del orden en que se arregla.** (1) **Sin información**: si no se puede planificar, está pendiente aunque su identificador aparezca en un plan viejo —lo que hay ahí es un resto—. (2) **Fuera del plan**: si es planificable y no tiene tramo, se distingue P2 de P4. (3) **Sin acuerdo**: solo se comprueba **dentro** del plan; si algo no está colocado, no hay fecha que acordar. Una fila, un rótulo, una acción.
+
+**188.6 — La lectura que no llegó no es una lista vacía de pendientes.** `pendingOf` devuelve `[]` cuando no hay declaración, y el panel **no** lo interpreta como «no hay nada»: lo cuenta en «sin leer», que sale de `unknownDevelopers` o del error de la consulta. No saber y no tener son estados distintos y la pantalla los dice distintos.
+
+### 189. El resumen contesta «información o capacidad» antes que el detalle
+
+**189.1 — Los cuatro grupos salen siempre, con cero si no tienen nada.** La forma del resumen no cambia con los datos: un grupo que desaparece se confunde con uno que no se midió.
+
+**189.2 — Cada causa lleva su acción y su enlace, y la acción es distinta.** Las cuatro de información enlazan a la declaración del ticket con técnico, ticket y vuelta. `SIN_ACUERDO` enlaza a la renegociación sembrada con el ticket. `NO_INCLUIDO_EN_EL_PLAN` enlaza a **Planificación**, porque no se arregla declarando lo que ya está declarado: se arregla generando el plan otra vez. La distinción se ve también en el `title` de cada fila, que explica qué falta antes de abrirla.
+
+**189.3 — El detalle de cada causa es una frase y no un párrafo.** Está en `PENDING_CAUSE_DETAIL`, se enseña en el `title` de la fila y responde a «¿qué hago?» sin abrir otra pantalla. Es el único texto que la vista redacta; los hechos —estado, conflicto, acuerdo— vienen decididos del backend o del plan.
+
+### 190. La observabilidad de cada indicador
+
+La fase pide declarar de dónde sale cada número que la pantalla enseña. Esta es la tabla, y es además el contrato de lectura de la pantalla:
+
+| Indicador | Qué lectura lo produce | Qué significa | Qué decisión habilita |
+|---|---|---|---|
+| **Tramo de la rejilla** | `items[]` de `GET /api/planning/team/timeline` | Lo que el motor colocó, con su fecha y su persona | «¿En qué está esta persona?» |
+| **Celda de capacidad** (`8 disp · 3 ocup · 5 libre`) | `resources[].capacity` del mismo timeline | Capacidad del día contra el calendario congelado del plan | «¿Puede asumir más trabajo?» |
+| **Aviso `N pendientes` de la fila** | `pendingCounts` sobre la capa de pendientes | Cuántos tickets activos de esa persona están fuera del plan | «¿A quién miro primero?» |
+| **Resumen `Falta información: N · Fuera por capacidad: N · Sin acuerdo: N · No incluido en el último plan: N`** | `pendingGroups` | El reparto del trabajo pendiente en las cuatro preguntas | «¿Es información o capacidad?» |
+| **Causa de cada fila** | `declarationStatus` (P1), `conflicts` (P2), `renegotiations` (P3), ausencia de ambos (P4) | Por qué ese ticket no está colocado | «¿Declaro, replanifico o acuerdo?» |
+| **Panel `Trabajo que no cupo en el plan`** | `conflicts[]` del timeline, con el texto del motor | Lo que el motor recibió y no ubicó, y su motivo | «¿Qué dejó fuera el plan y por qué?» |
+| **`N sin leer`** | `unknownDevelopers` del lote, o el error de la consulta | Cuántas personas se preguntaron y GLPI no resolvió | «¿Qué no sé de mi equipo?» |
+| **`Todo el trabajo asignado está dentro del plan vigente`** | Capa vacía **y** `sin leer` en cero | No hay nada fuera del plan, y se pudo comprobar | «El equipo está cubierto» |
+
+**Ningún indicador se deriva de un dato que no esté en una de esas lecturas.** La pantalla no compara `estimatedHours` con `committedDate`, no recalcula capacidad y no decide qué es planificable: lee, indexa y reparte.
+
+## Las pruebas
+
+**El backend pasa de 388 a 392** —**4 pruebas nuevas en `PlanningDeclarationEndpointsTest.java`, 0 fallos**— y el resto de la suite queda en **392 pruebas, 32 archivos, 0 fallos, 3 omitidas**. Las cuatro nuevas fijan el lote:
+
+- **Varias personas en una sola lectura, en el orden pedido**, con los estados intactos y un `findUser` por persona. Es la afirmación central: el lote no relee a nadie.
+- **Un desconocido no tumba el lote**: `200` con los demás y el identificador en `unknownDevelopers`.
+- **Una persona pedida dos veces se lee una vez**: el `LinkedHashSet` se comprueba por el número de llamadas a GLPI.
+- **La ruta del lote no la captura el patrón de un elemento**: responde `developers` y `unknownDevelopers`, no `PLANNING_METADATA_NOT_FOUND` con `workItemId: "declarations"`.
+
+**El frontend pasa de 281 pruebas en 18 archivos a 289 en los mismos 18.** Las nuevas se reparten entre `TeamTimeline.test.tsx` —de 15 a **19**— y `lib/pending.test.ts` —de 12 a **17**—. **Ninguna prueba existente se borró ni se debilitó**; `tsc --noEmit` sin errores y `oxlint` limpio.
+
+**Lo que afirman las pruebas de la pantalla**: que la capa pide **una sola lectura de declaraciones** y que lleva exactamente las personas de la rejilla; que el resumen reparte información y P4 sin abrir filas; que **un conflicto cambia la causa de P4 a P2** con el mismo dato de declaración; que el equipo sin pendientes dice «Todo el trabajo asignado está dentro del plan vigente»; que **un desplazamiento con acuerdo deja de ser pendiente**; y que cada causa enlaza a donde se arregla —declaración, renegociación o planificación—.
+
+**Lo que afirman las pruebas de la capa**: que cada estado de información conserva su causa; que **la lista de conflictos separa P2 de P4**; que la precedencia es información > plan > acuerdo; que `conflictsByDeveloper` indexa por persona y ticket; y que `pendingGroups` devuelve **los cuatro grupos aunque no haya pendientes**.
+
+## Riesgos identificados
+
+| # | Riesgo | Impacto | Mitigación |
+|---|---|---|---|
+| 199 | **El lote lee en serie contra GLPI** | **Bajo en el timeline, y declarado** | Dos viajes por persona. Con ocho personas es correcto; con el padrón entero serían decenas de sesiones encadenadas, y por eso Recursos, Incidentes y Estado del plan siguen con la lectura por persona en paralelo. Si el timeline creciera a todo el padrón, el camino es un lote con lectura concurrente o un caché compartido, no usarlo tal cual |
+| 200 | **P2 necesita que la declaración de esa persona se pueda leer** | **Medio, y se declara** | Un conflicto solo entra a la capa pendiente si el ticket aparece en la declaración de alguien legible. Si GLPI no conoce al técnico —o está caído—, el conflicto **sigue visible en el panel «Trabajo que no cupo»**, con su motivo; lo que se pierde es su clasificación como fila de pendiente |
+| 201 | **P4 no distingue «apareció después» de «nunca se envió»** | **Bajo: la frase no afirma la cronología** | El plan no guarda el conjunto que quedó fuera de su entrada, así que no se puede demostrar el momento. La causa dice lo que se sostiene: es planificable, el motor no lo rechazó y el plan vigente no lo tiene |
+| 202 | **El mismo ticket puede verse en dos paneles** | **Bajo: contestan preguntas distintas** | Un P2 declarado aparece en la capa de pendientes («qué hago») y en el panel de conflictos («por qué el motor lo rechazó»). No se deduplica entre paneles porque el segundo enseña el texto del motor y el primero la acción; el resumen cuenta cada ticket una vez |
+| 203 | **El resumen cuenta pendientes, no personas** | **Bajo: es la unidad del trabajo** | «Sin declaración: 22» son 22 tickets, no 22 personas; el detalle agrupado por persona permite ver el reparto. Si el negocio prefiere personas, es un agregado nuevo, no una corrección del actual |
+
+## Limitaciones
+
+1. **El lote es del timeline.** Las pantallas del padrón entero siguen con una lectura por persona en paralelo; el techo de GLPI es el que decide, y se declara en el contrato.
+2. **P2 solo se clasifica con una declaración legible.** El conflicto de una persona que GLPI no conoce queda en el panel de conflictos, no en la capa de pendientes.
+3. **P4 no dice cuándo apareció el trabajo.** El plan no guarda la entrada que excluyó, solo lo que recibió y lo que rechazó.
+4. **«Equipo operativo completo» no se pudo demostrar en vivo.** Los datos actuales tienen 22 pendientes de información, así que el estado vacío de la capa se verifica en la prueba de la pantalla, no con datos reales.
+5. **Un pendiente se arregla en otra pantalla.** El timeline enlaza a Declaración, Renegociación o Planificación; no absorbe la escritura, igual que en la Fase 41.
+6. **El `N sin leer` es de personas, no de tickets.** Una persona sin leer puede esconder varios pendientes; el número no se puede desglosar sin leerla.
+
+## La verificación explícita: los siete escenarios del brief
+
+**Se hicieron con la aplicación corriendo —backend en `:8080`, frontend en `:5173`—, sobre los planes ya guardados. No se ejecutó el motor. El único dato escrito para la demostración fue una declaración temporal —`66560` con estimación y sin compromiso—, retirada al terminar.**
+
+| # | Escenario | Cómo se comprobó | Resultado |
+|---|---|---|---|
+| 1 | Trabajo sin estimación | Datos reales: `66913` de `AbraAran`, `SIN_ESTIMACION` | Fila **«Sin estimación»**, grupo **Falta información**, enlace a la declaración de `AbraAran` con el ticket |
+| 2 | Trabajo sin compromiso | Dato sembrado y revertido: `66560` con 4 h y sin fecha | Fila **«Sin compromiso»** al recargar, grupo **Falta información**, mismo tipo de enlace |
+| 3 | Fuera por capacidad | Datos reales del plan: `REQ-F38E-4` y `REQ-F39-4` en `conflicts` | Panel **«Trabajo que no cupo en el plan»** con el motivo del motor: *«Sin capacidad en el horizonte de 10 dias»*. En la capa de pendientes, el mismo hecho se clasifica `FUERA_POR_CAPACIDAD` cuando la declaración es legible (probado en las pruebas) |
+| 4 | No incluido en la última generación | Datos reales: `66222` de `AbraAran`, 3 h y compromiso, sin tramo y sin conflicto | Fila **«No incluido en el último plan»**, grupo **P4**, enlace a **Planificación** |
+| 5 | Renegociado | Datos reales: `REQ-F38E-1` de `demo-f38` en `ACORDADA`; `67923` en `PENDIENTE_DE_ACUERDO` | El acordado **no aparece** como pendiente; el pendiente aparece como **«Sin acuerdo»** y enlaza a `/renegociaciones?ticket=67923` |
+| 6 | Desplazado | Datos reales: `67923` con desplazamiento y sin acuerdo | Es el mismo caso 5 visto desde el plan: tramo desplazado en ámbar y fila **«Sin acuerdo»** en la capa |
+| 7 | Equipo operativo completo | Prueba de la pantalla con todas las declaraciones dentro del plan | **«Todo el trabajo asignado está dentro del plan vigente»**, sin resumen. No se pudo demostrar en vivo porque los datos actuales tienen 22 pendientes de información |
+
+**La traza de red de la pantalla, medida con el navegador abierto**:
+
+| Llamada | Antes | Ahora |
+|---|---|---|
+| `GET /api/planning/team/timeline` | 1 | 1 |
+| `GET /api/team` | 1 | 1 |
+| `GET /api/renegotiations` | 1 | 1 |
+| `GET /api/planning-metadata/declarations/{id}` | **una por persona (8)** | — |
+| `GET /api/planning-metadata/declarations?developerId=…` | — | **1** |
+| **Total** | **11 para 8 personas** (crece con el equipo) | **4, constante** |
+
+**Las capturas**, en la raíz y sin versionar, como las de las fases anteriores: `f42-01-timeline-resumen-pendientes.png` —la pantalla completa—, `f42-02-pendientes-por-causa.png` —las filas con sus seis causas y el resumen—, `f42-03-sin-acuerdo-lleva-a-renegociacion.png` —la navegación de P3—, `f42-04-no-incluido-lleva-a-planificacion.png` —la de P4—, `f42-05-sin-estimacion-lleva-a-declaracion.png` —la de P1—, `f42-06-capacidad-motivo-del-motor.png` —el panel de capacidad con el motivo del motor— y `f42-07-resumen-informacion-vs-capacidad.png` —el resumen por grupos—.
+
+**Lo que esta fase no tocó**, dicho explícitamente: ni el algoritmo de planificación, ni las reglas de capacidad, ni los desplazamientos, ni las renegociaciones, ni el modelo de capacidad, ni la integración con GLPI, ni la persistencia. **El motor no tiene una línea de diferencia**; el backend crece en **un endpoint de solo lectura y un DTO**, y el frontend en **una lectura por lote, una tabla de causas y un resumen**.
+
+## Las dos preguntas del brief, contestadas
+
+**¿Cuántas llamadas hace ahora el Timeline?** **Cuatro, constantes**: la agenda del equipo, el padrón, las renegociaciones y **una** lectura de declaraciones para todo el equipo. Antes eran tres más una por persona con plan vigente —once con las ocho personas actuales—, y crecía con el equipo. La lectura por lote tiene un techo declarado y no se usa en las pantallas del padrón entero.
+
+**¿Puede un gestor distinguir inequívocamente entre falta de información y falta de capacidad?** **Sí, para el trabajo que la capa puede clasificar**, y con un matiz declarado:
+
+- **Falta información** es un grupo propio (P1) con cuatro causas explícitas —sin estimación, sin compromiso, sin declaración, no traducible—, cada una con su frase y su enlace a la declaración.
+- **Falta capacidad** es un grupo propio (P2) y, además, el panel de conflictos publica el **motivo literal del motor** para cada ticket que rechazó.
+- **No incluido en el plan** (P4) aparece separado de capacidad: es trabajo que el motor nunca vio, no trabajo que no cupo. Antes de esta fase, los dos se llamaban igual.
+- **Sin acuerdo** (P3) es el único pendiente que está dentro del plan.
+
+El matiz: **un conflicto de una persona cuya declaración GLPI no resuelve** no puede clasificarse como fila de pendiente —no hay a quién atribuirle el ticket—, pero **sigue visible en el panel de conflictos con el motivo del motor**. El gestor ve el hecho; lo que no ve es su causa dentro de la lista agrupada por persona.
+
+# Fase 43 — Validación del Timeline con datos reales
+
+## Qué se hizo, en una frase
+
+Esta fase **no cambia el producto**: audita, con evidencia y sin suposiciones, qué parte del Timeline que se ve hoy nace de GLPI y qué parte es un artefacto de demostración, y responde si el flujo real —GLPI entrega los tickets, alguien declara, el motor planifica, el Timeline pinta— puede operar ya. **No se borró ni se modificó ningún dato. `PlanningEngine`, las reglas de capacidad, los desplazamientos, las renegociaciones, la integración con GLPI y la persistencia no tienen una línea de diferencia.**
+
+## 1. El inventario de planes, medido en la base
+
+`plan_snapshot` tiene **21 filas** y **8 identificadores de técnico**. Dos clases, separadas por el identificador y no por una bandera: **12 planes de cinco identidades reales** y **9 planes de tres identificadores de demostración**.
+
+| Tipo | Identificador | Planes | Primer plan | Último plan | Tramos | Conflictos | Desplazamientos |
+|---|---|---:|---|---|---:|---:|---:|
+| Real | `13` | 2 | 2026-10-13 | 2026-10-19 | 2 | 0 | 0 |
+| Real | `160` | 4 | 2026-10-16 | 2026-10-19 | 0 | 0 | 0 |
+| Real | `17` | 2 | 2026-10-16 | 2026-10-19 | 1 | 0 | 0 |
+| Real | `296` | 2 | 2026-10-13 | 2026-10-16 | 0 | 0 | 0 |
+| Real | `AbraAran` | 2 | 2026-10-16 | 2026-10-19 | 3 | 0 | 1 |
+| Demo | `demo-f38` | 5 | 2026-10-16 12:35 | 2026-10-16 12:38 | 15 | 4 | 7 |
+| Demo | `demo-f39` | 2 | 2026-10-16 14:54 | 2026-10-16 14:54 | 6 | 2 | 0 |
+| Demo | `demo-f39b` | 2 | 2026-10-16 14:56 | 2026-10-16 14:56 | 8 | 0 | 3 |
+
+Los tramos de esta tabla cuentan **todos los planes** de cada identidad, no solo el vigente. Los identificadores de demostración son exactamente tres y no hay ningún otro que se les parezca: la consulta sobre `developer_id` devuelve `demo-f38`, `demo-f39` y `demo-f39b`, y nada más con prefijo `demo`, `test` o `e2e`.
+
+**De dónde salió cada plan.** `planning_input.source` lo dice sin ambigüedad: `GLPI` cuando el plan se calculó con la extracción real —con fecha y versión del adaptador— y `HTTP` cuando la entrada llegó escrita en el cuerpo de `POST /api/planning`. **Los cinco planes `GLPI` de identidades reales están vacíos**: cero incidentes, cero requerimientos, cero tramos. Los tres planes vigentes con tramos de personas reales son `HTTP`, es decir, alimentados a mano. Ese es el hecho central de esta auditoría.
+
+| Plan vigente | Fuente | Incidentes de entrada | Requerimientos de entrada | Tramos |
+|---|---|---:|---:|---:|
+| `13` | HTTP | 1 (`INC-13-1`, sintético) | 0 | 2 |
+| `160` | HTTP | 0 | 0 | 0 |
+| `17` | HTTP | 0 | 1 (`67677`, real) | 1 |
+| `296` | GLPI | 0 | 0 | 0 |
+| `AbraAran` | HTTP | 1 (`INC-ABRA-1`, sintético) | 1 (`67923`, real) | 3 |
+| `demo-f38` | HTTP | 1 (`INC-F38E`) | 5 (`REQ-F38E-*`) | 4 |
+| `demo-f39` | HTTP | 0 | 4 (`REQ-F39-*`) | 3 |
+| `demo-f39b` | HTTP | 1 (`INC-F39B`) | 4 (`REQ-F39B-*`) | 4 |
+
+## 2. Dónde está guardado cada dato de demostración
+
+**Los planes demo no son filas sueltas: arrastran hijos en siete tablas.** Ninguna de esas tablas declara clave foránea —la consulta a `pg_constraint` no devuelve ninguna restricción `FOREIGN KEY` en `public`—, así que borrar un plan no borra nada más y cada hijo quedaría huérfano.
+
+| Tabla | Filas demo | Cómo se identifica |
+|---|---:|---|
+| `plan_snapshot` | 9 | `developer_id like 'demo-%'` |
+| `planning_input` | 9 | `plan_id` de esos planes |
+| `planning_input_incident` | 6 | `plan_id` |
+| `planning_input_requirement` | 33 | `plan_id` |
+| `work_block` | 29 | `plan_id` |
+| `work_allocation` | 29 | `plan_id` |
+| `planning_conflict` | 6 | `plan_id`; los seis son demo, con el motivo literal *«Sin capacidad en el horizonte de 10 dias»* |
+| `reschedule_event` | 10 | `plan_id` |
+| `reschedule_claim` | 10 | `incident_id`/`requirement_id` con prefijo `INC-F38*`, `REQ-F38*`, `REQ-F39B*` |
+| `renegotiation` | 2 | `work_item_id` `REQ-F38B-1` y `REQ-F38E-1`; **no cuelgan de un plan**, se identifican solo por el ticket |
+| `renegotiation_history` | 2 | las dos filas anteriores, actor `verificacion-fase-38` |
+
+Además hay **artefactos de prueba más antiguos, sin plan**: `reschedule_claim` guarda los pares `INC-1`/`REQ-1` y `INC-E2E-1`/`REQ-E2E-1` del 2026-10-05. No aparecen en ninguna pantalla y no pertenecen a ningún plan vivo.
+
+**Metadatos escritos por actores de demostración sobre tickets reales.** Esto no vive en `plan_snapshot` y por eso no se arregla borrando planes:
+
+| Ticket real | Actor | Valores actuales | Estado |
+|---|---|---|---|
+| `66222` | `Demostracion Fase 40` | 3 h, compromiso 2026-10-23 | **Vigente**; el ticket es real, la declaración la hizo la demostración |
+| `66913` | `verificacion-fase-37` | solo compromiso 2026-10-23 | Vigente y parcial (`SIN_ESTIMACION` en GLPI) |
+| `66560` | `Demostracion Fase 42` | estimación y compromiso en nulo | **Revertido**; el historial conserva las dos escrituras |
+| `67501` | `dev-ana` / `gestor-luis` | 8 h y fecha `2020-01-01`, luego estimación en nulo | Residuo de una prueba; el ticket es real |
+| `67923` | `Abraham` | 4 h, compromiso 2026-10-17 | Declaración real de la persona |
+| `68440` | `Jose Luis Garces` | 6 h, compromiso 2026-10-15 | Declaración real de la persona |
+
+## 3. Qué pantallas consumen los datos demo
+
+| Pantalla | Ruta | Datos | ¿Muestra los demo? |
+|---|---|---|---|
+| Timeline del equipo | `/` | `team/timeline` + padrón + renegociaciones + declaraciones por lote | **Sí**: tres filas y once tramos demo; además los incidentes sintéticos sobre personas reales |
+| Tablero | `/tablero` | `planning/metrics` (bloque `current`) | **Sí**: capacidad, planes vigentes y desplazamientos incluyen a los tres |
+| Alertas | `/alertas` | `planning/alerts` | **Sí**, derivadas de las mismas métricas |
+| Renegociaciones | `/renegociaciones` | `renegotiations` | **Sí**: 3 de las 4 filas vigentes son demo (`REQ-F38E-1` acordada, `REQ-F38E-2` y `REQ-F38E-3` pendientes) |
+| Calendario y comparación | `/calendario/:planId` | timeline del plan + planes del técnico | **Sí**, alcanzables desde una fila demo del Timeline |
+| Recursos | `/recursos` | métricas + padrón + alertas + renegociaciones | **Sí** en las métricas; el padrón no los conoce |
+| Incidentes | `/incidentes` | padrón + declaraciones por persona | **No**: GLPI no conoce los identificadores demo |
+| Declaraciones | `/declaraciones` | padrón + declaración por técnico | **No**, por el mismo motivo |
+| Estado de entrada | `/planificar/estado` | padrón + declaraciones | **No** |
+| Planificar | `/planificar` | `POST from-glpi` | **No**: el endpoint real rechaza un identificador que GLPI no tiene |
+
+La prueba en vivo de que GLPI no los conoce es la respuesta del lote: `unknownDevelopers` es exactamente `["demo-f38", "demo-f39", "demo-f39b"]`, y el resto de la respuesta se sirve igual.
+
+## 4. El inventario de datos reales
+
+El padrón que sirve `GET /api/team` —grupo **Desarrollo N2** de GLPI, con subgrupos— tiene **42 personas**, de las cuales **18 son operativas**. La lectura de declaraciones del equipo operativo entero devuelve **86 tickets activos** y **ningún identificador desconocido**:
+
+| Estado de declaración | Tickets | Qué significa |
+|---|---:|---|
+| `PLANIFICABLE` | **3** | `67923` y `66222` de `AbraAran`; `68440` de `JoseGarc` |
+| `SIN_DECLARACION` | **80** | Hay ticket, pero nadie dijo cuánto dura ni para cuándo |
+| `SIN_ESTIMACION` | **3** | Hay compromiso, falta la estimación derivada de la declaración |
+
+**Ningún incidente real es planificable hoy.** Los nueve incidentes activos del equipo están en `SIN_DECLARACION`. Los tres elementos planificables son requerimientos.
+
+**Personas reales con plan vigente: cinco identidades.** Cuatro pertenecen al equipo operativo —`AbraAran` (Abraham Arana Aldana), `160` (Francisco Javier Zuluaga A., `FranZulu`), `17` (Nilson Cortes, `NilsCort`) y `296` (Jose Alejandro Diaz Urrego, `JoseDiaz`)— y una, `13` (Juan Carlos Villamizar Villamizar), es un usuario real de GLPI que no está en el grupo del padrón. **Las otras catorce personas operativas no tienen ningún plan.**
+
+**Planes reales vacíos y por qué.** `160` y `296` tienen plan vigente sin un solo tramo. La razón está en la entrada: sus tickets activos están todos en `SIN_DECLARACION` (`160` tiene tres requerimientos, `296` ninguno), y la capa anticorrupción descarta lo que no tiene estimación y compromiso. No es un fallo del motor ni de la persistencia: es la respuesta correcta a «nadie declaró horas ni fecha».
+
+## 5. Qué alimenta hoy cada pieza del Timeline
+
+| Pieza | Fuente real | Estado actual |
+|---|---|---|
+| **Filas** | `plan_snapshot` del plan vigente de cada técnico + nombres del padrón y de la declaración | 8 filas: 5 personas reales y 3 identificadores demo |
+| **Tramos** | `work_block` del plan vigente | 17 tramos: **3 referencian tickets reales** (`67677` de Nilson, `67923` dos veces de AbraAran), **3 son incidentes sintéticos sobre personas reales** (`INC-13-1`, `INC-ABRA-1`) y **11 son de personas demo** |
+| **Pendientes** | declaraciones por lote + plan + acuerdos + conflictos | Personas reales: 86 tickets, 3 planificables. Los demo no aportan pendientes: su declaración no se puede leer y salen como «sin leer» |
+| **Desplazamientos** | `reschedule_event` del plan vigente | Uno visible, `67923` de AbraAran, y su causa es `INC-ABRA-1`, **un incidente que GLPI no tiene**. Los otros diez eventos vivos son demo. **Cero desplazamientos nacidos de un incidente real** |
+| **Renegociaciones** | `renegotiation` + planes vigentes | 4 filas: 1 real (`67923`, pendiente sin acuerdo) y 3 demo; las dos acordadas del histórico son demo |
+| **Declaración** | `planning_metadata` | 8 filas; 2 son declaraciones reales de la persona (`67923`, `68440`), 2 son demo sobre tickets reales (`66222`, `66913`), 2 son parciales, 2 están vacías |
+
+**El porcentaje que el brief pide, con el denominador dicho:**
+
+- **Por filas del Timeline: 5 de 8 son personas reales (62,5 %)**; dentro del equipo operativo, **4 de 18 (22,2 %)** tienen plan.
+- **Por tramos: 3 de 17 referencian un ticket real (17,6 %)**; 3 son sintéticos sobre personas reales (17,6 %) y **11 son demo (64,7 %)**.
+- **Por origen del plan: 0 de 17 tramos provienen de un plan generado desde GLPI.** Los cinco planes `GLPI` de personas reales están vacíos; los tres planes con tramos se alimentaron por HTTP.
+
+## Las decisiones
+
+### 204. Los datos de demostración se identifican por su origen y no se borran en esta fase
+
+La auditoría demuestra que son nueve planes con hijos en siete tablas y sin claves foráneas. **Borrarlos exige un orden manual y una copia previa**, y no aporta nada al objetivo del brief, que es saber si el producto opera con datos reales. Se quedan, se identifican y se documentan; la limpieza es una decisión posterior y explícita, no un efecto colateral de una validación.
+
+### 205. La validación operativa usa el flujo real, no planes sembrados por HTTP
+
+Un plan `HTTP` prueba que el motor y la pantalla funcionan, pero **no prueba que GLPI alimente el Timeline**. La demostración que cuenta es `POST /from-glpi` sobre una persona real, con sus tickets reales y sus declaraciones reales. Todo lo demás es una maqueta del flujo.
+
+### 206. Un ticket real con metadatos de demostración sigue siendo un ticket real
+
+`66222` y `66913` son tickets de GLPI; lo que la demostración escribió fue su declaración. **No se pueden borrar «los datos demo» sin distinguir la fila del ticket de la fila de la declaración**: borrar la segunda devuelve el ticket a «sin declaración», y borrar la primera no está en la mano de este sistema. La recomendación los trata aparte del resto.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 207 | **Dos nombres para la misma persona** | **Medio, y se ve hoy** | El plan de `160` está guardado con el número de GLPI y el padrón lo conoce como `FranZulu`. El Timeline los une por `glpiId` al pintar el nombre, pero `planning_metadata` y las declaraciones usan el login: una consulta por login no ve el plan guardado por número. **No se corrige en esta fase**: unificarlo exige migrar datos y elegir el identificador canónico, y el código ya lo declara como riesgo |
+| 208 | **Los planes `GLPI` reales están vacíos** | **Alto para la operación, bajo para el código** | No es un defecto: el 93 % de los tickets reales no tiene declaración. Mientras no se declare, el Timeline de una persona real será una fila sin trabajo. **La acción es operativa —declarar—, no de ingeniería** |
+| 209 | **Los incidentes reales no entran al plan** | **Alto para la promesa «incidente real»** | Los nueve incidentes activos están `SIN_DECLARACION`. Sin horas estimadas el motor no los recibe, y sin incidente no hay umbral, ni desplazamiento, ni renegociación. La pantalla lo dice con la causa correcta |
+| 210 | **La demo contamina personas reales** | **Medio, y es reversible por sustitución** | `INC-13-1` e `INC-ABRA-1` son incidentes inventados dentro de planes de personas reales. Generar el plan desde GLPI los sustituye en la vista —el plan viejo queda en el historial— sin borrar nada |
+| 211 | **El borrado de demo deja huérfanos** | **Medio si alguien lo intenta sin orden** | Sin claves foráneas, un `delete` sobre `plan_snapshot` deja bloques, entradas, conflictos, eventos y reclamaciones apuntando a un plan que ya no existe. Cualquier limpieza futura tiene que borrar por `plan_id` en orden inverso y copiar antes |
+
+## La recomendación de limpieza
+
+**No borrar ahora.** Los nueve planes demo son la única evidencia reproducible de las fases 38 y 39, no interfieren con la operación real —solo ensucian la lectura del Timeline— y su eliminación exige tocar once tablas sin red de integridad referencial. La vía barata y reversible es **separar por origen en la lectura** (excluir de la agenda los identificadores que GLPI no conoce) o archivar los planes demo en una tabla histórica; la vía destructiva, si algún día se decide, es:
+
+1. Copiar `plan_snapshot` y todas las tablas hijas filtrando `developer_id like 'demo-%'`.
+2. Borrar en orden inverso: `reschedule_claim`, `reschedule_event`, `planning_conflict`, `work_allocation`, `work_block`, `planning_input_incident`, `planning_input_requirement`, `planning_input`, `renegotiation_history`, `renegotiation`, `plan_snapshot`.
+3. Verificar después que ningún `plan_id` de las tablas hijas apunta a un plan inexistente.
+
+**Lo que no se debe borrar con el paquete demo**: `planning_metadata` de `66222`, `66913`, `67923`, `68440`. Las dos primeras son declaraciones de demostración sobre tickets reales y las otras dos son declaraciones reales; ninguna es un artefacto demo en el sentido del punto 2, y borrarlas cambia el estado operativo de un ticket real.
+
+## Fase 43 — Parte 2: la demostración operativa con datos reales
+
+La auditoría anterior contestó **qué hay hoy**. Esta parte contesta la otra pregunta: **si el flujo real funciona de punta a punta**. No se simula nada: se usó un ticket real de una persona real, la pantalla de declaración, la generación desde GLPI, el Timeline del equipo, el desplazamiento que calculó el motor y la renegociación que quedó pendiente.
+
+**Se hizo una sola escritura sobre datos de negocio**, y está documentada abajo. `PlanningEngine`, las reglas de capacidad, el cálculo de desplazamientos, la renegociación y la integración con GLPI **no tienen una línea de diferencia**. Todo lo demás que esta parte reporta es lectura.
+
+### 1. La escritura: una declaración real sobre un incidente real
+
+`68319` es el incidente *«RESPUESTA DADA A TRX CON TD EN EXTERIOR»*, asignado en GLPI a Abraham Arana Aldana (`AbraAran`, usuario GLPI `1179`), en estado `EN_ATENCION`, creado el 2026-10-14. Antes de la demostración no tenía declaración:
+
+| Lectura | Estimación | Compromiso | Quién | Estado de declaración |
+|---|---|---|---|---|
+| Antes | nulo | nulo | — | `SIN_DECLARACION` |
+| Después | **6 h** | **2026-10-19** | `validacion-fase-43` | `PLANIFICABLE` |
+
+Se hizo por `PUT /api/planning-metadata/68319` con `{"estimatedHours":6,"committedDate":"2026-10-19","changedBy":"validacion-fase-43"}`. **Es la única escritura de la fase.** La declaración anterior de la persona sobre `67923` (4 h, 2026-10-17) no se tocó, y el historial de `planning_metadata` conserva las dos escrituras de `68319` con su actor.
+
+**Es reversible**: volver a `PUT` con ambos campos en nulo devuelve el ticket a `SIN_DECLARACION` sin borrar su historia.
+
+### 2. El plan que produjo GLPI
+
+`POST /api/planning/from-glpi` con `{"developerId":"AbraAran"}` respondió `201`:
+
+| Dato | Valor |
+|---|---|
+| Plan | `59668f8c-4391-4612-8a92-d278cc7ad061` |
+| Calculado | 2026-10-19 17:03:49 UTC |
+| Recibidos por el motor | 3 |
+| Planificados | 2 |
+| Desplazados | 1 |
+| Fuera del horizonte / excluidos | 0 / 0 |
+| Conflictos | 0 |
+| Capacidad | 13 h ocupadas de 64 h disponibles; 51 h libres |
+
+Tramos, todos de tickets reales:
+
+| Elemento | Tipo | Fecha | Horas | Estado |
+|---|---|---|---:|---|
+| `68319` | Incidente | 2026-10-14 09:23–15:23 | 6 | Planificado · MEDIO |
+| `67923` | Requerimiento | 2026-10-19 09:00–13:00 | 4 | **Desplazado** desde 2026-10-17 |
+| `66222` | Requerimiento | 2026-10-23 09:00–12:00 | 3 | Planificado |
+
+### 3. El desplazamiento, con su causa
+
+| Campo | Valor |
+|---|---|
+| Requerimiento | `67923` · *«ASEGURAMIENTO APLICACIÓN PROPIA - SARAS»* |
+| Fecha original | sábado 2026-10-17 (su compromiso declarado por la persona) |
+| Fecha nueva | lunes 2026-10-19 |
+| Regla aplicada | `CAPACIDAD_COMPROMETIDA` |
+| Incidente causante | `68319` · severidad `MEDIO` |
+| Motivo | *«El incidente comprometio la capacidad de la jornada pactada.»* |
+| Acuerdo | **`PENDIENTE_DE_ACUERDO`** |
+
+El motor no produce el acuerdo: produce el desplazamiento y lo deja pendiente. La renegociación la registra una persona, y en esta demostración **no se registró acuerdo** para que se viera el estado real.
+
+### 4. El efecto colateral que hay que decir: la ventana se movió al pasado
+
+`68319` se planificó el **2026-10-14**, la fecha en que se reportó, no la fecha declarada (2026-10-19). Como la ventana del equipo se calcula con el mínimo y el máximo de los tramos:
+
+| Lectura | Ventana | Capacidad disponible | Ocupada | Libre | Desplazamientos |
+|---|---|---:|---:|---:|---:|
+| Antes | 2026-10-19 → 2026-10-21 | 104 h | 74 h | 30 h | 4 |
+| Después | **2026-10-14 → 2026-10-23** | 152 h | 77 h | 75 h | 4 |
+
+El Timeline ahora enseña dos días no laborables (17 y 18 de octubre) dentro de la ventana y **nueve días** en vez de tres. No es un defecto del motor —el incidente ocurrió el 14 y su carga pertenece a ese día—, pero sí es un comportamiento operativo que el brief pedía descubrir: **un incidente viejo arrastra el horizonte hacia atrás**. Queda como riesgo 214; no se corrigió porque la fase prohíbe tocar las reglas de planificación.
+
+### 5. Lo que cambió en las cifras
+
+La sección 5 de la parte 1 es la foto de las 11:56. Esta es la foto de las 17:03, después de la demostración:
+| Medida | Antes | Después | Por qué cambió |
+|---|---:|---:|---|
+| Tramos en el Timeline | 17 | **17** | El plan GLPI sustituyó el plan `HTTP` de AbraAran: salieron `INC-ABRA-1` (sintético) y un `67923` duplicado; entraron `68319` y `66222` |
+| Tramos que referencian un ticket real | 3 | **4** | `68319` y `66222` son tickets reales del plan GLPI |
+| Tramos sintéticos sobre personas reales | 3 | **2** | `INC-ABRA-1` desapareció de la vista |
+| Tramos de identidades demo | 11 | **11** | Sin cambios |
+| Tramos de un plan generado desde GLPI | **0** | **3** (17,6 %) | El plan `59668f8c…` |
+| Filas reales del Timeline | 5 de 8 | **5 de 8** | Sin cambios |
+| Planes generados (histórico) | 21 | **22** | El plan de la demostración |
+| Elementos planificables del equipo | 3 | **4** | `68319` pasó a `PLANIFICABLE` |
+| Incidentes reales planificables | **0** | **1** | `68319` |
+| Renegociaciones | 4 desplazadas / 3 pendientes / 1 acordada | **4 / 3 / 1** | El desplazamiento real sustituyó al sintético de AbraAran; el recuento no cambió |
+| Tickets activos del equipo operativo | 86 | **85** | `68672` de `JhonAteh` dejó de aparecer entre las dos lecturas: GLPI ya no lo devuelve como activo. **No lo tocó esta fase** |
+
+**El porcentaje que el brief pide, con el denominador dicho, en la foto de las 17:03:**
+
+- **Por filas: 5 de 8 son personas reales (62,5 %)**, y 4 de 18 operativas (22,2 %) tienen plan.
+- **Por tramos: 4 de 17 referencian un ticket real (23,5 %)**; 2 son sintéticos sobre personas reales (11,8 %) y **11 son demo (64,7 %)**.
+- **Por origen: 3 de 17 provienen de un plan generado desde GLPI (17,6 %)**; el resto de los tramos reales viene de planes sembrados por `HTTP`.
+- **Por carga: de los 85 tickets activos del equipo operativo, 4 son planificables (4,7 %)**; 78 no tienen declaración y 3 tienen compromiso sin estimación.
+
+### 6. La otra cifra que el brief pidió descubrir: qué lee la generación
+
+La respuesta de `POST /from-glpi` trae **295 descartes sobre 148 tickets distintos** de AbraAran: 148 por «no hay planificación declarada» y 147 por «no tiene fecha compromiso». Es decir, **la generación leyó 148 tickets del técnico y solo 9 están activos hoy**. La diferencia es el histórico: `ticketsOf` no filtra por estado a propósito —el plan necesita el historial para poder explicar sus descartes—, y lo que sigue siendo trabajo lo mide `activeTicketsOf`. No es un error, pero sí una carga de lectura que conviene tener medida; queda como riesgo 213.
+
+### 7. Evidencia Playwright con datos reales
+
+Capturas en la raíz del repositorio, sin versionar, tomadas contra la instancia real (`localhost:5173` → `localhost:8080` → GLPI):
+
+| Archivo | Qué demuestra |
+|---|---|
+| `f43-timeline-real.png` | El Timeline del equipo completo: 8 personas, 17 tramos, ventana 14–23 de octubre |
+| `f43-timeline-abraaran.png` | La fila de Abraham Arana Aldana: `68319` planificado el 14 y `67923` desplazado 17/10 → 19/10 |
+| `f43-desplazamiento-67923.png` | El panel del tramo: fecha original, fecha nueva, `CAPACIDAD_COMPROMETIDA`, incidente `68319` · MEDIO, motivo, «Pendiente de acuerdo» y enlaces a Declarar y Renegociar |
+| `f43-renegociacion-67923.png` | `/renegociaciones`: la fila real de `67923` junto a las demo, con «Registrar acuerdo» |
+| `f43-declaracion-68319.png` | La declaración real del incidente: 6 h, 2026-10-19, actor `validacion-fase-43`, y los 9 tickets de la persona con su estado |
+| `f43-plan-real-abraaran.png` | El calendario del plan `59668f8c…`: 3 recibidos, 2 planificados, 1 desplazado, 13 h de 64 h, y la tabla con la regla y el motivo |
+
+En ninguna captura los identificadores `demo-f38`, `demo-f39` o `demo-f39b` son el caso principal: la fila de AbraAran es la que se abre y la que se documenta.
+
+### 8. Las tres preguntas del brief, contestadas
+
+**¿Timeline First funciona ya con datos reales?**
+**Sí, de punta a punta.** Una persona real, un ticket real, una declaración real, un plan generado desde GLPI, tramos reales en el Timeline, un desplazamiento calculado por el motor con su causa y una renegociación pendiente de acuerdo. Las seis capturas lo demuestran. Lo que no funciona todavía es **la cobertura**: una sola persona tiene trabajo planificado, y 14 de las 18 operativas no tienen ningún plan porque nadie declaró. El producto funciona; la organización todavía no lo alimenta.
+
+**¿Qué porcentaje del Timeline mostrado hoy proviene de datos reales de GLPI?**
+Depende del denominador, y los tres importan:
+- **62,5 % de las filas** son personas reales (5 de 8); el resto son tres identificadores demo.
+- **23,5 % de los tramos** referencian un ticket real (4 de 17); 2 son incidentes inventados sobre personas reales y **64,7 % son demo**.
+- **17,6 % de los tramos** provienen además de un plan **generado desde GLPI** (3 de 17). El resto de lo real viene de planes escritos por `HTTP`.
+- **4,7 % del trabajo activo** del equipo operativo es planificable (4 de 85 tickets).
+
+**¿Es seguro eliminar los artefactos demo?**
+**Sí, técnicamente, si se hace en el orden del punto 9 y con copia previa; no, sin ese orden.** El producto no depende de ellos: no hay claves foráneas que los protejan ni código que los necesite, y GLPI no conoce sus identificadores. **Lo que sí hay que distinguir es qué se borra:**
+- **Se pueden borrar** los 9 planes de `demo-f38`, `demo-f39` y `demo-f39b` y sus hijos en las 11 tablas del inventario de la parte 1, en orden inverso.
+- **No se deben borrar** las declaraciones de `66222`, `66913`, `67923`, `68440` ni la nueva de `68319`: son filas de `planning_metadata` sobre tickets reales y borrarlas cambia el estado operativo de un ticket que GLPI sí tiene.
+- **La dependencia que sigue existiendo** no es de datos: es que borrar los planes demo **no limpia** lo que la demo escribió sobre tickets reales. Eso exige una decisión aparte, ticket por ticket.
+
+**Recomendación:** no borrar en esta fase. Separar por origen en la lectura —excluir de la agenda los identificadores que GLPI no conoce— resuelve el 64,7 % de los tramos demo con un cambio reversible y sin tocar once tablas. Si se decide borrar, la lista y el orden están en la parte 1; la copia previa no es opcional.
+
+## Las decisiones de la parte 2
+
+### 212. La demostración operativa se hizo con una escritura declarada y reversible, y con el flujo real
+
+La única escritura de la fase fue la declaración de `68319` (6 h, 2026-10-19, actor `validacion-fase-43`), necesaria porque GLPI no guarda estimación ni fecha. El plan se generó con `POST /from-glpi`, no sembrando un plan por `HTTP`. Todo lo demás —Timeline, desplazamiento, renegociación, métricas— se leyó. La declaración se puede retirar con un `PUT` de dos nulos y su historial queda auditado.
+
+## Riesgos de la parte 2
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 213 | **La generación lee el histórico completo del técnico** | **Medio: se nota al crecer** | AbraAran tiene 9 tickets activos y la generación leyó **148 distintos**, con 295 filas de descarte. Es deliberado —el plan necesita el historial para explicar sus descartes— y `activeTicketsOf` es la lectura de carga. No se tocó por la prohibición de esta fase. **Medir antes de cambiar**: si el volumen de una persona crece, la lectura deja de ser barata |
+| 214 | **Un incidente viejo arrastra la ventana al pasado** | **Medio: cambia lo que se ve** | `68319` se planificó en su fecha de reporte (2026-10-14) y no en su compromiso (2026-10-19), así que la ventana del equipo pasó de 19–21 a **14–23 de octubre**. La carga del incidente pertenece al día en que ocurrió, pero el horizonte de la pantalla se ensancha hacia atrás. No se corrigió: tocar reglas de planificación está fuera de esta fase. **Decidir si la ventana del equipo debe anclarse a hoy** |
+
+## Fase 44 — El Timeline se arma con el equipo, no con los planes
+
+### 0. Qué cambia, en una frase
+
+Hasta esta fase, **las filas del Timeline eran los planes**. Se abría un plan por cada técnico que tuviera uno guardado, y quien no tenía plan no existía para la pantalla. Esta fase cambia la fuente de verdad: **las filas son las personas del equipo operativo que publica `/api/team`**, y los planes solo rellenan la fila. Una persona sin plan aparece igual, con su estado dicho. **La fase no toca el motor, las reglas de capacidad, los desplazamientos, las renegociaciones, la integración con GLPI ni la persistencia: todo el cambio está en la lectura y en la pintura.**
+
+### 1. De dónde salen hoy las filas, con la evidencia
+
+La cadena completa, de la base a la pantalla:
+
+| Paso | Archivo | Qué hace |
+|---|---|---|
+| 1 | `backend/.../repository/PlanSnapshotRepository.java` | `findLatestPerDeveloper()` devuelve **el plan más reciente de cada `developer_id`**, ordenado por fecha de creación y desempatado por identificador (`TreeMap`) |
+| 2 | `backend/.../service/PlanningService.java:280-350` | `teamTimeline()` recorre exactamente esa lista (`:283`), acumula sus tramos y devuelve `new TeamTimelineResponse(from, to, teamResources(capacities), items, published, conflicts)` (`:350`) |
+| 3 | `backend/.../dto/TeamTimelineResponse.java:37` | Documenta `resources` como *«una entrada por desarrollador con tramos o con plan vigente»* |
+| 4 | `frontend/src/pages/TeamTimeline.tsx:140` | `developerIds = timeline.data.resources.map(r => r.developerId)` |
+| 5 | `frontend/src/components/timeline/TimelineGrid.tsx:409` | `resources.map(...)` — una fila por recurso |
+
+**En ningún paso de esa cadena se consulta el padrón para decidir quién es una fila.** `TeamTimelineResponse` ni siquiera tiene un campo de equipo; el nombre de cada persona se resuelve después, al pintar, con el padrón que la página pide por su cuenta (`useTeam()`), y solo para ponerle nombre a una fila que ya existía. El padrón llega tarde: puede nombrar una fila, no crearla ni quitarla.
+
+El contraste con la tabla de Recursos es el que demuestra que el patrón correcto ya existía en el proyecto: `frontend/src/lib/team.ts` implementa `toTeamMembers()`, que **hace las filas con el padrón y le cuelga el plan a cada persona**, y `inOperationalTeam()` decide el filtro. Esa ruta (`/recursos`) ya muestra personas sin plan; el Timeline, que es la pantalla de entrada, no. La causa no es de datos: es **una sola decisión de lectura**, tomada en `teamTimeline()` y consumida sin filtro en `TeamTimeline.tsx`.
+
+### 2. Las filas que hay hoy, medidas contra el padrón
+
+Lectura en vivo (`GET /api/team` y `GET /api/planning/team/timeline`, 2026-10-19 17:31 UTC) contra la instancia real:
+
+| Hecho | Valor |
+|---|---:|
+| Personas en el padrón (`/api/team`) | 42 |
+| Personas operativas (`operational: true`) | **18** |
+| Filas que devuelve el Timeline | **8** |
+| Personas operativas con fila | **4** |
+| Personas operativas sin fila | **14** |
+| Tramos publicados | 17 |
+| Tramos de personas operativas | **4** |
+
+Las ocho filas, una por una, con lo que dice el padrón de cada identificador:
+
+| Fila | ¿En el padrón? | ¿Operativa? | Persona | Plan vigente | Tramos |
+|---|---|---|---|---|---:|
+| `AbraAran` | Sí | **Sí** | Abraham Arana Aldana | `59668f8c…` (GLPI) | 3 |
+| `160` | Sí, como `FranZulu` con `glpiId: 160` | **Sí** | Francisco Javier Zuluaga A. | `5b76e2db…` (HTTP) | 0 |
+| `17` | Sí, como `NilsCort` con `glpiId: 17` | **Sí** | Nilson Cortes | `dc8fedaa…` (HTTP) | 1 |
+| `296` | Sí, como `JoseDiaz` con `glpiId: 296` | **Sí** | Jose Alejandro Diaz Urrego | `44a753a3…` (GLPI) | 0 |
+| `13` | **No** | No | Juan Carlos Villamizar Villamizar (usuario real de GLPI, fuera del grupo *Desarrollo N2*) | `330c0a52…` (HTTP) | 2 |
+| `demo-f38` | **No** | No | — | `946a743f…` (HTTP) | 4 |
+| `demo-f39` | **No** | No | — | `4fe75b16…` (HTTP) | 3 |
+| `demo-f39b` | **No** | No | — | `e64e57fe…` (HTTP) | 4 |
+
+**La trampa que esta tabla descubre, y que hay que decir antes de cambiar nada:** tres de las cuatro filas operativas **no se llaman como la persona**. El plan se guardó tecleando el número de GLPI (`160`, `17`, `296`), no el login (`FranZulu`, `NilsCort`, `JoseDiaz`), porque el sistema registra el plan con lo que se tecleó al pedirlo. Por eso, comparando la lista de filas con la lista de logins del padrón, **solo `AbraAran` coincide**: una comparación ingenua concluiría que 1 de 8 filas es del equipo y que faltan 17 personas. Cruzando por `glpiId` —lo que ya hace `namesOf` en la página y `keysOf` en `lib/team.ts`— la respuesta correcta es **4 filas operativas y 14 personas ausentes**. El cambio de esta fase tiene que cruzar por las dos claves o **se perdería el plan de tres personas al mismo tiempo que se arreglaba su fila**; es el riesgo 207 de la fase 43, ahora en el camino crítico.
+
+### 3. Las tres preguntas de la auditoría
+
+**1. ¿Qué personas aparecen hoy incorrectamente?**
+
+Cuatro filas no son del equipo operativo, y son dos clases distintas:
+
+- **Tres identificadores de demostración** (`demo-f38`, `demo-f39`, `demo-f39b`). No están en el padrón de 42 personas, GLPI no los conoce —`unknownDevelopers` de la lectura por lote devuelve exactamente esos tres— y no corresponden a nadie. Aportan **11 de los 17 tramos (64,7 %)** y **2 de los 2 conflictos**.
+- **Una persona real fuera del grupo** (`13`, Juan Carlos Villamizar Villamizar). Es un usuario real de GLPI, con dos tramos de un incidente sintético (`INC-13-1`), pero **no pertenece al grupo *Desarrollo N2*** que define el equipo: `/api/team` no la publica. Es el caso que el brief llama «persona fuera del equipo» y el que hay que tratar sin inventarle una fila.
+
+Además, y sin ser una fila incorrecta, hay **dos tramos sintéticos sobre una persona real que sí es del equipo**: `INC-13-1` no cuelga de una persona operativa, pero la fase 43 dejó documentado que los incidentes inventados han contaminado planes de personas reales (`INC-ABRA-1`, ya sustituido por el plan GLPI). No se tocan aquí: esta fase decide **quién tiene fila**, no qué plan tiene cada quien.
+
+**2. ¿Qué personas del equipo real faltan hoy?**
+
+Catorce personas operativas **no tienen ninguna fila** porque no tienen plan vigente:
+
+`AlejPine` (Alejandro Pineda Machado) · `AnalRuiz` (Analy Ruiz) · `AndrBelt` (Andres Steven Beltran Forero) · `AndrEsco` (Andres Felipe Escobar Arango) · `AndrGonza` (Andres Felipe Gonzalez Gonzalez) · `CesaGira` (Cesar Giraldo Muñoz) · `DaniLope` (Daniel Felipe Lopez Rendon) · `JhonAteh` (Jhonnatan Atehortua Alvarez) · `JoseGarc` (Jose Luis Garces Gonzalez) · `JoseGonz` (Jose Fabian Gonzalez Tavera) · `MaurMarm` (Maury Marmolejo Din) · `NicoSuar` (Nicolas Alejandro Suarez Florez) · `SilvCast` (Silvia Alejandra Castro Garcia) · `StelMedi` (Stella Patricia Medina O.)
+
+Las cinco personas que el brief nombra —Abraham Arana Aldana, Nilson Cortes, Stella Patricia Medina O., Silvia Alejandra Castro Garcia y Maury Marmolejo Din— están en esa lista salvo Abraham, que ya tiene plan: **cuatro de las cinco no aparecen hoy**, y las otras catorce comparten la misma causa. **Catorce de dieciocho operativas (77,8 %) son invisibles para la pantalla de entrada**, y el equipo se ve un 22,2 % de lo que es.
+
+**3. ¿Qué porcentaje del Timeline pertenece realmente al equipo operativo?**
+
+Depende del denominador, y conviene decir los tres:
+
+- **Por filas: 4 de 8 (50 %)** son personas operativas. La otra mitad son tres demo y una persona real fuera del grupo.
+- **Por tramos: 4 de 17 (23,5 %)** pertenecen a personas operativas. Trece de diecisiete (76,5 %) no.
+- **Por cobertura del equipo: 4 de 18 personas (22,2 %)** tienen fila. **Catorce no aparecen por no tener plan**, que es el defecto que esta fase corrige.
+
+**La conclusión de la auditoría, en una frase:** el Timeline no miente sobre las personas que muestra; **omite a las que no tienen plan y admite a cualquiera que tenga uno**. Las dos caras son el mismo defecto: la fila se decide por el plan y no por el equipo.
+
+## Fase 44 — Parte 2: el cambio, las pruebas y la pantalla
+
+La parte 1 midió el defecto y demostró su causa. Esta parte cuenta qué se cambió, qué pruebas lo sostienen y qué se vio en la instancia real. **No se tocó el backend**: ni `PlanningEngine`, ni las reglas de capacidad, ni el cálculo de desplazamientos, ni la renegociación, ni la integración con GLPI, ni la persistencia. La lectura del backend (`/api/planning/team/timeline`) sigue devolviendo exactamente lo mismo; **quien cambió es la pantalla, que ahora decide sus filas con el padrón.**
+
+### 1. El cambio, archivo por archivo
+
+| Archivo | Qué cambió | Por qué ahí |
+|---|---|---|
+| `frontend/src/lib/timeline.ts` | Nueva función pura `teamAgenda(people, timeline)` y el tipo `TeamAgenda`; ayudante `countOf` | Es el punto donde ya vivían las funciones puras de la vista (`timelineDays`, `itemsByDate`, `capacityOn`). El cruce padron↔plan es lógica de lectura, no de pintura, y así se puede probar sin montar la página |
+| `frontend/src/pages/TeamTimeline.tsx` | Las filas salen de `team.data.people` filtrado por `operational`; la ventana, los días y el eje salen de esa agenda; cabecera «N personas del equipo · M con plan»; nota de lo que quedó fuera; estado vacío nuevo; estado de error del padrón | Es la página que ya pedía las dos lecturas (`useTeam()` y el timeline). No hubo que crear una llamada nueva ni cambiar el contrato |
+| `frontend/src/components/timeline/TimelineGrid.tsx` | La fila sin capacidad pinta la etiqueta **«Sin plan»** en vez de «0 tramos» | La rejilla es genérica: recibe recursos y no sabe de dónde salen. Solo necesitaba dejar de afirmar «0 tramos» sobre una persona de quien no se leyó ningún plan |
+
+**La regla, escrita tal como quedó en el código:** el padrón decide **quién** tiene fila; el plan decide **qué** tiene la fila. Un plan no puede crear una persona, y una persona sin plan no puede desaparecer.
+
+**El cruce usa dos claves, y no es un detalle.** `teamAgenda` construye un mapa `developerId → developerId` y `String(glpiId) → developerId`, y canonicaliza con él tanto los recursos como los tramos y los conflictos. Sin la segunda clave, `FranZulu` (plan guardado como `160`), `NilsCort` (`17`) y `JoseDiaz` (`296`) habrían quedado con una fila vacía con su nombre **y** su trabajo fuera del equipo, contado en la nota de «sin fila». Con las dos claves, cada uno conserva su capacidad y sus tramos en su única fila. Es el riesgo 207 de la fase 43, esta vez en el camino crítico.
+
+### 2. Qué ve ahora la pantalla
+
+**Una persona operativa con plan** → su fila con la capacidad de su plan (los días, las horas disponibles/ocupadas/libres) y sus tramos, como antes.
+
+**Una persona operativa sin plan** → su fila, la etiqueta «Sin plan» bajo el nombre y las celdas con «—» en la franja de capacidad. No se le inventan horas ni tramos: la fila dice el hecho, que es que hoy no tiene nada planificado.
+
+**Una persona fuera del equipo operativo** → no tiene fila. Si tiene tramos o conflictos, **no se descartan en silencio**: una nota bajo la rejilla dice cuántos son y de qué identificadores. Eso deja ver, en la misma pantalla, el trabajo de un usuario real de GLPI que no está en el grupo (`13`) y el de los artefactos de demostración (`demo-f38`, `demo-f39`, `demo-f39b`) sin darles una fila que los convertiría en personas del equipo.
+
+**El equipo sin ningún plan** → no se pinta una rejilla vacía de columnas sin sentido: el estado vacío dice cuántas personas tiene el equipo y que ninguna tiene plan vigente, y explica qué aparecerá cuando haya uno. Es el caso que hoy no se distingue de «no hay datos».
+
+**El padrón no carga** → error explícito con reintento. Antes la página seguía con las filas del timeline; ahora no puede saber quién es el equipo, y decirlo es mejor que pintar una lista que no es el equipo.
+
+**La demostración ya no estira el calendario.** La ventana, los días y el eje horario se calculan sobre `agenda.resources`/`agenda.items`, no sobre la respuesta completa. Un plan demo fuera del equipo ya no añade columnas ni ensancha el rango: lo único que hace es sumar a la nota de lo que quedó fuera.
+
+### 3. Las pruebas añadidas
+
+Cinco casos nuevos en `frontend/src/pages/TeamTimeline.test.tsx`, uno por cada regla:
+
+| Prueba | Qué fija |
+|---|---|
+| «deja la fila de una persona operativa con plan con su capacidad y su trabajo» | Persona operativa con plan: 3 tramos, capacidad en los 3 días, sin etiqueta «Sin plan» |
+| «enseña a una persona operativa sin plan, marcada como tal, en vez de omitirla» | Persona operativa sin plan: fila presente y etiqueta «Sin plan» |
+| «no deja que un identificador de demostración cree una fila» | Un recurso/tramo `demo-*` no crea fila y se cuenta en la nota de lo que quedó fuera |
+| «enseña a todo el equipo operativo y solo a él, tenga plan o no» | 3 operativas (con plan, sin plan, con plan vacío) → 3 filas; una persona no operativa no tiene fila |
+| «no le inventa una fila a quien el padrón no conoce, y dice cuánto quedó fuera» | Reescrita: el padrón decide las filas; un tramo de un identificador desconocido no tiene fila y se anuncia |
+
+También se ajustaron las pruebas existentes que dependían de que el padrón fuera solo decorativo: el identificador de demostración de los fixtures ahora entra en la lectura por lote de declaraciones —se piden las declaraciones del padrón, no las de las filas— y el conteo de «sin leer» pasó de 2 a 3 porque hay una tercera persona operativa (`Diana Lopez`, `OVER_DEVELOPER_ID`).
+
+**Totales, re-ejecutados después del último cambio** (`countOf` compartido, importación en `TimelineGrid`):
+
+| Suite | Resultado |
+|---|---|
+| Frontend (`vitest run`) | **293 pruebas / 18 archivos, todas en verde** |
+| TypeScript (`tsc --noEmit`) | 0 errores |
+| Lint (`oxlint`) | limpio |
+| Backend (`mvn -q -o test`) | **392 pruebas, 0 fallos, 0 errores, 3 omitidas** |
+
+### 4. La validación en la instancia real (Playwright)
+
+Sobre el backend y el frontend locales, contra la base de desarrollo y GLPI real, el 2026-10-19:
+
+| Criterio del brief | Resultado medido |
+|---|---|
+| Las 18 personas operativas aparecen | **18 filas**, cabecera «18 personas del equipo · 4 con plan» |
+| Las personas sin plan aparecen | **14 filas con «Sin plan»**; entre ellas Stella Patricia Medina O., Silvia Alejandra Castro Garcia, Maury Marmolejo Din |
+| Las personas con plan siguen mostrando trabajo | **4 filas con capacidad y tramos**: `AbraAran` (3 tramos), `NilsCort` (1 tramo), `FranZulu` y `JoseDiaz` (plan vigente sin tramos) |
+| Los datos demo no crean filas adicionales | **0 filas** con identificador `demo-*` ni `13`; la nota dice «13 tramos y 2 conflictos de 13, demo-f38, demo-f39, demo-f39b» |
+| El Timeline sigue funcionando | 10 columnas de día (14–23 de octubre); el detalle de `67923` abre con su causa (CAPACIDAD_COMPROMETIDA, incidente 68319), su renegociación pendiente y sus tres acciones |
+
+Capturas:
+
+| Archivo | Qué muestra |
+|---|---|
+| `f44-timeline-equipo.png` | La rejilla con las 18 filas y la cabecera «18 personas del equipo · 4 con plan» |
+| `f44-fuera-del-equipo.png` | Las filas «Sin plan» y la franja de capacidad con «—» |
+| `f44-nota-fuera-del-equipo.png` | La nota de lo que quedó fuera del equipo |
+| `f44-detalle-67923.png` | El detalle del tramo desplazado |
+
+**Una medición que conviene dejar escrita:** el panel de pendientes pasó de contar lo que traía el timeline a contar lo de las personas del equipo —**84 pendientes** sobre 18 personas—, porque `useTeamDeclarationsBatch` ahora recibe los identificadores del padrón. Antes el panel contaba solo lo de las ocho filas que existían; el cambio también lo hace completo.
+
+### 5. Decisiones
+
+### 215. El padrón decide las filas y el plan solo las rellena
+
+`teamTimeline()` no consulta el equipo y no debe hacerlo: el Timeline es una lectura de planes y la de equipo es otra ruta, con otra fuente (GLPI) y otro fallo posible. La pantalla ya pide las dos y es la que puede cruzarlas. **Una fila existe porque la persona está en el padrón operativo; su capacidad y sus tramos vienen del plan más reciente si lo hay.** Así, desaparecer de la pantalla exige dejar de estar en el equipo —un hecho administrativo—, no dejar de tener plan —un hecho operativo que cambia todos los días—.
+
+### 216. Lo que no es del equipo no se borra: se cuenta
+
+Los tramos y conflictos de identificadores que el padrón no conoce se excluyen de la rejilla y se anuncian en una nota. Descartarlos sin decirlo escondería trabajo real —el de un usuario de GLPI fuera del grupo—; pintarlos les daría una fila que no les corresponde. La nota resuelve las dos cosas a la vez y deja la limpieza como una decisión visible.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 217 | **Una fila sin plan es indistinguible de una fila sin capacidad** | **Bajo: la etiqueta lo evita** | La rejilla decide «Sin plan» por `capacity.length === 0`, que es cierto tanto si no hay plan como si el plan no trae capacidad. Hoy el backend publica capacidad para todo plan vigente, así que los dos casos coinciden; si alguna vez un plan vigente llegara sin filas de capacidad, la etiqueta afirmaría «Sin plan» sobre un plan que existe. **La señal adicional es la nota de fuera del equipo y la cabecera «M con plan»**; si aparece un plan sin capacidad, separar los estados |
+| 218 | **El padrón se lee en cada carga de la página** | **Bajo** | Añadir una fila por persona no añade peticiones: `useTeam()` ya se pedía antes para poner nombres. Pero ahora la pantalla **espera** al padrón para pintar, así que si GLPI tarda más que el timeline, la página tarda más en aparecer. **Es el precio de que el equipo sea la fuente de verdad**; si llega a notarse, cachear el padrón con la clave de React Query que ya tiene |
+
+## Fase 45 — La cobertura del plan: qué tickets impiden que el equipo planifique
+
+La fase 44 dejó a las 18 personas operativas en pantalla, con plan o sin él. Esta fase responde la pregunta que seguía abierta: **de todo el trabajo activo del equipo, cuánto puede llegar hoy al plan y qué lo impide**. No se cambió ninguna regla de planificación: ni `PlanningEngine`, ni la capacidad, ni los desplazamientos, ni las renegociaciones, ni la integración con GLPI, ni la persistencia. **Todo lo que sigue se midió antes de escribir una línea de código**, contra la base de desarrollo y GLPI real el 2026-10-19, con los cuatro artefactos de `.probe/` (`f45-declarations.json`, `f45-timeline.json`, `f45-renegotiations.json`, `f44-team.json`).
+
+### 1. La auditoría: los números reales, sin suponer
+
+**El método.** Las cifras salen de tres lecturas que ya existían y no se reinterpretaron: los tickets activos y su `declarationStatus` vienen del lote `GET /api/planning-metadata/declarations` para los 18 identificadores del padrón operativo; la pertenencia al plan viene de `GET /api/planning/team/timeline`; y la causa de cada pendiente viene de `lib/pending.ts`, que ya cruzaba las dos. **La cobertura no es una cuarta clasificación: es el conteo de lo que esas tres lecturas dicen.**
+
+**La cobertura global, hoy:**
+
+| Medida | Valor real |
+|---|---|
+| Personas operativas en el padrón | **18** |
+| Tickets activos (todos los del equipo) | **86** |
+| Tickets con algo declarado (estimación o compromiso) | **7** |
+| Tickets planificables (`PLANIFICABLE`) | **4** |
+| Tickets dentro del plan vigente | **2** |
+| **Cobertura** | **2 de 86 = 2,3 %** |
+| Tickets pendientes | **84** |
+
+**Las 18 personas, una por una.** La tabla es la que publica la pantalla; el orden es el del padrón, no el de prioridad (ese va en el punto 3).
+
+| Persona | Plan | Activos | Declarados | Planificables | Pendientes | En el plan | Cobertura | Causas |
+|---|---|---|---|---|---|---|---|---|
+| Maury Marmolejo Din | Sin plan | 10 | 0 | 0 | 10 | 0 de 10 | 0 % | 10 sin declaración |
+| Cesar Giraldo Muñoz | Sin plan | 9 | 0 | 0 | 9 | 0 de 9 | 0 % | 9 sin declaración |
+| Nilson Cortes | Con plan | 9 | 0 | 0 | 9 | 0 de 9 | 0 % | 9 sin declaración |
+| Jose Luis Garces Gonzalez | Sin plan | 9 | 3 | 1 | 9 | 0 de 9 | 0 % | 2 sin estimación · 6 sin declaración · 1 no incluido en el plan |
+| Alejandro Pineda Machado | Sin plan | 7 | 0 | 0 | 7 | 0 de 7 | 0 % | 7 sin declaración |
+| Jose Fabian Gonzalez Tavera | Sin plan | 7 | 0 | 0 | 7 | 0 de 7 | 0 % | 7 sin declaración |
+| Silvia Alejandra Castro Garcia | Sin plan | 7 | 0 | 0 | 7 | 0 de 7 | 0 % | 7 sin declaración |
+| Abraham Arana Aldana | Con plan | 9 | 4 | 3 | 7 | **2 de 9** | **22,2 %** | 1 sin estimación · 5 sin declaración · 1 sin acuerdo |
+| Stella Patricia Medina O. | Sin plan | 6 | 0 | 0 | 6 | 0 de 6 | 0 % | 6 sin declaración |
+| Andres Steven Beltran Forero | Sin plan | 5 | 0 | 0 | 5 | 0 de 5 | 0 % | 5 sin declaración |
+| Andres Felipe Escobar Arango | Sin plan | 3 | 0 | 0 | 3 | 0 de 3 | 0 % | 3 sin declaración |
+| Francisco Javier Zuluaga A. | Con plan | 3 | 0 | 0 | 3 | 0 de 3 | 0 % | 3 sin declaración |
+| Analy Ruiz | Sin plan | 2 | 0 | 0 | 2 | 0 de 2 | 0 % | 2 sin declaración |
+| Andres Felipe Gonzalez Gonzalez | Sin plan | 0 | 0 | 0 | 0 | 0 de 0 | — | — |
+| Daniel Felipe Lopez Rendon | Sin plan | 0 | 0 | 0 | 0 | 0 de 0 | — | — |
+| Jhonnatan Atehortua Alvarez | Sin plan | 0 | 0 | 0 | 0 | 0 de 0 | — | — |
+| Jose Alejandro Diaz Urrego | Con plan | 0 | 0 | 0 | 0 | 0 de 0 | — | — |
+| Nicolas Alejandro Suarez Florez | Sin plan | 0 | 0 | 0 | 0 | 0 de 0 | — | — |
+
+**Quiénes tienen plan y quiénes no.** Con plan vigente hay **4**: Abraham Arana Aldana, Nilson Cortes, Francisco Javier Zuluaga A. y Jose Alejandro Diaz Urrego. Sin plan hay **14**. Pero el dato importante está cruzado: **solo 2 de las 4 personas con plan tienen algo cubierto** (las dos de AbraAran), y **Nilson Cortes tiene plan y cero cobertura** —su plan no coloca ninguno de sus 9 tickets—. Tener plan no equivale a tener trabajo planificado.
+
+**Cinco personas sin tickets activos** —Andres Felipe Gonzalez, Daniel Felipe Lopez, Jhonnatan Atehortua, Jose Alejandro Diaz y Nicolas Alejandro Suarez—. No son un problema de declaración: no tienen trabajo que declarar. Se cuentan en la tabla con «—» en cobertura para no confundirlas con un cero, y se listan aparte en la pantalla.
+
+### 2. La clasificación de los no planificables: por qué no entran
+
+De los 84 tickets pendientes, el motivo se reparte así:
+
+| Grupo | Causa | Tickets | Qué significa |
+|---|---|---|---|
+| **P1 — falta información** | `SIN_DECLARACION` | **79** | No hay estimación ni fecha compromiso |
+| | `SIN_ESTIMACION` | **3** | Hay fecha compromiso, falta la estimación |
+| | `SIN_COMPROMISO` | **0** | Hay estimación, falta la fecha |
+| | `NO_TRADUCIBLE` | **0** | GLPI rechaza el ticket; no es un problema de declaración |
+| **P2 — fuera por capacidad** | `FUERA_POR_CAPACIDAD` | **0** | El plan lo descartó por capacidad |
+| **P3 — sin acuerdo** | `SIN_ACUERDO` | **1** | Desplazado y sin renegociación cerrada (`67923`) |
+| **P4 — no incluido** | `NO_INCLUIDO_EN_EL_PLAN` | **1** | Planificable, pero el plan vigente no lo coloca |
+
+**La lectura que importa: 82 de los 84 pendientes —el 97,6 %— se desbloquean con una declaración.** No hay un solo ticket fuera por capacidad. La falta de plan no es un problema del motor: es que al motor le falta el dato de entrada.
+
+**Un caso que conviene dejar escrito**, porque parece una contradicción y no lo es: AbraAran tiene **3 planificables y solo 2 cubiertos**. El tercero es `67923`, que el plan desplazó y cuya renegociación sigue pendiente; por eso cuenta como `SIN_ACUERDO` y no como cubierto, aunque su declaración esté completa. JoseGarc tiene **1 planificable y 0 cubiertos**: su ticket está declarado y validado, pero el plan vigente se generó antes y no lo incluye. **Planificable y cubierto no son sinónimos**, y la pantalla los muestra en columnas distintas por eso.
+
+### 3. La prioridad operativa: a quién llamar hoy
+
+**El impacto de una llamada se mide en tickets que desbloquea, no en tickets que la persona tiene.** Por eso el orden no es el del padrón ni el de activos: es el de `blockedByInformation` (grupo P1), con desempate por pendientes y luego por activos.
+
+| Prioridad | Persona | Tickets que desbloquea una declaración | Por qué |
+|---|---|---|---|
+| 1 | **Maury Marmolejo Din** | **10** | 10 sin declaración, sin plan |
+| 2 | **Cesar Giraldo Muñoz** | **9** | 9 sin declaración, sin plan |
+| 3 | **Nilson Cortes** | **9** | 9 sin declaración, con plan que no coloca ninguno |
+| 4 | Jose Luis Garces Gonzalez | 8 | 2 sin estimación + 6 sin declaración (el noveno es P4) |
+| 5 | Alejandro Pineda Machado | 7 | 7 sin declaración |
+| 6 | Jose Fabian Gonzalez Tavera | 7 | 7 sin declaración |
+| 7 | Silvia Alejandra Castro Garcia | 7 | 7 sin declaración |
+| 8 | Abraham Arana Aldana | 6 | 6 de información (el séptimo es P3) |
+| 9 | Stella Patricia Medina O. | 6 | 6 sin declaración |
+| 10 | Andres Steven Beltran Forero | 5 | 5 sin declaración |
+| 11–13 | Andres Felipe Escobar, Francisco Javier Zuluaga, Analy Ruiz | 3, 3, 2 | — |
+
+**Las tres primeras llamadas desbloquean 28 tickets: el 33 % de todo lo pendiente.** No hace falta tocar a las 18 personas para mover la aguja.
+
+### 4. La implementación
+
+**Un solo archivo nuevo y una pantalla que ya existía.** La capa pura es `frontend/src/lib/coverage.ts`; la pantalla es `TeamTimeline.tsx`, que ya pedía las dos lecturas y ahora las cuenta. **No hay endpoint nuevo, ni consulta nueva, ni cambio de contrato.**
+
+| Archivo | Qué hace | Por qué ahí |
+|---|---|---|
+| `frontend/src/lib/coverage.ts` (nuevo) | `coverageOf`, `teamCoverage`, `coverageTotals`, `coverageByGroup`, `priorityOrder`, `formatPercent` | Es el sitio de las funciones puras de la vista; se prueba sin montar la página |
+| `frontend/src/pages/TeamTimeline.tsx` | Panel «Cobertura del plan» entre la nota de fuera del equipo y la rejilla: total, causas por grupo, «Llamar hoy a» y la tabla por persona | Es la pantalla que el gestor ya usa como entrada; la respuesta tiene que estar donde está la pregunta |
+| `frontend/src/lib/coverage.test.ts` (nuevo) | 8 pruebas de la capa pura | Fija el conteo, el nulo, la suma y el orden de prioridad |
+
+**La decisión de fondo: la cobertura no reclasifica.** El backend ya dice el estado de cada ticket y `lib/pending.ts` ya dice la causa de cada pendiente. Escribir en la cobertura una segunda regla —mirar si hay estimación— crearía dos sitios que cambian cuando el validador cambie, y la pantalla podría afirmar de una persona algo que el plan después desmiente. **Esta capa solo cuenta.**
+
+**Nulo no es cero.** Si la declaración de una persona no se pudo leer, `coverageOf` devuelve `null` y la fila desaparece de la tabla —se cuenta en «sin leer», como ya hacía la capa de pendientes—. Pintarla con ceros afirmaría que no tiene trabajo pendiente, que es exactamente lo contrario de lo que se sabe.
+
+**«En el plan» es una resta, y es válida.** `covered = activos − pendientes`, porque las dos listas salen de la misma lectura y pasan por el mismo `isActive`. No se puede cubrir más de lo que hay: la resta se acota a cero por si una lectura llegara inconsistente.
+
+**La pantalla dice el motivo, no solo el número.** Bajo cada nombre, la fila escribe la causa en corto («6 sin declaración»); arriba, los cuatro grupos con su conteo; y en «Llamar hoy a», las tres personas con más tickets bloqueados y un enlace directo a su declaración. El enlace es `declarationPath({ developerId, from: ROUTES.teamTimeline })`, así que al terminar se vuelve al Timeline.
+
+### 5. Las pruebas
+
+| Prueba | Qué fija |
+|---|---|
+| «separa activos, declarados, planificables, pendientes y cubiertos» | Las cinco cifras de una persona no son la misma |
+| «no inventa una cobertura cuando la declaración no se leyó» | El nulo, no una fila en cero |
+| «cuenta como pendiente lo planificable que no está en el plan» | Planificable ≠ cubierto |
+| «deja fuera a quien no se leyó y respeta el orden del padrón» | `teamCoverage` filtra y conserva orden |
+| «suma tickets y no promedia porcentajes» | 7/15 = 46,7 %, no el promedio de filas |
+| «con cero activos la tasa es cero, no un cien por ciento vacío» | El caso de las cinco personas sin tickets |
+| «pone primero a quien desbloquea más tickets declarando» | `priorityOrder` |
+| «agrupa las causas por la pregunta del gestor» | P1/P2/P3/P4 |
+| «enseña la cobertura del plan y a quién llamar primero» (en `TeamTimeline.test.tsx`) | El panel completo: total, causas, prioridad, filas con y sin plan, y el «—» de quien no tiene tickets |
+
+**Totales, re-ejecutados después del último cambio:**
+
+| Suite | Resultado |
+|---|---|
+| Frontend (`vitest run`) | **302 pruebas / 19 archivos, todas en verde** |
+| TypeScript (`tsc --noEmit`) | 0 errores |
+| Lint (`oxlint`) | limpio |
+| Backend (`mvn -q -o test`) | **392 pruebas, 0 fallos, 0 errores, 3 omitidas** (sin cambios: no se tocó) |
+
+### 6. La validación en la instancia real (Playwright)
+
+Sobre el backend y el frontend locales, contra GLPI real, el 2026-10-19:
+
+| Criterio del brief | Resultado medido |
+|---|---|
+| Personas con plan | **4 filas «Con plan»**: AbraAran, NilsCort, FranZulu, JoseDiaz |
+| Personas sin plan | **14 filas «Sin plan»** |
+| Cobertura global | «**2 de 86 tickets activos en el plan (2,3 %)**» |
+| Tickets bloqueados | **84 pendientes**; 82 de información, 1 de acuerdo, 1 no incluido |
+| Motivo de bloqueo | Chips «Falta información: 82 · Sin acuerdo: 1 · No incluido en el último plan: 1» y la causa bajo cada nombre |
+| Priorización por impacto | «Llamar hoy a Maury Marmolejo Din (10 tickets bloqueados) · Cesar Giraldo Muñoz (9) · Nilson Cortes (9)» |
+| Acceso desde el Timeline | El enlace de Maury abre `/declaraciones?tecnico=MaurMarm&volver=%2F` con **sus 10 tickets** |
+| Sin inventar datos | Las 5 personas sin tickets muestran «—», no «0 %» |
+
+Capturas: `f45-cobertura.png` (el panel completo) y `f45-acceso-desde-timeline.png` (la declaración abierta desde la prioridad).
+
+### 7. La declaración frente al proceso real
+
+El brief pide contrastar la declaración con el proceso que de verdad ocurre —**el desarrollador estima, el usuario negocia, el gestor registra**— y decir dónde roza. Esto es lo que hay hoy, leído del código, y lo que no cubre:
+
+**Lo que el modelo sí hace bien.** Una fila por ticket, con clave natural (`work_item_id`); la estimación y el compromiso pueden faltar por separado; cada cambio deja su autor y su fecha en el historial; y el estado «falta estimación / falta compromiso / falta todo» se deriva al leer, no se guarda —así que no puede quedar desincronizado—.
+
+**Donde el proceso real no cabe en el modelo:**
+
+1. **Un solo actor firma la operación entera.** `changedBy` es un texto libre de hasta 64 caracteres y firma ambos campos; el servidor deriva `estimatedBy` y `committedBy` de «quién cambió ese campo la última vez». Si el gestor registra la fecha que el usuario aceptó, **el historial dice que el compromiso lo puso el gestor**. El modelo no puede decir «estimó Ana, comprometió Carlos con el usuario»: solo dice quién pulsó guardar.
+2. **No hay negociación como objeto.** No existe propuesta, contrapropuesta, aceptación ni rechazo; solo la fecha final. La negociación ocurre fuera del sistema y entra como un dato ya cerrado. Consecuencia: no se puede responder *por qué* una fecha es esa ni *quién* la acordó, que es justo la pregunta del gestor cuando algo se desplaza.
+3. **La identidad es declarativa.** `changedBy` es texto libre y no hay autenticación en la ruta de escritura: cualquiera puede declarar en nombre de cualquiera. El historial es tan fiable como la buena fe de quien llama.
+4. **El `PUT` reemplaza y no tiene bloqueo optimista.** Cambiar solo la fecha obliga a leer antes y reenviar la estimación; si entre la lectura y la escritura otra persona cambió el registro, **la segunda escritura gana en silencio** —la entidad no tiene `@Version`—.
+5. **No hay estado de solicitud.** «Sin estimación» se calcula al leer, pero nadie puede marcar «pedida al desarrollador» o «esperando al usuario», así que no hay forma de asignar la tarea ni de seguirla. La cobertura dice *qué* falta, no *quién lo debe*.
+6. **La fecha compromiso no tiene contraparte.** Cualquier fecha puede escribirse; no hay regla de que el usuario la haya aceptado. `SIN_ACUERDO` existe en el plan (desplazamientos), pero no en la declaración.
+
+**Ninguna de estas fricciones se corrigió en esta fase**, porque cambiar el modelo de declaración es cambiar el proceso, no la observabilidad. Quedan escritas para que la fase que lo aborde no las descubra de nuevo.
+
+### 8. Decisiones
+
+### 219. La cobertura cuenta lo que ya está clasificado; no clasifica otra vez
+
+El backend decide el estado de cada ticket y la capa de pendientes decide la causa. La cobertura solo suma esas dos lecturas. **Una segunda regla en la pantalla —mirar si hay estimación o compromiso— sería un validador paralelo**: podría discrepar del que usa el motor y afirmar de una persona algo que el plan desmiente. Si el validador cambia, la cobertura cambia con él sin tocar una línea, y ese es el punto.
+
+### 220. La prioridad se mide en lo que una llamada desbloquea
+
+Ordenar por tickets asignados pondría arriba a quien tiene más trabajo aunque ya lo tenga declarado. El gestor no necesita saber cuánto trabajo hay: necesita saber **cuánto de ese trabajo está parado por información que él puede conseguir**. Por eso el orden es `blockedByInformation` primero y el desempate es estable —pendientes, activos, identificador—: dos gestores que miren la misma pantalla ven la misma lista, y las pruebas también.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 221 | **La cobertura solo cuenta a quien se leyó** | **Medio: subestima, no sobreestima** | El lote es serial y una lectura fallida deja a esa persona fuera de la tabla y en «sin leer». La cobertura global baja sin avisar de que falta alguien. **El panel ya dice cuántos no se leyeron**; si el lote crece, paralelizar o cachear la lectura por persona |
+| 222 | **«Cubierto» mide el plan vigente, no el trabajo** | **Medio: el número caduca** | Un ticket puede estar planificado y el plan tener días de antigüedad; la cobertura dice lo que el plan colocó, no lo que sigue siendo válido. **Se regenera el plan y el número cambia**; conviene enseñar la fecha del plan junto a la cobertura |
+| 223 | **La declaración no distingue roles y no está autenticada** | **Alto para el proceso, fuera del alcance de esta fase** | `changedBy` es texto libre y firma ambos campos; no hay bloqueo optimista. Hoy la escritura es de confianza interna, pero el historial no prueba quién declaró. **No se tocó**: cambiar el modelo es cambiar el proceso. Cualquier auditoría futura de la declaración tiene que empezar por aquí |
+
+---
+
+# Fase 46 — La cobertura accionable: qué hacer hoy para que más tickets entren al plan
+
+La fase 45 midió cuánto trabajo llega al plan y a quién llamar. Esta fase responde la pregunta que seguía abierta: **¿qué hago hoy, concretamente, para que el mayor número posible de tickets entre al plan?** No se tocó el motor: ni `PlanningEngine`, ni las reglas de capacidad, ni los desplazamientos, ni las renegociaciones, ni la integración con GLPI, ni la persistencia. Todo el cambio es observabilidad, priorización y flujo operativo, en el frontend.
+
+## Parte 1: la auditoría sobre datos reales
+
+Medición en la instancia local, con GLPI real, el 2026-10-19 a las **19:04 UTC** y a las **19:32 UTC**. Los dos números no coinciden entre sí **y eso no es un fallo de la pantalla: es que GLPI siguió publicando mientras se validaba**. El cuadro los separa:
+
+| Dato | Brief | Medición 19:04 | Medición 19:32 |
+|---|---:|---:|---:|
+| Personas operativas | 18 | 18 | 18 |
+| Tickets activos | 86 | **87** | **88** |
+| Estados «en el plan» (cubiertos) | 2 | **2 (2,3 %)** | **2 (2,3 %)** |
+| Pendientes | 84 | **85** | **86** |
+| Bloqueados por información (P1) | 82 | **83** | **84** |
+| Bloqueados por capacidad | 0 | **0** | **0** |
+| Sin acuerdo | — | 1 | 1 |
+| No incluidos en el último plan | — | 1 | 1 |
+| Planificables | 4 | **4** | **4** |
+| Cobertura potencial | — | **85 de 87 (97,7 %)** | **86 de 88 (97,7 %)** |
+
+**Lo que se movió en 28 minutos, y en los dos sentidos:** Jose Luis Garcés pasó de 9 a 10 tickets activos; Jhonnatan Atehortua pasó de 2 a 0; Nicolás Suárez y Andrés Felipe González pasaron de 0 a 1. No se puede afirmar que un ticket «pasó» de una persona a otra —la lectura solo publica conteos, no asignaciones—, pero sí que **una cobertura leída hoy puede no ser la de mañana**, y la pantalla debe enseñarse con esa advertencia.
+
+**El reparto de causas es el que manda la acción.** De los 86 pendientes, **84 se desbloquean con una declaración** (97,7 % de todo lo pendiente), **1** espera un acuerdo de renegociación y **1** está planificable pero el plan no lo incluyó. **Ninguno está bloqueado por capacidad**: hoy no hay un solo ticket que el motor haya rechazado por falta de horas. El cuello de botella es **información que nadie ha escrito**, no capacidad.
+
+**Tener plan no es tener trabajo planificado.** A las 19:32, Nilson Cortés tiene plan vigente y **0 de 9** tickets cubiertos; Abraham Arana tiene plan y cubre **2 de 9**; Francisco Zuluaga tiene plan y **0 de 3**. De las personas con plan, solo una cubre algo. La cobertura no se arregla regenerando el plan: se arregla declarando.
+
+**Las personas con más volumen pendiente** (impacto = tickets que una sola llamada desbloquea):
+
+| # | Persona | Activos | Bloqueados por información | Dónde quedaría |
+|---:|---|---:|---:|---:|
+| 1 | Maury Marmolejo Din | 10 | 10 | 10 de 10 |
+| 2 | Jose Luis Garcés González | 10 | 9 | 9 de 10 |
+| 3 | Cesar Giraldo Muñoz | 9 | 9 | 9 de 9 |
+| 4 | Nilson Cortés | 9 | 9 | 9 de 9 |
+| 5 | Alejandro Pineda Machado | 7 | 7 | 7 de 7 |
+| 6 | Jose Fabian González Tavera | 7 | 7 | 7 de 7 |
+| 7 | Abraham Arana Aldana | 9 | 6 | 8 de 9 |
+| 8 | Silvia Alejandra Castro García | 6 | 6 | 6 de 6 |
+| 9 | Stella Patricia Medina O. | 6 | 6 | 6 de 6 |
+| 10 | Andrés Steven Beltrán Forero | 5 | 5 | 5 de 5 |
+
+Y tres personas sin tickets activos (Daniel Felipe López, Jhonnatan Atehortua, Jose Alejandro Díaz): aparecen con «—», no con un 0 % que las haría parecer un problema.
+
+**Los tickets que conviene trabajar primero**, con el criterio escrito en el código:
+
+1. **`66666` · Jose Luis Garcés · Sin estimación** — solo falta un dato.
+2. **`66913` · Jose Luis Garcés · Sin estimación** — solo falta un dato.
+3. **`66913` · Abraham Arana · Sin estimación** — el mismo ticket aparece asignado a dos personas (ver riesgo 227).
+4. **`33219`, `60448`, `61398`, `62711`, `65798` · Maury Marmolejo · Sin declaración** — les faltan los dos datos.
+
+El orden no es alfabético ni por identificador: **primero lo que solo espera un dato** (la llamada más corta), **después lo que desbloquea más gente**, y a igual impacto **la prioridad cruda de GLPI** (5 antes que 4) y **el más viejo primero**.
+
+## Parte 2: el cambio, archivo por archivo
+
+| Archivo | Qué cambió | Por qué ahí |
+|---|---|---|
+| `frontend/src/lib/pending.ts` | `PendingItem` gana `priority` y `createdAt`, tal como los publica el backend | La capa de pendientes ya era la fuente única de causas; ordenar por prioridad sin volver a leer las declaraciones exige que esos dos campos viajen con el pendiente |
+| `frontend/src/lib/coverage.ts` | `DeveloperCoverage.potential`; `CoverageTotals.potential` y `potentialRate`; nueva función pura `priorityTickets` | La cobertura ya contaba; ahora dice también dónde queda cada persona y ordena los tickets por impacto. Sigue sin clasificar nada |
+| `frontend/src/pages/TeamTimeline.tsx` | Línea de cobertura potencial; «Llamar hoy a» con el impacto («quedaría en N de M»); lista «Tickets que desbloquea una declaración»; columna «Recuperables»; el nombre de la tabla y el de la rejilla enlazan a la declaración | Es la pantalla donde el gestor ya mira la cobertura y los pendientes: la acción tiene que estar donde está la pregunta |
+| `frontend/src/components/timeline/TimelineGrid.tsx` | La fila enseña «N recuperables» junto a «N pendientes»; el nombre de cada fila puede ser enlace (`nameLinks`) | La rejilla ya pintaba los pendientes por persona; el número que falta es el que se puede recuperar. El enlace convierte la fila «Sin plan» en el camino a «cuáles y qué les falta» |
+| `frontend/src/pages/Declarations.tsx` | El párrafo de entrada explica que registrar estimación y fecha **es** registrar el acuerdo operativo | La pantalla ya era el sitio donde se escribe el acuerdo; el texto ahora lo dice |
+| `frontend/src/components/declarations/DeclarationForm.tsx` | La ayuda del formulario distingue quién pone cada mitad: el desarrollo estima, el usuario acuerda la fecha | Es el momento en que se escribe el acuerdo; decirlo en el formulario evita que se lea como un trámite técnico |
+
+**La regla del cálculo, escrita tal como quedó:** `potential = covered + blockedByInformation`. No es una predicción del motor —es **una resta del trabajo demostrable**: lo que hoy está en el plan más lo que solo espera información. La capacidad y las reglas de colocación pueden reducirlo; no pueden aumentarlo, porque un ticket sin declarar no es planificable de ninguna forma. Por eso se llama «cobertura potencial» y no «cobertura esperada».
+
+**La lista de tickets no reclasifica.** Lee las causas de `lib/pending.ts` y solo ordena. Un `NO_TRADUCIBLE` —un tipo que el contrato no sabe leer— queda fuera: no se arregla escribiendo horas. Los grupos P2 (capacidad), P3 (acuerdo) y P4 (plan viejo) tienen su propio panel y no entran en la lista de una llamada.
+
+## Parte 3: la pantalla de Declaración frente al acuerdo real
+
+La evaluación de la pantalla, con lo que hoy hace y lo que sigue rozando con el proceso real:
+
+**Lo que ya sostiene el acuerdo.** La pantalla no pide identificadores técnicos: el técnico sale del padrón y el ticket de su lista. El resumen por persona separa los activos, los declarados y los pendientes. El atajo «Declarar siguiente pendiente» convierte la pantalla en un recorrido, no en una búsqueda. El formulario escribe **estimación y fecha compromiso**, que son exactamente las dos cosas que GLPI no guarda; al guardar, la fila se refresca con la clasificación que el backend vuelve a decidir. El texto de entrada y el del formulario ahora dicen que esas dos mitades son el acuerdo —el desarrollo pone el esfuerzo, el usuario acuerda la fecha— para que no se lean como un trámite.
+
+**Lo que todavía parece técnico, y no se cambió:**
+
+1. **La tabla enseña el código crudo del estado** (`SIN_ESTIMACION`, `SIN_COMPROMISO`, `SIN_DECLARACION`) y los descartes con su código de regla. Es deliberado —es la traza del validador—, pero obliga a traducir. *Mejora propuesta:* etiqueta en palabras con el código en el `title`, igual que la columna de prioridad ya documenta que su escala es la cruda de GLPI.
+2. **«Quién declara» es texto libre.** El formulario no sabe quién está operando; el gestor escribe su nombre en cada ticket. *Mejora propuesta:* prellenarlo con la identidad de la sesión o con el técnico elegido, y registrar por separado quién estima y quién acuerda.
+3. **Un solo actor firma las dos mitades.** `changedBy` firma estimación y compromiso; el servidor deriva `estimatedBy` y `committedBy` del último cambio de cada campo. Si el gestor registra la fecha que el usuario aceptó, el historial dice que el compromiso lo puso el gestor. *Mejora propuesta:* dos firmas explícitas.
+4. **La negociación no es un objeto.** No hay propuesta, contrapropuesta, aceptación ni rechazo; solo la fecha final. *Mejora propuesta:* un estado de solicitud («pedida al desarrollo», «esperando al usuario») que permita asignar la llamada y seguirla. Hoy la cobertura dice *qué* falta, no *quién lo debe*.
+5. **El `PUT` reemplaza y no tiene bloqueo optimista.** Editar solo la fecha obliga a releer y reenviar la estimación; dos escrituras concurrentes, la segunda gana en silencio. *Mejora propuesta:* `@Version` o un `PATCH` con campos opcionales.
+
+Ninguna de estas cinco se corrigió: cambiar el modelo de declaración es cambiar el proceso, no la observabilidad. Quedan propuestas y documentadas.
+
+## Parte 4: el Timeline desde una fila «Sin plan»
+
+La fila de una persona sin plan ya dice los tres datos que el brief pide, sin abrir nada: **«Sin plan · 10 pendientes · 10 recuperables»**. Los dos contadores son el hecho —cuántos faltan— y su parte accionable —cuántos se desbloquean declarando—.
+
+El paso que faltaba era «exactamente qué falta». Ahora:
+
+- **El nombre de la fila es un enlace** a la declaración de esa persona (`/declaraciones?tecnico=MaurMarm&volver=%2F`). La lista trae sus 10 tickets con el estado de cada uno y lo que le falta, y el botón «Declarar siguiente pendiente» abre el primero.
+- **La tabla de cobertura** añade la columna «Recuperables» y, bajo el nombre, el desglose por causa («10 sin declaración», «2 sin estimación · 6 sin declaración · 1 no incluido…»), así que la respuesta a «qué falta» está en la misma fila.
+- **La lista de tickets** del panel enlaza directo al formulario del ticket concreto (`&ticket=33219`), que se abre ya cargado sobre esa persona.
+
+Verificado en Playwright: la fila de Maury dice «10 pendientes · 10 recuperables», su enlace abre sus 10 tickets, y el enlace del ticket `33219` abre el formulario con los tres campos («Horas estimadas», «Fecha compromiso», «Quién declara»).
+
+## Parte 5: la métrica, tal como se enseña
+
+Una sola línea, en la cabecera del panel:
+
+> **2 de 88 tickets activos en el plan (2,3%) · 84 recuperables mediante declaración · cobertura potencial 86 de 88 (97,7%)**
+
+Las tres cifras responden las tres preguntas del brief en el orden en que se hacen: **dónde estamos** (2 de 88), **cuánto se puede recuperar** (84) y **dónde se puede llegar** (86 de 88). Debajo, las causas por grupo; después, a quién llamar; después, qué pedirle.
+
+## Parte 6: la validación en la instancia real (Playwright)
+
+| Criterio del brief | Resultado medido |
+|---|---|
+| Cobertura actual | «2 de 88 tickets activos en el plan (2,3%)» |
+| Cobertura potencial | «84 recuperables mediante declaración · cobertura potencial 86 de 88 (97,7%)» |
+| Ranking de personas | 15 personas con impacto, de Maury (10) a Nicolás Suárez (1), ordenadas por tickets desbloqueables |
+| Ranking de tickets | 8 tickets visibles: primero los de un solo dato (`66666`, `66913`, `66913`), después los de Maury; «76 más en Trabajo pendiente» |
+| Acceso desde el Timeline | El nombre de la fila «Sin plan» abre `/declaraciones?tecnico=MaurMarm&volver=%2F` con sus 10 tickets |
+| Acceso a la Declaración | El enlace del ticket `33219` abre `/declaraciones?tecnico=MaurMarm&ticket=33219&volver=%2F` con el formulario de ese ticket |
+| Impacto esperado | La llamada dice «quedaría en 10 de 10», «9 de 10», «9 de 9»… |
+| Sin datos inventados | Tres personas sin tickets muestran «—», no «0 %» |
+
+Capturas: `f46-cobertura-total.png`, `f46-llamadas.png`, `f46-tickets-prioritarios.png`, `f46-fila-sin-plan.png`, `f46-declaracion-desde-ticket.png`, `f46-declaracion-lista.png`, `f46-cobertura-potencial.png`. Datos crudos: `.probe/f46-cobertura.json`.
+
+## Parte 7: las pruebas
+
+| Suite | Resultado |
+|---|---|
+| Frontend (`vitest run`) | **306 pruebas / 19 archivos, todas en verde** |
+| TypeScript (`tsc --noEmit`) | 0 errores |
+| Lint (`oxlint`) | limpio (se retiró un `useMemo` que el compilador de React no podía preservar) |
+| Backend | **sin cambios en esta fase**; última corrida completa: 392 pruebas, 0 fallos, 0 errores, 3 omitidas |
+
+Casos nuevos (4):
+
+- `coverage.test.ts` · «pone primero lo que solo espera un dato y deja fuera lo que declarar no arregla»: P1 sí, P4/P3/NO_TRADUCIBLE no; un dato antes que dos; apalancamiento después.
+- `coverage.test.ts` · «a igual impacto respeta la prioridad y después la antigüedad de GLPI».
+- `coverage.test.ts` · «sin lecturas de cobertura no inventa apalancamiento».
+- `TeamTimeline.test.tsx` · «enseña la cobertura potencial y la lista de tickets que la desbloquea»: la línea de potencial, la lista sin el P4, «quedaría en 1 de 2», la columna «Recuperables», la marca de la rejilla y el enlace de la fila.
+
+Se ajustaron, sin debilitarlas, dos pruebas existentes: la de cobertura ahora busca la fila de la tabla con `[data-slot="coverage-row"]` —la lista de llamadas también lleva `data-developer-id`— y el resumen de totales comprueba `potential` y `potentialRate`.
+
+## Parte 8: decisiones y riesgos
+
+### 224. La cobertura potencial es una resta del trabajo demostrable, no una promesa del motor
+
+`potential = covered + blockedByInformation` se puede calcular sin preguntarle nada al motor y sin simular un plan. **Es el techo que la información permite, no lo que el motor va a colocar**: si mañana la capacidad no alcanza, el potencial seguirá siendo correcto como medida del trabajo que ya no está bloqueado por información. Llamarlo «esperado» o «previsto» habría sido afirmar una predicción que esta pantalla no hace.
+
+### 225. La lista de tickets ordena por esfuerzo y después por apalancamiento
+
+Primero lo que solo espera un dato, porque es la llamada más corta y la que antes cierra una persona; después lo que desbloquea más gente; a igual impacto, la prioridad cruda de GLPI y el más viejo. **Ordenar solo por apalancamiento pondría delante a la persona con más tickets aunque cada uno exija abrir dos datos**; ordenar solo por prioridad de GLPI ignoraría que cerrar a una persona destraba varios tickets a la vez. El criterio es el de la acción, no el del identificador, y el desempate final es estable para que dos gestores vean la misma lista.
+
+### 226. «Dónde queda» va junto a «cuánto falta»
+
+Un contador de tickets bloqueados no dice si la llamada resuelve el problema o solo lo reduce. Por eso la lista de llamadas dice «10 tickets bloqueados · quedaría en 10 de 10» y la tabla separa recuperables de pendientes. **El gestor no decide a quién llamar por el volumen, sino por la distancia entre lo que hay y lo que puede haber.**
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 227 | **La cobertura cuenta asignaciones, no tickets únicos** | **Medio: puede sobreestimar** | El ticket `66913` aparece asignado a Jose Garcés y a Abraham Arana, y suma en los dos. Si el motor solo puede colocar un ticket una vez, la cobertura potencial del equipo está sobreestimada en las asignaciones repetidas. Hoy es **1 caso de 88**; la pantalla no lo marca. **No se cambió el backend**: deduplicar exige decidir qué persona es la dueña del ticket, y eso es una regla de negocio |
+| 228 | **Los números se mueven mientras se validan** | **Medio: una cifra sin fecha envejece** | En 28 minutos la lectura pasó de 87 a 88 activos y de 83 a 84 recuperables. La cabecera no dice **cuándo** se leyó. **Tratamiento propuesto:** enseñar la hora de la lectura junto a la cobertura, como ya se hace con la fecha del plan en otras vistas |
+| 229 | **El potencial asume que lo declarado se puede colocar** | **Bajo hoy, alto si la capacidad se llena** | Hoy hay 0 tickets fuera por capacidad, así que el techo está libre; en cuanto las declaraciones lleguen, el motor puede rechazar por jornada. **El potencial no lo predice y no debe leerse como un compromiso**. La pantalla ya separa «cobertura» de «cobertura potencial»; falta que el plan regenerado se compare contra el techo |
+
+# Fase 47 — La declaración: ¿un acuerdo o un formulario?
+
+Auditoría funcional, de proceso y de cobertura sobre el módulo de Declaración. **No se implementó nada**: no se tocó `PlanningEngine`, ni capacidad, ni desplazamientos, ni renegociaciones, ni el modelo, ni GLPI. La única escritura fue la validación en vivo de la Parte 4, y su residuo queda declarado al final.
+
+## Parte 1: cómo funciona hoy
+
+```
+GLPI → PlanningDeclarationService.declarationsFor(developerId)
+     → GlpiPlanningRequestFactory.verdicts → DeclarationStatus
+     → PlanningMetadataRepository (estimatedHours, committedDate, firmas)
+     → DeclarationItem = veredicto + declaración
+     → Declarations.tsx (padrón + resumen + tabla + formulario)
+     → POST/PUT /api/planning/metadata
+```
+
+**La clasificación la decide el backend en cada lectura.** El frontend no puede inventar un `PLANIFICABLE`: pinta lo que recibe. Eso está bien y se conserva.
+
+**Qué guarda:** horas estimadas (escala 4), fecha compromiso (fecha pura), `estimatedBy/At` y `committedBy/At` derivados de **un solo** `changedBy` de texto libre (máx. 64), y una fila de historial por campo cambiado. `InputSource` existe en el modelo pero la pantalla no lo elige. **Qué no guarda:** quién pidió el trabajo, quién asignó al técnico, la negociación (propuesta, contrapropuesta, aceptación), quién aceptó la fecha, ni cuándo se acordó. `commitmentOverdue` se calcula y viaja en el tipo, pero Declaración no lo pinta; solo lo usa `DeclaredGapTable`.
+
+**Actor principal, según lo que el sistema permite:** el gestor de demanda escribiendo por los demás. No hay sesión ni roles: el técnico se elige de una lista y el firmante se teclea. El sistema no puede distinguir si la estimación la dijo el desarrollo o el gestor, ni si la fecha la aceptó el usuario o la impuso el gestor.
+
+## Parte 2: el proceso real frente al registro
+
+| Paso real | Hoy | Representado |
+|---|---|---|
+| Ticket asignado al técnico | GLPI lo trae asignado | Sí, como entrada |
+| El desarrollo estima | El gestor transcribe; `estimatedBy` = quien tecleó | Parcial: valor sí, actor no |
+| El usuario negocia fecha | El gestor transcribe; no hay estado | Parcial: resultado sí, proceso no |
+| El gestor registra el acuerdo | POST/PUT con una sola firma | Parcial: dato sí, acuerdo no |
+| El motor planifica | Otra pantalla, con el login GLPI a mano | Sí, pero salto manual |
+| El Timeline ejecuta | Coloca o desplaza; el desplazamiento exige acuerdo en otra pantalla | Sí, ciclo partido en tres |
+
+El sistema representa el **resultado** del acuerdo, no el **acuerdo**. Es la diferencia entre poder decir «el usuario aceptó el 24» y «alguien escribió 24».
+
+**Fricciones, por coste:** (1) una firma para dos actores; (2) el firmante se teclea en cada ticket —81 veces hoy—; (3) la negociación no es un objeto: no hay estado, responsable ni seguimiento; (4) no hay asignación ni recordatorio; (5) declarar no cierra el ciclo: tres pantallas por ticket; (6) la regla «al menos un valor» solo existe en el backend —el formulario marca obligatorio solo «Quién declara» y sin datos produce un 400—; (7) `/planificar` pide el login GLPI escrito a mano; (8) el vencimiento del compromiso no se ve donde se edita; (9) el `PUT` reemplaza y no tiene bloqueo optimista.
+
+## Parte 3: por qué 84 tickets siguen bloqueados
+
+Los 84 bloqueados son **todos P1** (falta información), cero por capacidad. El módulo es un formulario correcto para el momento en que ya se tienen los dos datos; **nada en él —ni en el resto de la app— dice a quién se le pidió el dato, cuándo, ni qué pasa si no llega.** El bloqueo es de adquisición, no de registro. Y declarar mueve el ticket de P1 a P4, no a cubierto: medido, la cobertura no subió al declarar. La métrica incluso la castiga, porque `potential = covered + P1` no suma P4.
+
+## Parte 4: medición en vivo del ciclo (Playwright)
+
+Instancia local, backend real, GLPI real, 2026-10-19, horas UTC:
+
+| Momento | Acción | Cobertura | Causas | Maury |
+|---|---|---|---|---|
+| 20:01 | Línea base | **2 de 87 (2,3 %)** · potencial **85 de 87 (97,7 %)** | P1 83 · P3 1 · P4 1 | 0 de 10 |
+| 20:02 | Declarar 33219: 8 h, 2026-10-24, «verificacion-fase-47» | fila **PLANIFICABLE**; formulario cerrado | — | 1 declarado · 9 pendientes |
+| 20:03 | Timeline sin regenerar plan | **2 de 86 (2,3 %)** · potencial **83 de 86 (96,5 %)** | P1 81 · P3 1 · **P4 2** | 0 de 10 · «no incluido en el último plan» |
+| 20:04 | Generar plan de MaurMarm | plan `d5e66ce6…`: 33219 el **2026-10-26**, desplazado desde el 24 (`CAPACIDAD_DIARIA_EXCEDIDA`) | — | — |
+| 20:05 | Timeline tras el plan | **2 de 86 (2,3 %)** · potencial 83 | P1 81 · **P3 2** · P4 1 | 0 de 10 |
+| 20:08 | Acuerdo 33219 → 2026-10-26 | ACORDADA | — | — |
+| 20:09 | Timeline tras el acuerdo | **3 de 86 (3,5 %)** · potencial **84 de 86 (97,7 %)** | P1 81 · P3 1 · P4 1 | **1 de 10 (10 %)** |
+
+El activo bajó de 87 a 86 **por GLPI**, no por la declaración (riesgo 228). **Declarar no subió la cobertura: la bajó temporalmente.** Solo el acuerdo de renegociación la subió. Una declaración real es un ciclo de tres pantallas. A las 20:09 había 1 P4 planificable fuera del cálculo: el techo real medido era **85 de 86**, no 84.
+
+Evidencia: `.probe/f47-cobertura-despues.png`, `.probe/f47-declaracion-guardada.png`, `.probe/f47-renegociacion-acordada.png`; datos crudos en `.probe/f47-flujo.json`; auditoría completa en `.probe/f47-declaracion.md`.
+
+## Parte 5: la pantalla frente a la acción del Timeline
+
+Ambas, con una regla por tamaño de unidad de trabajo:
+
+- **La pantalla se queda** como espacio de trabajo de una persona: es la única superficie con padrón, resumen activos/declarados/pendientes y cola «Declarar siguiente pendiente». Para cerrar a alguien con 10 tickets es mejor que diez drawers. Ya se comporta como cola: contexto `tecnico`/`ticket`/`volver` leído una vez, `declareNext`, enlaces desde la tabla y la rejilla.
+- **El Timeline gana una acción contextual de una pieza** para el caso frecuente del gestor: abrir el panel de cobertura, ver qué falta y escribir el dato sin perder la cifra a la vista.
+
+**No recomendado:** eliminar la pantalla o mover todo al Timeline. El 10-de-10 de Maury se trabaja mejor en una lista que en diez clics sobre una rejilla.
+
+## Parte 6: recomendaciones priorizadas
+
+1. **Declaración en lote por persona desde el Timeline** (mismos endpoints `POST`/`PUT`): las 81 llamadas P1 están en 15 personas; Maury solo tiene 10. Hoy cada ticket cuesta un viaje de pantalla.
+2. **Cerrar el ciclo tras guardar:** «Generar plan de esta persona» con `developerId` prellenado y, si hay desplazamiento, «Registrar acuerdo» con el ticket prellenado. Sin esos dos pasos la declaración no eleva la cobertura.
+3. **Prellenar y recordar «Quién declara», y prellenar el técnico en `/planificar`.** El firmante es constante en la sesión y hoy se teclea 81 veces.
+4. (Modelo, no implementado) **Dos firmas explícitas** en la petición y el historial: es lo que convierte «guardar datos» en «registrar un acuerdo».
+5. (Modelo, no implementado) **Estado de negociación por ticket** con responsable: es lo que permitiría asignar las 81 llamadas y medirlas.
+6. (Higiene) Enseñar `commitmentOverdue` en la tabla y replicar en el cliente la regla «al menos un valor».
+
+Orden: 3 → 1 → 2 (solo frontend), después 4 y 5 (contrato), 6 al final.
+
+## Parte 7: la jornada del gestor con los datos de hoy
+
+08:00 Timeline («2 de 86 · 81 recuperables»). 08:10 Declaración de Maury, 9 pendientes, «Declarar siguiente pendiente». 08:10–09:30 la llamada: por cada ticket pide horas al desarrollo y fecha al usuario, teclea su nombre otra vez, guarda; no puede registrar que la llamada quedó pendiente de respuesta. 09:30 vuelve al Timeline: la cobertura no cambió (P1→P4). 09:35 Planificación: escribe el login GLPI a mano y genera el plan; algunos tickets se desplazan. 09:40 Renegociaciones: registra cada desplazamiento; ahora sí sube la cobertura, ticket a ticket. Repite con Cesar, Nilson, JoseGarc, Abraham. **Cada persona es un ciclo de tres pantallas; cada ticket, una escritura manual del firmante.** El sistema ayuda a *registrar* la información conseguida; conseguirla sigue siendo teléfono y memoria.
+
+## Parte 8: respuestas explícitas
+
+**¿Declaración representa el acuerdo entre desarrollador, usuario y gestor?** **No.** Representa su resultado: dos valores y una firma. El desarrollo y el usuario no aparecen como actores; el gestor firma las dos mitades y el historial no distingue quién dijo qué. La pantalla dice que es el acuerdo; el modelo solo guarda datos.
+
+**¿Qué tres cambios subirían más rápido la cobertura?** (1) declaración en lote por persona desde el Timeline; (2) generar plan y registrar acuerdo en el mismo flujo tras guardar; (3) prellenar/recordar el firmante y prellenar el técnico en `/planificar`.
+
+**¿Pantalla o acción del Timeline?** Ambas: pantalla como espacio de trabajo por persona, acción contextual en el Timeline para mover la cifra sin perder el contexto. La regla es el tamaño de la unidad de trabajo.
+
+## Parte 9: decisiones y riesgos
+
+### 230. La auditoría no cambia el modelo: el modelo se propone
+
+El problema no es de pantalla sino de actores: `changedBy` firma estimación y compromiso. Cambiarlo es cambiar el contrato, el historial y la migración. Se documenta como propuesta (dos firmas, estado de negociación) y **no se implementa** en una fase que nació como auditoría. Un botón más no arregla el acuerdo.
+
+### 231. Declarar no es cubrir: el ciclo mínimo son tres pasos
+
+Declarar convierte P1 en P4; el plan puede desplazar; el acuerdo convierte el desplazamiento en cobertura. Cualquier métrica o texto que presente «declarar» como sinónimo de «cubrir» miente sobre el proceso. La cobertura sigue contando solo lo que el plan colocó y la fecha se acordó.
+
+### 232. La acción contextual del Timeline convive con la pantalla
+
+La pantalla es mejor para una persona con volumen; el Timeline para mover la cifra sin perder el contexto. Eliminar una obliga a la otra a hacer un trabajo para el que no está hecha.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 233 | **La cobertura potencial excluye P4 y castiga declarar** | **Alto para la lectura operativa** | `potential = covered + P1`. Un ticket recién declarado sale de P1 y entra en P4: la cifra baja aunque el trabajo esté hecho. Medido 85 → 83. **Propuesto:** sumar P4 planificable al techo o enseñar el potencial como rango. No se cambió: altera la definición de la métrica de la fase 46 |
+| 234 | **Una declaración real ocupa tres pantallas** | **Alto: coste por ticket** | Declaración → Planificación → Renegociación, medido con 33219. **Propuesto:** encadenar las tres desde el resultado de guardar (recomendación 2). Es flujo nuevo, no observabilidad |
+| 235 | **Un solo firmante para dos actores** | **Alto: el dato no prueba el acuerdo** | `changedBy` deriva `estimatedBy` y `committedBy`; el historial no distingue quién dijo qué. **Propuesto:** dos firmas en petición e historial; decisión de negocio pendiente |
+| 236 | **La validación del cliente no replica la del servidor, y `/planificar` pide el login** | **Bajo: fricción y 400 evitables** | El formulario exige solo «Quién declara»; sin horas ni fecha el usuario ve un 400. `/planificar` escribe el login GLPI a mano. **Propuesto:** mismo `@AssertTrue` en el cliente y selector de padrón en planificación |
+
+## Residuo de la validación
+
+La validación escribió datos reales porque el flujo lo exige: metadata de `33219` (8 h, 2026-10-24, firmada «verificacion-fase-47»), plan `d5e66ce6-7e1b-4bb8-abab-72fb27ef3f7b` y un acuerdo de renegociación para `33219` el 2026-10-26. **No existe endpoint DELETE** (riesgo 158), así que queda en la base y es coherente con lo medido.
+
+## Pruebas
+
+**No se modificó código.** Últimas suites: frontend 306/306 en 19 archivos, TypeScript sin errores, oxlint limpio; backend 392 pruebas, 0 fallos, 3 omitidas (sin cambios desde la fase 46). Esta fase no añade ni cambia pruebas.
+
+---
+
+## Fase 50 — El Timeline como puesto de mando y el menú de cuatro entradas
+
+La Fase 49 midió el flujo: un gestor que quiere mover la cobertura recorre menú, Dashboard, Alertas, Recursos, Calendario, Incidentes, Declaración, Planificación y Renegociación, y vuelve a empezar por el menú para la siguiente persona. Esta fase no añade dominio ni reescribe backend: mueve los puntos de entrada. El Timeline deja de ser una vista más y pasa a ser el sitio desde el que se opera; el menú se queda con lo que no tiene un contexto único.
+
+### 237. El menú visible se separa del catálogo de pantallas
+
+`NAV_ITEMS` sigue teniendo las once entradas —rótulo, icono y descripción— porque tiene dos consumidores que nombran una pantalla aunque no esté en el menú: el `Header`, que titula la que se está viendo, y el enlace de vuelta de la declaración, que nombra a dónde se vuelve. `MENU_ITEMS` filtra ese catálogo a cuatro rutas y es lo único que pinta la barra lateral. Borrar las entradas ocultas del catálogo habría dejado al encabezado diciendo «Timeline del equipo» desde `/tablero` y al enlace de vuelta nombrando una pantalla que no es. Las rutas no cambiaron: un enlace guardado a `/alertas`, `/recursos` o `/planificar/estado` sigue funcionando y sigue titulándose por su nombre.
+
+### 238. Cuatro entradas porque hay cuatro momentos, no porque haya cuatro módulos
+
+El menú anterior estaba organizado por módulo; el actual, por momento del trabajo: **Timeline del equipo** —la agenda y la salud—, **Declaración** —la captura de datos—, **Renegociación** —el registro de acuerdos— y **Configuración** —el diagnóstico del sistema—. Una entrada que solo se usa dentro de otra pantalla enseña a empezar el trabajo por el sitio equivocado: para planificar a una persona se entraba por «Planificación» y se tecleaba su identificador, cuando el Timeline ya sabía de quién se trataba. Lo que se retiró del menú no perdió la ruta ni la pantalla; perdió la puerta propia.
+
+### 239. La captura de datos y el acuerdo se quedan en su pantalla
+
+El Timeline enlaza a Declaración y a Renegociación, no las absorbe. Un formulario embebido en una fila de rejilla repetiría la validación, los estados de error y la escritura que esas pantallas ya tienen, y las dos pantallas siguen siendo mejores para el trabajo con volumen —una persona con nueve pendientes, varios desplazamientos de la misma tanda—. La regla es el tamaño de la unidad de trabajo: la persona entera se opera en su pantalla; el paso a la siguiente acción se da desde el Timeline con el contexto ya puesto.
+
+### 240. El técnico viaja en la dirección y la pantalla lo siembra una vez
+
+`planningPath(developerId)` escribe `?tecnico=…` y `/planificar` arranca su campo con ese valor; `planningPreviewPath` conserva el modo y suma el mismo parámetro, de modo que la vista previa contesta por esa persona, retira el conmutador de equipo y nombra el caso de un técnico que el padrón no conoce. El campo sigue editable: la dirección siembra, no bloquea, y una llegada sin parámetro produce la pantalla de siempre. Es el mismo patrón que la declaración ya usaba con `tecnico`, `ticket` y `volver`, y los nombres viven una sola vez, en `routes/navigation.ts`.
+
+### 241. «Pendientes» y «Acuerdos» mueven el foco, no crean vistas
+
+Los dos botones de la fila de cobertura filtran en memoria los paneles que el Timeline ya tenía cargados y bajan hasta ellos; el aviso del panel ofrece «Ver todo el equipo» para deshacerlo. No son enlaces ni consultas nuevas: convertir cada uno en una pantalla habría duplicado el panel, y convertirlos en filtros del servidor habría pedido parámetros que el contrato no tiene. La salud operativa se resuelve igual: la cabecera de cobertura publica lo que ya publicaba y el panel de alertas reutiliza `useAlerts` y `alertDetailPath`; el Dashboard y el centro de alertas no cambiaron una línea.
+
+### 242. La convergencia es de puntos de entrada, no de dominio
+
+No se tocaron `PlanningEngine`, `CapacityBook`, las reglas de planificación, los desplazamientos, las renegociaciones, la integración con GLPI, la persistencia ni los snapshots; el diff es enteramente del frontend. Los dos paneles nuevos leen contratos que ya existían y las acciones nuevas son enlaces a pantallas que ya existían. Por eso la fase pudo desplegarse sin migración y sin volver a probar el motor: lo que se probó de nuevo fue la navegación —cuatro entradas, rutas ocultas vivas, direcciones contextuales— y las acciones de la fila de cobertura.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 243 | **Las pantallas que salieron del menú pierden descubribilidad** | **Medio: Incidencias y Recursos solo por dirección** | Sus rutas siguen vivas y tituladas, y el Timeline enlaza a las que tienen contexto único. `Incidentes` y `Recursos` se quedan sin puerta: si el uso diario las reclama, se reincorporan al menú —la separación catálogo/menú lo hace un cambio de una línea— |
+| 244 | **El Timeline hace más lecturas al abrir** | **Bajo: cache compartida** | Alertas y renegociaciones ya se leían en sus pantallas y usan las mismas claves de React Query, así que la consulta es una y la comparten Timeline y centro de alertas. Las declaraciones por persona ya existían desde la Fase 44 |
+| 245 | **El foco de «Pendientes»/«Acuerdos» solo ve lo ya cargado** | **Bajo: estado vacío correcto** | Si la lectura falló o no ha llegado, el panel enseña su error o su carga; el botón no aparece sin un recuento mayor que cero. No se añadió una consulta por persona para el foco |
+| 246 | **`tecnico` en la dirección puede nombrar a quien el padrón no conoce** | **Bajo: se dice, no se inventa** | La vista previa lo declara —«El padrón no conoce a este técnico»— y `/planificar` devuelve el `404` del backend con sus palabras. El campo se puede corregir a mano sin borrar la dirección |
+| 247 | **Con un técnico en la dirección, el conmutador de equipo desaparece** | **Bajo: la salida es explícita** | El aviso de la vista previa ofrece «Ver todo el equipo →», que vuelve a la ruta sin parámetro. No se dejó el conmutador al lado porque conmutar equipo y técnico a la vez no tiene una lectura única |
+
+## Pruebas
+
+Frontend: **324 pruebas en 20 archivos**, TypeScript sin errores, oxlint limpio. Nuevas esta fase: cinco de navegación —cuatro entradas, rutas ocultas presentes en el catálogo, títulos de las ocultas, `planningPath`, `planningPreviewPath` con modo y técnico—, cinco del Timeline —acciones de la fila de cobertura, foco de pendientes, panel de acuerdos, lectura fallida de renegociaciones y panel de alertas— y dos de la vista previa —contestación por técnico sin conmutador y técnico desconocido—. Backend: **392 pruebas, 0 fallos, 3 omitidas**; no se modificó una línea, y se ejecutaron para confirmarlo. Playwright recorrió el flujo completo sobre los servicios en marcha: menú de cuatro entradas; «Generar plan» desde la cobertura abriendo `/planificar?tecnico=AbraAran` con el campo sembrado y la vista previa acotada a esa persona; «Declarar» abriendo el lote de esa persona con la vuelta a `/`; «Pendientes» y «Acuerdos» filtrando y bajando al panel; el acuerdo abriendo la renegociación del ticket; la generación real de un plan —4 ubicados, 1 desplazado, 0 conflictos—; y las nueve rutas retiradas del menú resolviendo con su título. Cobertura después del recorrido: **60 de 85 tickets activos (70,6%), potencial 84 de 85 (98,8%), 24 recuperables mediante declaración, 1 sin acuerdo**.
+
+---
+
+## Fase 51 — La lista que se declara y la lista que se planifica son la misma
+
+`PlanningDeclarationService.declarationsFor` pedía `activeTicketsOf` —los estados 1 a 4, el trabajo vivo— y `GlpiPlanningService.plan` pedía `ticketsOf` —el histórico entero, cerrados incluidos—. El clasificador era el mismo (`GlpiPlanningRequestFactory.verdicts`) y la regla de descarte también (`GlpiTicketValidator`), pero el universo no: Declaración enseñaba el trabajo vivo y el motor recibía además todo lo cerrado, que descartaba antes de planificar. Esos descartes no salían en ninguna pantalla. Medido contra el GLPI real: MaurMarm veía 10 tickets y el motor recibía 33; JoseGarc, 9 y 55; AbraAran, 9 y 151. De los descartes, 23, 46 y 142 caían sobre tickets que nadie podía ver, porque la tabla de Declaración no los listaba.
+
+| Persona | Antes: tickets al motor | Antes: descartes invisibles | Después: tickets al motor | Después: descartes | Después: planificados |
+|---|---|---|---|---|---|
+| MaurMarm | 33 | 23 sobre cerrados | 10 | 0 | 10 |
+| JoseGarc | 55 | 46 sobre cerrados | 9 | 0 | 9 |
+| AbraAran | 151 | 142 sobre cerrados (+5 visibles) | 9 | 10 sobre 5 tickets, todos visibles | 4 |
+
+### 248. Una sola lectura para declarar y planificar
+
+`plan` llama a `activeTicketsOf`, exactamente la lectura que alimenta la declaración. Es una línea. No cambia el motor, ni las reglas, ni la capacidad, ni la persistencia, ni el resultado para el trabajo vivo: las asignaciones fueron las mismas —10, 9 y 4— antes y después del cambio. Lo que desapareció fue el trabajo cerrado, que el motor ya descartaba de todos modos. Los descartes que quedan son los de los tickets activos, y todos se ven en «Trabajo pendiente» con su causa.
+
+### 249. El histórico cerrado no alimenta el plan y el puerto lo declara
+
+`ticketsOf` sigue en el puerto porque el adaptador lo implementa —lo sigue ejercitando— y sirve de lectura de diagnóstico del histórico; su Javadoc dice que desde esta fase no alimenta la planificación. Se dejó en lugar de borrarlo porque eliminarlo obliga a tocar el adaptador y las pruebas de integración sin ganar nada, y porque conservarlo mudo repetiría el error: un lector futuro lo usaría creyendo que es la lectura buena. La prueba `planificaSoloConLosTicketsActivos` verifica que `from-glpi` llama `activeTicketsOf` y **nunca** `ticketsOf`.
+
+### 250. El Timeline publica el universo del motor sin recalcular
+
+La cabecera de cobertura añade una línea con `totals.active` y `totals.planificable`, cifras que `coverage.ts` ya calculaba para la tabla y el resumen. No hay consulta nueva, ni regla nueva, ni un endpoint que pregunte al motor qué recibió: el motor recibe exactamente lo que la declaración leyó, así que la resta `active − planificable` **es** el descarte. La frase nombra las dos causas posibles —falta de información o un tipo que el contrato no puede leer— y remite a «Trabajo pendiente», donde cada ticket tiene la suya. Cuando una persona no se pudo leer, la misma cabecera ya publica «N sin leer» y la cifra no la cuenta como cero.
+
+### 251. Lo que el contrato no puede traducir no se declara: se explica
+
+Un ticket `NO_TRADUCIBLE` no es un problema de datos que el gestor resuelva declarando: GLPI lo entrega con un tipo que el contrato no conoce. La fila se queda a la vista, porque esconderla dejaría al gestor sin saber que existe, pero el botón **Declarar** se sustituye por «No entra al plan» y una frase con el motivo; la entrada directa con `?ticket=` tampoco abre el formulario. La declaración en lote ya lo excluía por `isDeclarable`. No cambió el clasificador ni el estado: lo que cambió es que la pantalla dejó de ofrecer un formulario cuyo resultado el motor iba a ignorar.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 252 | **El histórico cerrado deja de llegar al plan** | **Bajo: el resultado no cambia** | Las asignaciones medidas fueron idénticas antes y después (10, 9 y 4) y los cerrados ya se descartaban. Si una regla futura necesitara el histórico, tendría que pedirlo explícitamente: la lectura sigue en el puerto y su Javadoc lo dice |
+| 253 | **`ticketsOf` sigue en el puerto y alguien puede volver a usarlo para planificar** | **Bajo: cubierto por prueba** | El Javadoc lo declara diagnóstico y `planificaSoloConLosTicketsActivos` falla si `from-glpi` lo llama. El riesgo es de reincidencia, no de comportamiento actual |
+| 254 | **La línea del Timeline cuenta solo a las personas leídas** | **Bajo: la cabecera lo dice** | `coverageOf` devuelve nulo cuando la lectura falló y la cabecera publica «N sin leer». Con lecturas parciales la cifra del motor cubre a las leídas, que es lo único demostrable |
+| 255 | **La guarda `NO_TRADUCIBLE` no tiene un caso real que la demuestre** | **Bajo: probada por pruebas, no por producción** | De los 85 tickets activos del equipo, 61 son `PLANIFICABLE` y 24 `SIN_DECLARACION`; ninguno es `NO_TRADUCIBLE` hoy. La guarda la ejercitan dos pruebas de Declaración; el primer caso real confirmará el texto |
+
+**Riesgos eliminados.** Que el motor procesara un universo de trabajo que nadie podía ver —el riesgo 243 de la fase 47, que esta fase cierra— y que la pantalla ofreciera un formulario cuyo resultado se iba a descartar. Los dos se atacaron en la lectura y en la pantalla, no en el motor.
+
+## Pruebas
+
+Frontend: **326 pruebas en 20 archivos**, TypeScript sin errores, oxlint limpio. Nuevas esta fase: dos de declaración —la fila `NO_TRADUCIBLE` sin botón y con el motivo, y la entrada directa que no abre el formulario— y una comprobación en la prueba de cobertura del Timeline para la línea del universo del motor. Backend: **393 pruebas, 0 fallos, 3 omitidas**; nueva: `planificaSoloConLosTicketsActivos`, que verifica la lectura activa y la ausencia de `ticketsOf`. Playwright recorrió el flujo contra el GLPI real con técnicos del equipo: el Timeline con la línea de cobertura —85 activos, 61 planificables, 24 descartan—; la declaración de MaurMarm (10 de 10, 100 %) y la de AbraAran (4 de 9, 44,4 %), con sus cinco tickets visibles y sus motivos; la vista previa de planificación de ambos, coherente con la declaración; y la validación directa contra `POST /api/planning/from-glpi`: MaurMarm 10 declarados / 10 asignados / 0 descartes, JoseGarc 9/9/0, AbraAran 9 declarados / 4 asignados / 10 descartes sobre 5 tickets, todos visibles y **0 sobre tickets invisibles**.
+
+## Fase 52 — El Timeline se ordena, se busca y se demuestra
+
+El Timeline tenía tres problemas que no eran del dominio sino de la pantalla. En horizontal, las fechas desaparecían por debajo de la columna «Recurso»: el fondo de la columna era opaco, pero cualquier celda de fecha pintada después la tapaba. En vertical, la fila de fechas se iba con la página: el contenedor solo declaraba `overflow-x-auto` y el `sticky` no tenía contra qué pegarse. Y con 18 personas y 116 columnas no había forma de encontrar a una persona ni un ticket sin recorrer la rejilla a ojo. La fase resuelve los tres en la pantalla y añade una demostración de incidente que no toca nada.
+
+### 256. Tres planos de apilamiento en lugar de uno
+
+La cabecera no tenía `z-index` y la esquina de «Recurso» tampoco; las celdas de nombre eran `sticky left-0` con `bg-card`, así que al desplazar en horizontal el navegador apilaba por orden de documento y una fecha posterior se pintaba encima. El arreglo no es una regla de estilo suelta sino un orden explícito: el marco del Timeline es ahora el único contexto de apilamiento y dentro de él los tres planos tienen nivel propio —cabecera de fechas `z-20`, esquina `z-30`, celdas de nombre `z-10`— con fondo sólido en los tres. La esquina va por encima de todos porque es la intersección de los dos ejes. Verificado con Playwright: a 600 y a 900 px de `scrollLeft` y en los dos zoom, `elementFromPoint` sobre la esquina devuelve la esquina; el fondo es opaco (`oklch(0.968 0.005 255)`) y ninguna fecha queda a la vista por debajo de la columna.
+
+### 257. El marco con altura máxima es la condición del sticky vertical
+
+Un contenedor con `overflow-x-auto` es, por especificación, un contenedor de desplazamiento en los dos ejes: `overflow-y` se computa como `auto`. Por eso el `top: 0` de la cabecera ya «funcionaba», pero contra un contenedor que nunca desplazaba en vertical —crecía con el contenido y desplazaba la página entera—, con lo que la cabecera se iba de la vista. Darle al marco una altura de trabajo (`max-h-[70vh]`) es lo que convierte al contenedor en un puerto de desplazamiento real y hace que la cabecera se pegue a su borde superior. El precio es que el Timeline deja de crecer con la página y se ve en una ventana de 70 vh con su propio desplazamiento; el beneficio es que cabecera, esquina y barras quedan siempre a mano, que es lo que se pidió. Comprobado bajando 500 px y 700 px con el zoom amplio: la cabecera sigue a 1 px del borde del marco.
+
+### 258. Los filtros son de fila y el eje de días viaja aparte
+
+`teamAgenda` devuelve filas y columnas mezcladas: las columnas de días se calculaban a partir de la capacidad de las personas visibles. Si se filtraba a una persona sin capacidad en un día, el eje se encogía con ella. La rejilla recibe ahora `dayColumns` con el eje completo y filtra **solo las filas**: `TeamTimeline` calcula una vez las señales de cada persona —tipo de trabajo presente, con plan, pendientes, acuerdos, desplazamientos, planificable, recuperable y texto de búsqueda— con los datos que la pantalla ya cargó, y `lib/timelineFilters.ts` decide qué filas pasan. Filtrar no consulta, no recalcula capacidad y no toca el motor; la escala temporal sigue siendo la misma. Es la razón por la que una búsqueda de una persona deja «1 de 18» con las 116 columnas intactas.
+
+### 259. La búsqueda concatena lo que la fila ya tiene
+
+Cada fila construye su texto una vez: login, nombre, id de GLPI, identificadores de los tramos, las palabras «incidente» y «requerimiento», el estado, la severidad, el incidente que la desplazó y los títulos de su trabajo pendiente. La búsqueda pasa a minúsculas y exige que **todas** sus palabras aparezcan en ese texto, así que «ana req-1» encuentra a Ana por ese ticket y «ana req-9» no. No hay endpoint nuevo ni consulta a GLPI: el universo es exactamente lo que el Timeline recibió, y la barra dice cuántas filas de cuántas se ven. Es una búsqueda de pantalla, no un buscador del sistema.
+
+### 260. El simulador es una resta sobre la capacidad publicada, no una ejecución del motor
+
+`lib/simulation.ts` no llama a `PlanningEngine`, no persiste, no toca GLPI ni los snapshots. Toma la capacidad que el plan ya publicó para ese día, resta lo ocupado y, si la duración del incidente no cabe, desplaza tramos desde el final del día —el último que empieza primero— hasta cubrir la diferencia; cada tramo pasa al siguiente día hábil de la ventana con hueco, o a `null` si no queda ninguno. `remainingAfter` es la capacidad restante más lo desplazado menos lo que ocupa el incidente: con un día lleno, 8 h desplazadas y 6 h de incidente quedan 2. Solo los requerimientos desplazados se marcan como renegociables, porque mover un incidente no es renegociar una fecha con el negocio. La severidad se muestra pero no altera la cuenta: el dominio no tiene una regla que la traduzca en horas, e inventarla sería meter negocio en una demostración. Reutilizar el motor habría exigido generar un plan —una escritura— para enseñar algo que se descarta al recargar.
+
+### 261. TIA y «con alertas» no se implementaron porque no existen en el dominio
+
+El encargo pedía filtros por **TIA** y **con alertas**. TIA no aparece en el repositorio: no hay campo, ni regla, ni contrato que lo defina, y un filtro sobre un dato inexistente solo puede devolver siempre lo mismo. «Con alertas» tampoco se puede atribuir a una persona: `OperationalAlert` describe condiciones del plan —capacidad, desplazamientos, compromisos— y no lleva desarrollador. Se dejaron fuera en lugar de fingirlos, y la barra documenta los dos límites. El resto de filtros pedidos —persona, tipo, con plan, sin plan, pendientes, acuerdos, desplazamientos, planificables, recuperables— sí existen como señales y están implementados.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 262 | **La simulación no es el motor y puede divergir de sus reglas** | **Bajo: se presenta como demostración** | Usa la capacidad publicada y una heurística explícita —desplazar desde el final del día— y no escribe nada. Si el motor cambiara su prioridad, la demo seguiría enseñando el criterio simple; la pantalla la llama DEMO y no promete un plan |
+| 263 | **La búsqueda y los filtros solo ven lo que se cargó** | **Bajo: la barra publica «N de M personas»** | No hay consulta nueva: el universo es la respuesta del endpoint del Timeline. Quien no esté en esa respuesta no aparece en la búsqueda |
+| 264 | **El marco de 70 vh puede quedarse corto en pantallas pequeñas** | **Bajo: el marco desplaza en ambos ejes** | Se ven menos filas a la vez, pero la cabecera y la columna siguen fijas. La altura es una clase: ajustarla no toca lógica |
+| 265 | **TIA y «con alertas» quedan sin filtro** | **Bajo: documentado en la barra** | No se inventaron datos: TIA no está en el dominio y una alerta no tiene persona. Son límites declarados, no filtros vacíos |
+| 266 | **La severidad no cambia la cuenta de la simulación** | **Bajo: es una etiqueta visible** | El dominio no define qué hace la severidad: se muestra en la celda y en el resumen, y la cuenta depende solo de la duración y de la capacidad publicada |
+
+## Pruebas
+
+Frontend: **348 pruebas en 22 archivos**, TypeScript sin errores, oxlint limpio. Nuevas esta fase: diez de `simulation` —cabe sin desplazar, desplaza lo último primero, renegociable solo requerimientos, parte de la capacidad publicada, técnico desconocido, fecha fuera de ventana, día no laborable, duración no positiva, sin día hábil y resta negativa—; ocho de `timelineFilters` —búsqueda por nombre, login, GLPI y ticket, todas las palabras, persona, tipo, plan, señales, combinación con Y, orden y `hasFilters`—; y cuatro de la pantalla: búsqueda por las cuatro vías, filtros sin mover las columnas, simulación como capa que se quita y no sobrevive a un desmontaje, y rechazo de un día no laborable o fuera de ventana. Backend: **393 pruebas, 0 fallos, 3 omitidas**, sin cambios —la fase no toca backend—. Playwright sobre la app real con 18 personas y 116 días: cabecera tras desplazar 600 y 900 px —la esquina devuelve la esquina y el fondo es opaco—; fechas visibles tras bajar 500 y 700 px; búsqueda «Anal Ruiz» → 1 de 18, GLPI `66560` → Abraham Arana Aldana y «COBIS Campos nuevos» → Abraham Arana Aldana, con las 116 columnas intactas; filtro Sin plan → 8 de 18, Con desplazamientos → 2 de 18 y persona → 1 de 18; simulador con AbraAran, 23/10/2026, 6 h y severidad alta → aviso `DEMO incidente 6 h · ALTO`, una celda demo, dos tramos con anillo rojo y `DEMO → 26/10`, resumen «Desplazaría 2 tramos al lun, 26 de oct» con dos «Posible renegociación»; recarga → 0 elementos demo y los 71 tramos reales intactos.
+
+## Fase 53 — El detalle del ticket vive donde se trabaja
+
+El Timeline seleccionaba un tramo y pintaba su detalle en una caja del flujo, debajo de la rejilla y de los paneles de cobertura y conflictos. El gestor tenía que bajar hasta ella para leer el ticket y ejecutar sus acciones, y volver a subir para elegir el siguiente. La fase convierte ese detalle en un panel lateral fijo que no mueve la agenda, deja las acciones a la vista y no exige un solo desplazamiento para operar un ticket. No se toca backend, motor, capacidad, GLPI, persistencia, snapshots, desplazamientos ni renegociaciones: solo la pantalla del Timeline.
+
+### 267. Panel lateral y no modal, porque el gestor tiene que seguir viendo la agenda
+
+Un modal habría resuelto el desplazamiento, pero al abrirse habría tapado la rejilla y bloqueado justo la interacción con la que se elige el siguiente ticket: para cambiar de tramo habría que cerrar y volver a pulsar. El panel lateral —`fixed inset-y-0 right-0`, `max-w-md`, `z-50`, por encima de la barra lateral `z-40`— deja la agenda visible a la izquierda y deja viva la rejilla, de modo que un clic en otro tramo cambia el contenido del mismo panel. Es un `role="dialog"` no modal: no hay trampa de foco ni fondo oscurecido, porque el detalle acompaña a la agenda en vez de suspenderla. La elección se mide: con el panel abierto, los 71 tramos siguen en el DOM y el marco conserva su `scrollLeft` (`11493`), de modo que lo que se estaba mirando sigue debajo.
+
+### 268. El panel pinta lo que la lectura ya trajo; no calcula ni consulta
+
+El contenido del detalle —identificador, tipo, persona, estado, duración y estimación, compromiso, plan de origen, desplazamiento auditado, renegociación, conflicto y cobertura— sale de tres fuentes que la pantalla ya tenía en memoria: el `TimelineItem` de la respuesta, el `RenegotiationItem` indexado por ticket y la fila de `DeveloperCoverage` que la tabla del Timeline ya calculó para esa persona. La cobertura se recibió como prop nueva —`coverage={coverageRows.find(...)}`— en vez de recalcularse: la frase «4 de 9 tickets activos en el plan · 5 pendientes · 5 recuperables declarando» es exactamente la fila que la cabecera de cobertura muestra, no una segunda cuenta que podría divergir. No hay endpoint nuevo, ni consulta a GLPI, ni una llamada al motor.
+
+### 269. Las acciones son las de siempre, y cada una aparece solo si el dato la sostiene
+
+Las cuatro acciones son enlaces a pantallas existentes con los parámetros que esas pantallas ya aceptaban: Declarar lleva a la declaración con `from=ROUTES.teamTimeline`, Abrir detalle al calendario del plan de origen, Comparar a la comparación del mismo plan y Renegociar a la ruta de renegociación del ticket. No se duplicó ningún formulario ni se añadió lógica de negocio: cambia el lugar desde el que se llega, que es lo que convierte esas pantallas en modos del Timeline. Renegociar solo se pinta cuando el tramo se desplazó o tiene renegociación asociada; una acción que llevara a una lista vacía enseñaría a desconfiar de la pantalla entera.
+
+### 270. Cerrar y cambiar de ticket se resuelven sin estado global
+
+La selección sigue siendo un `useState` de la pantalla —el mismo que ya existía—, así que no hubo que añadir contexto, store ni parámetros de dirección. Para devolver el foco al tramo, `TeamTimeline` guarda en un `useRef` el elemento activo en el momento de abrir y lo enfoca al cerrar; el panel atiende Escape con un listener de ventana y enfoca su contenedor al montarse. El desplazamiento del marco no se toca en ningún momento: no hay que guardarlo ni restaurarlo porque abrir y cerrar un `fixed` no lo altera. Comprobado en el navegador: tras cerrar con el botón y con Escape, `document.activeElement` es el botón del tramo y el marco conserva `scrollTop` y `scrollLeft`.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 271 | **En escritorio el panel tapa 448 px de agenda** | **Bajo: se cierra y la rejilla no se mueve** | El ancho es una clase (`max-w-md`) y el panel no altera el desplazamiento del marco. En móvil ocupa la pantalla entera, que es la única forma de que el detalle sea legible |
+| 272 | **La selección no viaja en la dirección** | **Bajo: documentado** | Al salir a Declarar o Comparar y volver, el Timeline abre sin tramo elegido. Llevar la selección a la URL añadiría un parámetro y una ruta de retorno; el encargo pedía volver al mismo punto al cerrar, no tras navegar |
+| 273 | **El panel no atrapa el foco** | **Bajo: es deliberado** | Es un diálogo no modal: Tab puede salir hacia la agenda. Atrapar el foco impediría el cambio de ticket con el teclado, que es lo que el panel existe para permitir |
+| 274 | **La cobertura depende de la lectura de declaraciones** | **Bajo: el panel omite la línea si falta** | Si la lectura de esa persona falló, `coverage` llega `undefined` y la línea no se pinta; el resto del detalle —tramo, desplazamiento, renegociación— sigue disponible porque viene de otra fuente |
+
+## Pruebas
+
+Frontend: **352 pruebas en 22 archivos**, TypeScript sin errores, oxlint limpio. Nuevas esta fase, cuatro en `TeamTimeline.test.tsx`: el detalle abre como panel `fixed` y la rejilla sigue en pantalla; elegir otro tramo cambia el contenido sin cerrar el panel y sin duplicarlo; el cierre con botón y con Escape devuelve el foco al tramo; y la línea de cobertura de la persona aparece dentro del detalle. Las dos consultas del detalle que usaban `role="region"` pasaron a `role="dialog"`. Backend: **393 pruebas, 0 fallos, 3 omitidas**, sin cambios —la fase no toca backend—. Playwright sobre la app real, viewport 1360×577: clic en Incidente 68319 → panel `role=dialog`, `position: fixed`, `z-index: 50`, rect `{x: 897, w: 448}`, con Declarar, Abrir detalle y Comparar a `y=124` dentro del viewport y la agenda visible a la izquierda; cambio a Requerimiento 66222 → un solo diálogo, título nuevo, mismo `scrollLeft`; clic en el desplazado Requerimiento 64007 → aparece Renegociar junto a la fecha original, la nueva, la regla, el incidente y la renegociación acordada; cierre con el botón «Cerrar detalle» y con Escape → cero diálogos, marco en `{top: 0, left: 11493}` y `activeElement` de vuelta en el tramo.
+## Fase 54 — El ticket se declara dentro del panel
+
+La Fase 53 dejó el detalle del ticket junto al tramo, pero Declarar seguía navegando a `/declaraciones`: el Timeline desaparecía y el gestor tenía que encontrar el ticket en la lista antes de escribir una estimación y una fecha. La fase trae el formulario al panel, con el mismo componente, el mismo servicio y las mismas validaciones, y deja la pantalla completa para los lotes. No se toca motor, capacidad, GLPI, persistencia, snapshots, desplazamientos, renegociaciones ni backend: solo la pantalla del Timeline y una propiedad de presentación del formulario compartido.
+
+### 275. Declarar abre el formulario dentro del panel, porque el formulario ya existe y lo que faltaba era el sitio
+
+La pantalla de Declaración ya tenía la pieza difícil: `DeclarationForm` sabe leer la declaración viva antes de editar, decide entre crear y reemplazar, arma el cuerpo con los dos valores y enseña el error del backend sin reinterpretarlo. Un segundo formulario habría duplicado esas cuatro decisiones y, tarde o temprano, una de las dos copias habría quedado atrás. El panel importa el mismo componente y le pasa la fila `DeclarationItem` que ya conoce por la lectura de la agenda. `DeclarationForm` no cambió de contrato: solo ganó la propiedad `stacked`, que es CSS.
+
+### 276. La fila de declaración sale del lote que la agenda ya cargó, no de una consulta nueva
+
+El Timeline ya pedía las declaraciones de todas las personas para calcular la cobertura (`useTeamDeclarationsBatch`). El panel recibe de esa misma respuesta la fila del ticket —`declarationsById[developerId].items.find(...)`—, que es exactamente lo que el formulario necesita para saber si crea (`declaration: null`) o reemplaza. No se pidió una lectura más al abrir el panel ni se sintetizó el estado a partir del tramo: el estado de declaración lo clasifica el backend, y si esa lectura de la persona falló no hay fila y el panel enlaza a `/declaraciones`, que vuelve a leer antes de escribir. La única lectura nueva es la que el formulario ya hacía por su cuenta (`useDeclaration`) al editar, justo antes de pintar los campos.
+
+### 277. Tres campos en una columna: la misma rejilla con otro punto de corte
+
+En la pantalla los tres campos caben a lo ancho; en el panel de 448 px cada uno quedaría en 111 px y la fecha se cortaba (`19/10/202`, firmante `verificacion-fa`). La corrección no fue un formulario nuevo sino `stacked`, que cambia `sm:grid-cols-3` por una columna. Medido en el navegador: los tres campos a 350 px y enteramente dentro del viewport, sin desplazamiento para verlos ni para escribir. Copiar el formulario para cambiar una clase habría sido la duplicación más cara y la más fácil de dejar desincronizada.
+
+### 278. Declarar es estado local del panel, anclado al tramo con `key`
+
+El panel sigue sin estado global: `declaring` es un `useState` de `ItemDetail`, y `TeamTimeline` monta el panel con `key={item.workItemId}`. Cambiar de tramo remonta el detalle y devuelve el estado a «detalle», de forma que un formulario a medio escribir no viaja a otro ticket ni reaparece al volver al anterior. Guardar o cancelar devuelve el cuerpo del panel al detalle sin cerrarlo: la cabecera con el ticket sigue a la vista, la rejilla no se mueve y el foco y el desplazamiento no cambian.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 279 | **Declarar dentro del panel depende de la lectura por persona** | **Bajo: el panel enlaza a la pantalla** | Si el lote de esa persona falló, no hay `DeclarationItem` y Declarar es el enlace de la Fase 53 a `/declaraciones?from=teamTimeline`, que vuelve a leer antes de escribir. No se inventa el estado ni se deja crear sobre una fila falsa |
+| 280 | **La pantalla completa sigue siendo necesaria** | **Bajo: es el reparto** | El panel declara un ticket con el formulario; `/declaraciones` sigue siendo el lugar del trabajo por persona, por lote y de la revisión de pendientes. No se retiró nada de la pantalla |
+| 281 | **Guardar en el panel no regenera el plan** | **Bajo: documentado y a un clic** | La declaración cambia el insumo; la duración del tramo la fija el plan vigente hasta que el motor vuelva a correr. El panel ofrece Generar plan en la misma fila de acciones, con el técnico ya puesto |
+| 282 | **Mientras se declara, el detalle queda oculto** | **Bajo: la cabecera se mantiene** | El formulario sustituye solo el cuerpo; el identificador, el tipo, la persona y el estado siguen arriba, y Cancelar devuelve al detalle sin cerrar el panel. Un formulario encima del detalle habría tapado las cifras que se están declarando |
+
+## Pruebas
+
+Frontend: **354 pruebas en 22 archivos**, TypeScript sin errores, oxlint limpio. Nuevas esta fase, dos en `TeamTimeline.test.tsx`: un ticket sin declaración se declara dentro del panel —el `POST` lleva horas, fecha y firmante, el formulario se cierra, el detalle vuelve y la agenda sigue montada—, y un ticket ya declarado se edita con la lectura fresca —el `PUT` lleva los dos valores y el campo de horas trae lo que devolvió el `GET`, no lo de la lista—. Backend: **393 pruebas, 0 fallos, 3 omitidas**, sin cambios —la fase no toca backend—. Playwright sobre la app real, viewport 1360×577: clic en Incidente 68319 → panel con Declarar como botón y Generar plan a `/planificar?tecnico=AbraAran`; al pulsar Declarar, `GET /api/planning-metadata/68319` 200 y el formulario dentro del mismo diálogo con 6 h / 2026-10-19 / verificacion-fase-48, los tres campos a 350 px y enteros en el viewport, la rejilla montada en `scrollLeft 11486`; Guardar → `PUT /api/planning-metadata/68319` 200 con `{estimatedHours:6,committedDate:"2026-10-19",changedBy:"verificacion-fase-48"}`, el formulario desaparece, el detalle vuelve y el marco sigue en 11486; con el formulario abierto, clic en Requerimiento 67923 → un solo diálogo, título nuevo, cero formularios dentro y `scrollLeft` intacto; Escape → cero diálogos, foco de vuelta en el tramo y zoom Compacta sin tocar.
+
+## Fase 55 — El formulario de declaración aparece donde está la fila
+
+La Fase 54 llevó la declaración al panel del Timeline, pero la pantalla de Declaración seguía con el patrón antiguo: pulsar «Declarar» o «Editar» añadía el formulario como una tarjeta dentro del flujo, debajo de la tabla y del panel de cierre de ciclo, y el gestor tenía que bajar a buscarlo. La fase sustituye clic → desplazamiento → formulario por clic → panel → formulario. No se toca backend, motor, capacidad, GLPI, persistencia, snapshots, desplazamientos, renegociaciones ni el lote: solo la pantalla de Declaración, su tabla, el formulario compartido y un contenedor nuevo.
+
+### 283. El formulario sale del flujo y pasa a un panel lateral fijo, y no se copia: se reutiliza
+
+`DeclarationForm` ya resolvía las cuatro decisiones que importan —crear o reemplazar con la fila `declaration`, leer la declaración viva antes de editar, enviar siempre los dos valores y enseñar el error del backend sin reinterpretarlo—. Montar un segundo formulario dentro del panel habría duplicado esas cuatro y, tarde o temprano, una copia habría quedado atrás. El panel importa el componente tal cual y solo le pasa la fila `DeclarationItem` que la tabla ya recibió; las validaciones, las mutaciones y la invalidación del lote de declaraciones siguen viviendo en `useDeclarations`. El cambio de sitio es un contenedor `fixed inset-y-0 right-0 z-50`, fuera del flujo: la tabla no se redimensiona y `main.scrollTop` no se mueve al abrirlo —700 → 700 en la fila 44221, 876 → 876 en la 62110—.
+
+### 284. El panel se extrae a `SidePanel` para que Declaración y Timeline no sean dos dibujos parecidos
+
+La Fase 53 ya tenía el contenedor exacto que esta pantalla necesitaba —`fixed`, `max-w-md`, `z-50`, cabecera fija, cuerpo con scroll propio, `role="dialog"` no modal, Escape y botón de cerrar—. Copiarlo en `Declarations.tsx` habría producido dos paneles que se ven iguales hoy y divergen al primer retoque de uno de ellos. `components/ui/side-panel.tsx` guarda ese contenedor y lo usan las dos pantallas; el Timeline perdió sus dos efectos y su marcado, y la cabecera y el cuerpo se pasan como nodos. La igualdad visual con la Fase 54 deja de ser una coincidencia comprobada a ojo y pasa a ser la misma clase.
+
+### 285. El foco vuelve al botón que se pulsó, no a `document.activeElement`
+
+`DeclarationTable` entrega `(workItemId, event.currentTarget)` y la pantalla guarda ese botón en un `useRef` al abrir. `document.activeElement` habría funcionado con el ratón, pero no con un clic disparado desde código ni con los eventos de prueba —`fireEvent.click` no enfoca—, y habría devuelto el foco a donde estuviera antes del clic en vez de a la fila que lo abrió. Con el botón explícito, cerrar con Cancelar, con la X o con Escape devuelve el foco a la misma fila en el navegador y en las pruebas; verificado en vivo tras Cancelar: cero diálogos, `document.activeElement` en el botón «Declarar» de la fila 62110 y `main.scrollTop` todavía en 876.
+
+### 286. El primer campo recibe el foco, y el panel no se lo quita
+
+El campo de horas lleva `autoFocus`: al abrir el panel el cursor está donde se empieza a escribir, sin Tab. Como React aplica `autoFocus` en el commit y el panel enfoca su contenedor en un efecto, el panel comprueba antes `panel.contains(document.activeElement)`: si un campo ya tomó el foco, no lo roba. El `autoFocus` solo se dispara cuando el formulario se monta a la vista —al pulsar una fila o cuando llega la lectura previa—, así que no desplaza la pantalla al cargar. El panel se monta con `key={workItemId}`: cambiar de fila lo remonta en el ticket nuevo, vuelve a dejar el foco en el primer campo y no arrastra lo escrito para el anterior.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 287 | **En escritorio el panel tapa 448 px de tabla** | **Bajo: la tabla no se mueve** | Es `fixed`, así que la tabla conserva su anchura y su desplazamiento; se cierra para volver a ella. En móvil ocupa la pantalla entera, que es lo único que cabe |
+| 288 | **El panel no es modal y no atrapa el foco** | **Bajo: es deliberado** | Pulsar otra fila cambia el contenido del mismo panel sin cerrarlo, que es el recorrido que la fase quería; atrapar el foco lo impediría con el teclado. Tab puede salir hacia la tabla |
+| 289 | **Al guardar, el foco vuelve a la fila y el navegador puede desplazarla a la vista** | **Bajo: posterior al guardado, nunca al abrir** | El panel de cierre de ciclo aparece encima de la tabla y la página crece; enfocar el botón de la fila lo deja a la vista. Ocurre al guardar —cuando el gestor quiere ver el resultado—, no para llegar al formulario, que es lo que la fase elimina |
+| 290 | **El panel depende de la fila que trajo la tabla** | **Bajo: la pantalla ya tiene su estado de error** | Si la lectura no llegó, no hay fila y no hay panel; la pantalla muestra el error o el vacío existentes. No se abre un panel sin ticket ni se inventa un estado de declaración |
+
+## Pruebas
+
+Frontend: **359 pruebas en 22 archivos**, TypeScript sin errores, oxlint limpio. Nuevas esta fase, cinco en `Declarations.test.tsx`: Declarar abre un panel fijo con el formulario dentro y la tabla detrás; el foco entra en el primer campo al abrir y vuelve al botón de la fila al cerrar; Escape cierra el panel y devuelve el foco; pulsar otra fila cambia el contenido del mismo panel sin duplicarlo; y el atajo abre el pendiente en el mismo panel. Backend: **393 pruebas, 0 fallos, 3 omitidas**, sin cambios —la fase no toca backend—. Playwright sobre la app real, viewport 1360×577: clic en Editar de Requerimiento 44221 → panel `role=dialog`, `position: fixed`, rect `{x: 912, w: 448}`, foco en «Horas estimadas» con el valor leído `2`, `main.scrollTop` en 700 sin cambiar y `window.scrollY` en 0; Guardar → `PUT /api/planning-metadata/44221` 200, el panel se cierra y el foco vuelve al botón Editar de la fila; clic en Declarar de 62110 → desplazamiento 876 → 876 y foco en «Horas estimadas» vacío; Cancelar → cero diálogos, foco en el botón «Declarar» de la fila 62110 y desplazamiento todavía en 876. Lote intacto en `/declaraciones?tecnico=AbraAran&lote=1`: 2 filas pendientes, firmante único y, al escribir 3 h y 2026-11-15 en la fila 62110, «Guardar 1 declaración» con «1 de 2 filas con cambios».
+
+## Fase 56 — La renegociación se opera en un modal y la demo enseña la cadena entera
+
+La Fase 25 publicó la renegociación y la Fase 52 el simulador, pero cada uno arrastraba su propia fricción: la acción individual añadía una tarjeta debajo de la tabla —clic → desplazamiento → formulario, otra vez— y la demo de incidente, en su primer clic, contestaba que no desplazaba nada. Esta fase no toca backend, motor, capacidad, GLPI, persistencia, snapshots, desplazamientos ni renegociaciones reales: trabaja entero en el frontend y en la simulación de demostración.
+
+### 291. La acción individual deja de ser una tarjeta y pasa a un modal sobre la fila
+
+`RenegotiationForm` ya resolvía las decisiones que importan —leer el recurso antes de reemplazarlo, decidir `POST`/`PUT` por la existencia del acuerdo y enseñar el error del backend sin reinterpretarlo—, así que el modal lo importa tal cual con `bare`: el mismo cuerpo, sin su tarjeta ni su cabecera, porque el diálogo ya trae ambas. `Modal` es un contenedor nuevo (`components/ui/modal.tsx`) y **sí es modal**, a diferencia del `SidePanel` de la Fase 55: la escritura suspende la lista, oscurece lo de debajo, atrapa el Tab y cierra con Escape o con un clic que empieza en el fondo. La cabecera lleva el contexto completo —acción («Registrar el acuerdo» o «Reemplazar la fecha acordada»), estado, ticket, persona y plan—, y por eso el formulario no lo repite. El botón de la fila entrega `(workItemId, event.currentTarget)` y la pantalla lo guarda para devolver el foco ahí al cerrar; verificado en vivo: cancelar deja el foco en el botón «Registrar acuerdo» de la fila REQ-F38E-2, con `aria-expanded="true"`, y Escape en el de la fila 64007. `window.scrollY` no cambia al abrir ni al cerrar, y el diálogo cabe en el viewport.
+
+### 292. El simulador elige un día que demuestre la cadena, no el primero de la ventana
+
+El día por defecto era `days[0]` —julio, el extremo más antiguo del plan, sin trabajo— y un incidente de 4 h cabía de sobra: `needed = hours - remainingBefore` era negativo y `simulateIncident` devolvía «no desplaza ningún tramo». La demostración fallaba en el primer clic, que es el único que muchos van a hacer. El simulador ahora recorre la agenda de la persona con la propia función de simulación y elige el primer día cuyo desplazamiento incluya un **requerimiento**: es la única cadena que la demo tiene que enseñar completa —incidente, tramo movido y acuerdo pendiente—; desplazar solo incidentes no produce ninguna renegociación. Si no existe, cae al primer día donde el incidente no quepa y, en último término, al primero de la ventana, que es el comportamiento anterior. El cálculo se repite al cambiar de persona, porque el día demostrable de una puede ser un día vacío para otra. En vivo, con los datos reales, el primer clic sobre Abraham Arana Aldana (2026-10-20, 4 h) desplaza un incidente y dos requerimientos y deja la jornada en 0,5 h libres de 8.
+
+### 293. La celda simulada se centra en su scroller y la simulación publica sus renegociaciones
+
+Cuando el incidente sí desplazaba, la celda DEMO se pintaba en su columna cronológica —medida en unos 13.401 px desde el origen de la rejilla— y nada movía el scroller hasta ella: el resultado existía, pero fuera de la pantalla. `TimelineGrid` centra ahora el día simulado dentro de su propio contenedor (`[data-slot="timeline-scroll"]`), no la página, en un `requestAnimationFrame` tras cada simulación o cambio de zoom. Además, `simulateIncident` ya calculaba qué tramos eran renegociables pero **ningún componente leía `renegotiable`**: la cadena se cortaba en el tramo movido. El panel lista ahora una renegociación simulada por requerimiento desplazado, con la fecha original, la nueva, la causa («incidente DEMO 4 h · ALTO») y el estado «Pendiente de acuerdo · DEMO». La celda del incidente muestra la capacidad resultante —«quedan 0,5 h de 8» o «no cabe ni vaciando el día»— en lugar de esconderla, y la fila de la persona lleva un `DEMO` propio para que la simulación siga siendo visible aunque el día se salga de la vista. Todo lo pintado por la capa está marcado `DEMO` o `SIMULADO`.
+
+### 294. La simulación sigue siendo una capa de cliente y no escribe nada
+
+El simulador no llama al motor, ni a GLPI, ni a la base de datos: recalcula sobre los recursos e ítems que el Timeline ya cargó y guarda el resultado en un `useState` de la pantalla. Un incidente real llega por GLPI, lo planifica `PlanningEngine`, consume `CapacityBook`, deja un `reschedule_event` auditado y aparece como `PENDIENTE_DE_ACUERDO` con su renegociación asociada; la demo no reproduce ese recorrido —no puede, sin tocar lo que la fase prohíbe— y solo superpone marcas en memoria. Por eso desaparece entera al recargar, y por eso las renegociaciones DEMO no aparecen en `/renegociaciones`, que sigue leyendo el backend. La demostración es honesta en lo que promete: enseña el efecto de un incidente sobre la agenda cargada y dice, en el propio panel, que no toca el plan.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 295 | **Las renegociaciones DEMO no aparecen en `/renegociaciones`** | **Bajo: documentado** | Esa pantalla lee el backend y la fase no lo toca. La cadena se ve entera dentro del Timeline y del simulador, que es donde la demo vive |
+| 296 | **El simulador no reproduce el motor real** | **Bajo: es una demostración** | Usa `simulateIncident` sobre la agenda cargada, no `PlanningEngine` ni `CapacityBook`, y modela un solo incidente a la vez. Sirve para enseñar el desplazamiento, no para predecir un plan |
+| 297 | **El día por defecto depende de que exista un día demostrable** | **Bajo: el panel lo dice** | Si nadie tiene un día donde el incidente por defecto desplace un requerimiento, el simulador cae al primer día donde no quepa y, si tampoco, al primero de la ventana; en ese caso el resultado puede decir «Cabe en la capacidad restante» y la persona puede cambiar fecha o duración |
+| 298 | **El auto-centrado mueve el scroller al simular** | **Bajo: una vez por acción** | Se centra el día simulado dentro de la rejilla —no la página— tras cada simulación o cambio de zoom. La fila DEMO y el panel siguen visibles aunque el usuario desplace la rejilla a mano |
+
+## Pruebas
+
+Frontend: **363 pruebas en 22 archivos**, TypeScript sin errores, oxlint limpio. Nuevas esta fase: cuatro en `Renegotiations.test.tsx` —el diálogo abre con ticket, persona, plan y estado y el foco dentro; «Reemplazar» abre el mismo diálogo con la fecha anterior y Cancelar devuelve el foco al botón de la fila; Escape y el fondo cierran y devuelven el foco; guardar cierra el diálogo y deja la fila refrescada— y la prueba del simulador de `TeamTimeline.test.tsx` se amplió con la capacidad resultante, el `DEMO` de la fila, la renegociación simulada de REQ-1 con su causa, y la recarga que deja a cero el incidente, la lista y la fila. Backend: **393 pruebas, 0 fallos, 3 omitidas**, sin cambios —la fase no toca backend—. Playwright sobre la app real, viewport 1360×577: en `/renegociaciones`, «Registrar acuerdo» abre `role=dialog` con el ticket REQ-F38E-2, foco en la fecha, `window.scrollY` 0 antes y después y duración dentro del viewport; Cancelar devuelve el foco a la misma fila; «Editar acuerdo» abre «Reemplazar la fecha acordada» con la fecha anterior «mar, 3 de nov» y Escape lo cierra devolviendo el foco a la fila 64007. En el Timeline, el primer clic sobre los valores por defecto —Abraham Arana Aldana, 2026-10-20, 4 h, ALTO— deja «quedan 0,5 h de 8», desplaza 68831 (incidente) y los requerimientos 44221 y 62110 al 21 de octubre, pinta dos renegociaciones simuladas con causa y «Pendiente de acuerdo · DEMO», marca la fila con `DEMO` y centra la celda en la rejilla; recargar elimina el incidente, el resultado, las renegociaciones, la fila DEMO y los bloques con `data-demo`.
+

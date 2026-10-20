@@ -1,17 +1,21 @@
 import { AlertTriangle, ArrowLeft, ClipboardList, Inbox, ListChecks, Search } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import type { FormEvent } from 'react'
+import type { FormEvent, MouseEvent } from 'react'
 
+import { CycleClosePanel } from '@/components/declarations/CycleClosePanel'
+import { DeclarationBatch } from '@/components/declarations/DeclarationBatch'
 import { DeclarationForm } from '@/components/declarations/DeclarationForm'
 import { DeclarationTable } from '@/components/declarations/DeclarationTable'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { SidePanel } from '@/components/ui/side-panel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDeclarations } from '@/hooks/useDeclarations'
 import { useTeam } from '@/hooks/useTeam'
-import { isDeclarable } from '@/lib/declarations'
+import { DECLARATION_VARIANTS, isDeclarable } from '@/lib/declarations'
 import { isActive } from '@/lib/incidents'
 import { statusCounts } from '@/lib/planningPreview'
 import { Figure } from '@/components/ui/figure'
@@ -173,6 +177,31 @@ export function Declarations() {
   const [draft, setDraft] = useState(seed.developerId)
   const [developerId, setDeveloperId] = useState(seed.developerId)
   const [selected, setSelected] = useState<string | null>(seed.workItemId ?? null)
+  // Cuantas declaraciones se guardaron en esta visita. Enciende el panel que encadena plan y
+  // acuerdo; no es un dato del dominio y se reinicia al cambiar de tecnico.
+  const [saved, setSaved] = useState(0)
+
+  /**
+   * El botón desde el que se abrió el panel: el foco vuelve ahí al cerrarlo, para que el teclado no
+   * se quede perdido en el `body` y la persona siga donde estaba. No se usa `document.activeElement`
+   * porque el cierre puede ocurrir después de guardar, cuando ese foco ya es otro.
+   */
+  const openerRef = useRef<HTMLElement | null>(null)
+
+  function openItem(workItemId: string, opener: HTMLElement) {
+    openerRef.current = opener
+    setSelected(workItemId)
+  }
+
+  function closeItem() {
+    setSelected(null)
+    openerRef.current?.focus()
+  }
+
+  // La forma de la pantalla la decide quien llega: el Timeline entra en lote (la persona entera), y
+  // Incidentes entra por ticket. Es contexto de navegacion, no un segundo modo gobernado por la
+  // direccion: se lee una vez, como el resto.
+  const batchMode = seed.batch === true
 
   // El padrón es la única lectura que enumera personas, y es la que convierte el campo de texto en un
   // desplegable. Comparte clave de caché con Recursos, Incidentes y el estado del plan: llegar aquí
@@ -203,6 +232,7 @@ export function Declarations() {
   /** Consultar cierra el formulario abierto: los tickets que van a llegar son otros. */
   function consult() {
     setSelected(null)
+    setSaved(0)
     setDeveloperId(draft.trim())
   }
 
@@ -216,10 +246,10 @@ export function Declarations() {
    * Solo ofrece lo que se arregla declarando: `isDeclarable` deja fuera lo planificable, que no
    * necesita nada, y lo intraducible, que no se arregla con una estimación.
    */
-  function declareNext() {
+  function declareNext(event: MouseEvent<HTMLButtonElement>) {
     const next = declarables.find((item) => item.workItemId !== selected) ?? declarables[0]
 
-    setSelected(next?.workItemId ?? null)
+    if (next) openItem(next.workItemId, event.currentTarget)
   }
 
   // A dónde se vuelve, y cómo se llama ese sitio. El rótulo sale del menú y no de un literal: el
@@ -235,7 +265,9 @@ export function Declarations() {
         planificarse. El técnico se elige de la lista del equipo y el ticket de la suya: no hay ningún
         identificador que teclear. El estado y los motivos los decide el backend —el mismo que decide
         qué entra al plan—: esta pantalla no reclasifica nada. Lo que sí se escribe aquí es la
-        estimación y la fecha compromiso, que son las dos cosas que GLPI no guarda.
+        estimación y la fecha compromiso, que son las dos cosas que GLPI no guarda. Registrar las dos
+        es registrar el acuerdo operativo: el desarrollo pone el esfuerzo y el usuario acuerda la
+        fecha; esta pantalla es donde ese acuerdo queda escrito.
       </p>
 
       {/* La vuelta se ofrece siempre, venga o no de otra pantalla: el flujo empieza en la lista de
@@ -353,18 +385,96 @@ export function Declarations() {
                 tipo que el contrato no sabe leer y que no se arregla declarando—.
               </p>
 
+              {/* La persona entera, cuando se llega desde el Timeline: una sola vista para sus
+                  pendientes, un solo firmante y una sola escritura. La tabla de abajo sigue siendo
+                  la fuente del estado: el lote escribe, no reclasifica. */}
+              {batchMode && (
+                <DeclarationBatch
+                  items={declarables}
+                  developerName={data.developer.name ?? data.developer.id}
+                  onSaved={setSaved}
+                />
+              )}
+
               {/* El atajo, que es lo que evita volver a buscar la fila a ojo entre decenas. Solo
                   aparece si hay algo que declarar: un botón que no lleva a ninguna parte es una
-                  promesa vacía. */}
-              {declarables.length > 0 && (
+                  promesa vacía. En lote no se ofrece: la lista ya tiene todas las filas. */}
+              {!batchMode && declarables.length > 0 && (
                 <Button size="sm" onClick={declareNext} data-slot="declare-next">
                   <ListChecks className="size-3.5" aria-hidden="true" />
                   Declarar siguiente pendiente
                 </Button>
               )}
 
+              {/* Declarar no es cubrir. El panel encadena los dos pasos que faltan con el tecnico
+                  ya puesto, sin obligar a reconstruir el flujo por tres pantallas. */}
+              {saved > 0 && (
+                <CycleClosePanel
+                  developerId={developerId}
+                  developerName={data.developer.name ?? data.developer.id}
+                  count={saved}
+                />
+              )}
+
+              {/*
+                El formulario de un ticket vive en un panel lateral, no en el flujo. Antes se pintaba
+                debajo del resumen y del lote, así que pulsar Declarar en una fila obligaba a bajar a
+                buscarlo y perdía de vista la tabla. Es el mismo panel de la Fase 54 —`fixed`, fuera
+                del flujo— y el mismo `DeclarationForm`: cambia dónde se enseña, no qué hace.
+
+                El cuerpo cambia con el ticket, no con la pantalla: el panel se monta por `key` y
+                pulsar otra fila lo rellena de nuevo sin duplicarlo. En móvil ocupa la pantalla; en
+                escritorio deja la tabla a la izquierda.
+              */}
               {selectedItem && (
-                <DeclarationForm item={selectedItem} onClose={() => setSelected(null)} />
+                <SidePanel
+                  key={selectedItem.workItemId}
+                  labelledBy="declaracion-ticket"
+                  closeLabel="Cerrar declaración"
+                  onClose={closeItem}
+                  header={
+                    <>
+                      <h2
+                        id="declaracion-ticket"
+                        className="flex flex-wrap items-center gap-2 text-sm font-medium"
+                      >
+                        <span>
+                          {selectedItem.type === 'INCIDENTE'
+                            ? 'Incidente'
+                            : selectedItem.type === 'REQUERIMIENTO'
+                              ? 'Requerimiento'
+                              : 'Ticket'}
+                        </span>
+                        <span className="font-mono">{selectedItem.workItemId}</span>
+                        <Badge variant={DECLARATION_VARIANTS[selectedItem.declarationStatus]}>
+                          {selectedItem.declarationStatus}
+                        </Badge>
+                      </h2>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                        {selectedItem.title}
+                      </p>
+                    </>
+                  }
+                >
+                  {/* Un ticket que el contrato no sabe leer no se puede declarar: guardar horas y
+                      fecha no lo mete al plan. Se llega aquí por un enlace con `?ticket=` y no por
+                      la tabla, que ya no ofrece el botón; el aviso explica el callejón en vez de
+                      abrir un formulario que no cambia nada. */}
+                  {selectedItem.declarationStatus === 'NO_TRADUCIBLE' ? (
+                    <p data-slot="not-declarable" className="text-xs font-medium text-destructive">
+                      El ticket <span className="font-mono">{selectedItem.workItemId}</span> no entra
+                      al plan: GLPI lo entrega con un tipo que el contrato no conoce. Declararle horas
+                      y fecha no cambia eso; hay que corregir el tipo en GLPI.
+                    </p>
+                  ) : (
+                    <DeclarationForm
+                      item={selectedItem}
+                      stacked
+                      onClose={closeItem}
+                      onSaved={() => setSaved((count) => count + 1)}
+                    />
+                  )}
+                </SidePanel>
               )}
 
               {/* Un ticket pedido que ya no está se declara, en vez de dejar la pantalla como si nadie
@@ -393,7 +503,7 @@ export function Declarations() {
                 </CardHeader>
 
                 <CardContent>
-                  <DeclarationTable items={data.items} selected={selected} onSelect={setSelected} />
+                  <DeclarationTable items={data.items} selected={selected} onSelect={openItem} />
                 </CardContent>
               </Card>
             </>

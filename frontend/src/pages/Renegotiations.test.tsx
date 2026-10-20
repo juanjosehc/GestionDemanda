@@ -747,4 +747,98 @@ describe('Renegotiations', () => {
     // Y sigue sin pedir nada: el filtro no vuelve a consultar.
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  /**
+   * La Fase 56: la acción individual es un diálogo sobre la fila, no una tarjeta que alarga la
+   * página.
+   *
+   * Las dos acciones —registrar y reemplazar— abren el mismo diálogo. Lo que se comprueba es que el
+   * ticket que se opera viaja dentro —identificador, persona, plan y estado—, que el foco entra en el
+   * formulario y que cerrar devuelve el foco exactamente al botón de la fila de la que se salió.
+   */
+  it('abre el acuerdo en un diálogo contextual con el ticket a la vista', async () => {
+    serve({})
+    const { container } = await cargar()
+
+    await abrir(container, PENDIENTE_ID)
+
+    const dialogo = screen.getByRole('dialog')
+    const item = renegotiationsFixture().items.find((row) => row.workItemId === PENDIENTE_ID)!
+
+    expect(dialogo.getAttribute('aria-modal')).toBe('true')
+    expect(
+      within(dialogo).getByRole('heading', { name: /Registrar el acuerdo/ }),
+    ).toBeInTheDocument()
+
+    // El contexto de la operación, sin salir de la fila.
+    expect(dialogo.textContent).toContain(item.workItemId)
+    expect(dialogo.textContent).toContain(item.developerId)
+    expect(dialogo.textContent).toContain(item.planId)
+    expect(dialogo.textContent).toContain(item.status)
+
+    // El foco está dentro del diálogo, donde se escribe.
+    expect(dialogo.contains(document.activeElement)).toBe(true)
+  })
+
+  it('reemplaza la fecha en el mismo diálogo y al cancelar vuelve a la misma fila', async () => {
+    serve({})
+    const { container } = await cargar()
+
+    const opener = within(rowOf(container, ACORDADO_ID)).getByRole('button')
+    await abrir(container, ACORDADO_ID)
+
+    expect(
+      within(screen.getByRole('dialog')).getByRole('heading', {
+        name: /Reemplazar la fecha acordada/,
+      }),
+    ).toBeInTheDocument()
+    // La fecha anterior es el contexto del reemplazo y está a la vista sin desplazarse.
+    expect(screen.getByText('Fecha anterior')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('cierra con Escape y con el fondo, devolviendo siempre el foco a la fila', async () => {
+    serve({})
+    const { container } = await cargar()
+
+    const opener = within(rowOf(container, PENDIENTE_ID)).getByRole('button')
+
+    await abrir(container, PENDIENTE_ID)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.activeElement).toBe(opener)
+
+    await abrir(container, PENDIENTE_ID)
+    fireEvent.mouseDown(document.querySelector('[data-slot="modal"]') as HTMLElement)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('al guardar cierra el diálogo y deja la fila refrescada', async () => {
+    serve({
+      list: [
+        okResponse(renegotiationsFixture()),
+        okResponse(
+          conAcuerdo(PENDIENTE_ID, {
+            agreedDate: '2026-10-12',
+            agreedBy: 'ana',
+            status: 'ACORDADA',
+          }),
+        ),
+      ],
+    })
+
+    const { container } = await cargar()
+    await abrir(container, PENDIENTE_ID)
+
+    guardar('2026-10-12', 'ana')
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await esperarAcuerdo(container, PENDIENTE_ID, '2026-10-12')
+    expect(document.activeElement).toBe(within(rowOf(container, PENDIENTE_ID)).getByRole('button'))
+  })
 })

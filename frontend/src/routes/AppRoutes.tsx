@@ -14,6 +14,7 @@ import { PlanningPreview } from '@/pages/PlanningPreview'
 import { Renegotiations } from '@/pages/Renegotiations'
 import { Resources } from '@/pages/Resources'
 import { Settings } from '@/pages/Settings'
+import { TeamTimeline } from '@/pages/TeamTimeline'
 import { ROUTES } from '@/routes/navigation'
 
 /** Tabla de rutas. Las rutas cuelgan de MainLayout mediante una ruta sin path (layout). */
@@ -21,7 +22,8 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route element={<MainLayout />}>
-        <Route index element={<Dashboard />} />
+        <Route index element={<TeamTimeline />} />
+        <Route path={ROUTES.dashboard} element={<Dashboard />} />
         <Route path={ROUTES.alerts} element={<Alerts />} />
         <Route path={ROUTES.resources} element={<Resources />} />
         <Route path={ROUTES.calendar} element={<Calendar />} />

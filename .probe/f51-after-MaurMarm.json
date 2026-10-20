@@ -1,0 +1,457 @@
+{
+  "declaration": {
+    "developer": {
+      "id": "MaurMarm",
+      "name": "Maury Marmolejo Din"
+    },
+    "items": [
+      {
+        "workItemId": "65798",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-09-15T08:52:52Z",
+        "title": "(HOME BANKING)\" ERROR TRANSFERENCIAS BRE-B NO MUESRTA BANCO DE DESTINO",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "65798",
+          "estimatedHours": 8,
+          "committedDate": "2026-10-23",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:10:43.413952Z",
+          "committedAt": "2026-10-19T21:10:43.413952Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "68313",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-10-14T09:17:25Z",
+        "title": "Activación y desactivación Breb Banco de la republica Connser",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "68313",
+          "estimatedHours": 8,
+          "committedDate": "2026-10-27",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:10:43.459717Z",
+          "committedAt": "2026-10-19T21:10:43.459717Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "66337",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-09-21T11:53:54Z",
+        "title": "Actualización de pago mínimo y pago total en pse canales Coltefinanciera",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "66337",
+          "estimatedHours": 12,
+          "committedDate": "2026-10-30",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:10:43.473778Z",
+          "committedAt": "2026-10-19T21:10:43.473778Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "68171",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-10-13T08:51:38Z",
+        "title": "Ajuste Componente Monitor Plus",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "68171",
+          "estimatedHours": 6,
+          "committedDate": "2026-10-28",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:10:43.484868Z",
+          "committedAt": "2026-10-19T21:10:43.484868Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "61398",
+        "type": "INCIDENTE",
+        "status": "EN_ATENCION",
+        "priority": 3,
+        "createdAt": "2026-07-28T09:11:49Z",
+        "title": "COLTEFINANCIERA DIGITAL EMPRESAS (HOME BANKING) Consulta de movimientos crédito migrado a COBIS",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "61398",
+          "estimatedHours": 4,
+          "committedDate": "2026-10-21",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:10:43.493968Z",
+          "committedAt": "2026-10-19T21:10:43.493968Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "68559",
+        "type": "INCIDENTE",
+        "status": "EN_ATENCION",
+        "priority": 3,
+        "createdAt": "2026-10-16T12:20:57Z",
+        "title": "Error cargando detalles transferencia Breb Connser",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "68559",
+          "estimatedHours": 4,
+          "committedDate": "2026-10-22",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:10:43.509793Z",
+          "committedAt": "2026-10-19T21:10:43.509793Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "33219",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2025-12-29T17:02:18Z",
+        "title": "Integracion con LDAP- Compra y Venta",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "33219",
+          "estimatedHours": 8,
+          "committedDate": "2026-10-24",
+          "estimatedBy": "verificacion-fase-47",
+          "committedBy": "verificacion-fase-47",
+          "estimatedAt": "2026-10-19T20:02:35.535400Z",
+          "committedAt": "2026-10-19T20:02:35.535400Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "60448",
+        "type": "INCIDENTE",
+        "status": "EN_ATENCION",
+        "priority": 3,
+        "createdAt": "2026-07-17T10:41:17Z",
+        "title": "No muestra la hora de las transacciones en aplicación movile Coltefinanciera. Connser",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "60448",
+          "estimatedHours": 3,
+          "committedDate": "2026-10-21",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:10:43.521960Z",
+          "committedAt": "2026-10-19T21:10:43.521960Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "62711",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-08-11T14:26:33Z",
+        "title": "Solicitud Trama transacciones Modulo Branch",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "62711",
+          "estimatedHours": 10,
+          "committedDate": "2026-11-03",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:10:43.525025Z",
+          "committedAt": "2026-10-19T21:10:43.525025Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "64838",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 2,
+        "createdAt": "2026-09-03T13:03:07Z",
+        "title": "Validación de viabilidad para implementar autenticación en servicio Redis",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "64838",
+          "estimatedHours": 6,
+          "committedDate": "2026-10-29",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:10:43.537263Z",
+          "committedAt": "2026-10-19T21:10:43.537263Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      }
+    ],
+    "source": {
+      "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+      "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+    }
+  },
+  "plan": {
+    "planId": "3113ae6c-585e-413e-a54d-2b9a2a7875cc",
+    "createdAt": "2026-10-19T23:14:13.152833Z",
+    "plan": {
+      "developerId": "MaurMarm",
+      "allocations": [
+        {
+          "workItemId": "60448",
+          "workItemType": "INCIDENTE",
+          "developerId": "MaurMarm",
+          "date": "2026-07-17",
+          "hours": 3
+        },
+        {
+          "workItemId": "61398",
+          "workItemType": "INCIDENTE",
+          "developerId": "MaurMarm",
+          "date": "2026-07-28",
+          "hours": 4
+        },
+        {
+          "workItemId": "68559",
+          "workItemType": "INCIDENTE",
+          "developerId": "MaurMarm",
+          "date": "2026-10-16",
+          "hours": 4
+        },
+        {
+          "workItemId": "65798",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "date": "2026-10-23",
+          "hours": 8
+        },
+        {
+          "workItemId": "33219",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "date": "2026-10-26",
+          "hours": 8
+        },
+        {
+          "workItemId": "68313",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "date": "2026-10-27",
+          "hours": 8
+        },
+        {
+          "workItemId": "68171",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "date": "2026-10-28",
+          "hours": 6
+        },
+        {
+          "workItemId": "64838",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "date": "2026-10-29",
+          "hours": 6
+        },
+        {
+          "workItemId": "66337",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "date": "2026-10-30",
+          "hours": 12
+        },
+        {
+          "workItemId": "62711",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "date": "2026-11-03",
+          "hours": 10
+        }
+      ],
+      "blocks": [
+        {
+          "workItemId": "60448",
+          "workItemType": "INCIDENTE",
+          "developerId": "MaurMarm",
+          "start": "2026-07-17T10:41:17",
+          "end": "2026-07-17T13:41:17",
+          "hours": 3
+        },
+        {
+          "workItemId": "61398",
+          "workItemType": "INCIDENTE",
+          "developerId": "MaurMarm",
+          "start": "2026-07-28T09:11:49",
+          "end": "2026-07-28T13:11:49",
+          "hours": 4
+        },
+        {
+          "workItemId": "68559",
+          "workItemType": "INCIDENTE",
+          "developerId": "MaurMarm",
+          "start": "2026-10-16T12:20:57",
+          "end": "2026-10-16T16:20:57",
+          "hours": 4
+        },
+        {
+          "workItemId": "65798",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "start": "2026-10-23T09:00:00",
+          "end": "2026-10-23T17:00:00",
+          "hours": 8
+        },
+        {
+          "workItemId": "33219",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "start": "2026-10-26T09:00:00",
+          "end": "2026-10-26T17:00:00",
+          "hours": 8
+        },
+        {
+          "workItemId": "68313",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "start": "2026-10-27T09:00:00",
+          "end": "2026-10-27T17:00:00",
+          "hours": 8
+        },
+        {
+          "workItemId": "68171",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "start": "2026-10-28T09:00:00",
+          "end": "2026-10-28T15:00:00",
+          "hours": 6
+        },
+        {
+          "workItemId": "64838",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "start": "2026-10-29T09:00:00",
+          "end": "2026-10-29T15:00:00",
+          "hours": 6
+        },
+        {
+          "workItemId": "66337",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "start": "2026-10-30T09:00:00",
+          "end": "2026-10-30T17:00:00",
+          "hours": 8
+        },
+        {
+          "workItemId": "66337",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "start": "2026-11-02T09:00:00",
+          "end": "2026-11-02T13:00:00",
+          "hours": 4
+        },
+        {
+          "workItemId": "62711",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "start": "2026-11-03T09:00:00",
+          "end": "2026-11-03T17:00:00",
+          "hours": 8
+        },
+        {
+          "workItemId": "62711",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "MaurMarm",
+          "start": "2026-11-04T09:00:00",
+          "end": "2026-11-04T11:00:00",
+          "hours": 2
+        }
+      ],
+      "displacedRequirements": [],
+      "rescheduleEvents": [],
+      "conflicts": [],
+      "incidentPolicies": [
+        {
+          "severity": "ALTO",
+          "targetOwnershipMinutes": 15,
+          "targetResolutionHours": 4,
+          "displacementPolicy": "INMEDIATA"
+        },
+        {
+          "severity": "MEDIO",
+          "targetOwnershipMinutes": 15,
+          "targetResolutionHours": 8,
+          "displacementPolicy": "POR_CAPACIDAD"
+        },
+        {
+          "severity": "BAJO",
+          "targetOwnershipMinutes": 15,
+          "targetResolutionHours": 12,
+          "displacementPolicy": "POR_SATURACION"
+        }
+      ],
+      "calendar": {
+        "startTime": "09:00:00",
+        "endTime": "17:00:00",
+        "weekend": [
+          "SATURDAY",
+          "SUNDAY"
+        ],
+        "holidays": []
+      },
+      "incidentDeadlines": [
+        {
+          "incidentId": "61398",
+          "severity": "MEDIO",
+          "reportedAt": "2026-07-28T09:11:49Z",
+          "targetResolutionHours": 8,
+          "dueAt": "2026-07-29T09:12:00Z"
+        },
+        {
+          "incidentId": "68559",
+          "severity": "MEDIO",
+          "reportedAt": "2026-10-16T12:20:57Z",
+          "targetResolutionHours": 8,
+          "dueAt": "2026-10-19T12:21:00Z"
+        },
+        {
+          "incidentId": "60448",
+          "severity": "MEDIO",
+          "reportedAt": "2026-07-17T10:41:17Z",
+          "targetResolutionHours": 8,
+          "dueAt": "2026-07-20T10:42:00Z"
+        }
+      ]
+    },
+    "discarded": []
+  }
+}

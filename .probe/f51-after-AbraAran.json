@@ -1,0 +1,380 @@
+{
+  "declaration": {
+    "developer": {
+      "id": "AbraAran",
+      "name": "Abraham Arana Aldana"
+    },
+    "items": [
+      {
+        "workItemId": "68704",
+        "type": "INCIDENTE",
+        "status": "EN_ATENCION",
+        "priority": 3,
+        "createdAt": "2026-10-19T14:31:29Z",
+        "title": "\"COLTEFINACIERA DIGITAL EMPRESAS Novedad Transferencia ACH",
+        "declarationStatus": "SIN_DECLARACION",
+        "discards": [
+          {
+            "code": "SIN_ESTIMACION_DECLARADA",
+            "reason": "no hay planificacion declarada para este elemento"
+          },
+          {
+            "code": "SIN_COMPROMISO_DECLARADO",
+            "reason": "no hay planificacion declarada para este elemento"
+          }
+        ],
+        "declaration": null
+      },
+      {
+        "workItemId": "67923",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-10-08T10:51:09Z",
+        "title": "ASEGURAMIENTO APLICACIÓN PROPIA - SARAS ",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "67923",
+          "estimatedHours": 4,
+          "committedDate": "2026-10-17",
+          "estimatedBy": "Abraham",
+          "committedBy": "Abraham",
+          "estimatedAt": "2026-10-16T20:07:33.109227Z",
+          "committedAt": "2026-10-16T20:07:33.109227Z",
+          "source": "HTTP",
+          "commitmentOverdue": true
+        }
+      },
+      {
+        "workItemId": "66222",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-09-18T14:37:32Z",
+        "title": "CAPTACIONES (INTERCAPTA) Validacion comprobante registro de transferencia",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "66222",
+          "estimatedHours": 3,
+          "committedDate": "2026-10-23",
+          "estimatedBy": "Demostracion Fase 40",
+          "committedBy": "Demostracion Fase 40",
+          "estimatedAt": "2026-10-19T14:58:18.214838Z",
+          "committedAt": "2026-10-19T14:58:18.214838Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "66560",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-09-23T10:52:00Z",
+        "title": "COBIS Campos nuevos en COBIS (Proyecto MURIC)",
+        "declarationStatus": "SIN_DECLARACION",
+        "discards": [
+          {
+            "code": "SIN_ESTIMACION_DECLARADA",
+            "reason": "la planificacion declarada no tiene estimacion"
+          },
+          {
+            "code": "SIN_COMPROMISO_DECLARADO",
+            "reason": "la planificacion declarada no tiene fecha compromiso"
+          }
+        ],
+        "declaration": {
+          "workItemId": "66560",
+          "estimatedHours": null,
+          "committedDate": null,
+          "estimatedBy": "Demostracion Fase 42",
+          "committedBy": null,
+          "estimatedAt": "2026-10-19T16:26:51.651245Z",
+          "committedAt": null,
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "66913",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-09-28T09:39:58Z",
+        "title": "DIGIBEE ETL DEL ODS DE DIGIBEE",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "66913",
+          "estimatedHours": 6,
+          "committedDate": "2026-10-23",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-37",
+          "estimatedAt": "2026-10-19T21:25:16.494927Z",
+          "committedAt": "2026-10-16T15:52:56.720355Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "44221",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-03-11T10:26:42Z",
+        "title": "Mejora en avances tarjeta de crédito en agencias Coltefinanciera ",
+        "declarationStatus": "SIN_DECLARACION",
+        "discards": [
+          {
+            "code": "SIN_ESTIMACION_DECLARADA",
+            "reason": "no hay planificacion declarada para este elemento"
+          },
+          {
+            "code": "SIN_COMPROMISO_DECLARADO",
+            "reason": "no hay planificacion declarada para este elemento"
+          }
+        ],
+        "declaration": null
+      },
+      {
+        "workItemId": "62110",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-08-04T13:50:47Z",
+        "title": "Otro Integración Reversión Ordenes de Ingreso y Egreso desde Omniteller",
+        "declarationStatus": "SIN_DECLARACION",
+        "discards": [
+          {
+            "code": "SIN_ESTIMACION_DECLARADA",
+            "reason": "no hay planificacion declarada para este elemento"
+          },
+          {
+            "code": "SIN_COMPROMISO_DECLARADO",
+            "reason": "no hay planificacion declarada para este elemento"
+          }
+        ],
+        "declaration": null
+      },
+      {
+        "workItemId": "68319",
+        "type": "INCIDENTE",
+        "status": "EN_ATENCION",
+        "priority": 3,
+        "createdAt": "2026-10-14T09:23:40Z",
+        "title": "RESPUESTA DADA A TRX CON TD EN EXTERIOR ",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "68319",
+          "estimatedHours": 6,
+          "committedDate": "2026-10-19",
+          "estimatedBy": "validacion-fase-43",
+          "committedBy": "validacion-fase-43",
+          "estimatedAt": "2026-10-19T17:03:48.274842Z",
+          "committedAt": "2026-10-19T17:03:48.274842Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "67113",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-09-30T08:15:22Z",
+        "title": "TESORERIA UNIFICADA (TUC) Revisión Transferencias con Cuenta Matriculada",
+        "declarationStatus": "SIN_DECLARACION",
+        "discards": [
+          {
+            "code": "SIN_ESTIMACION_DECLARADA",
+            "reason": "no hay planificacion declarada para este elemento"
+          },
+          {
+            "code": "SIN_COMPROMISO_DECLARADO",
+            "reason": "no hay planificacion declarada para este elemento"
+          }
+        ],
+        "declaration": null
+      }
+    ],
+    "source": {
+      "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+      "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+    }
+  },
+  "plan": {
+    "planId": "a6fbc85c-80cd-475c-848d-4cc970c3b6bf",
+    "createdAt": "2026-10-19T23:14:15.467941100Z",
+    "plan": {
+      "developerId": "AbraAran",
+      "allocations": [
+        {
+          "workItemId": "68319",
+          "workItemType": "INCIDENTE",
+          "developerId": "AbraAran",
+          "date": "2026-10-14",
+          "hours": 6
+        },
+        {
+          "workItemId": "67923",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "AbraAran",
+          "date": "2026-10-19",
+          "hours": 4
+        },
+        {
+          "workItemId": "66222",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "AbraAran",
+          "date": "2026-10-23",
+          "hours": 3
+        },
+        {
+          "workItemId": "66913",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "AbraAran",
+          "date": "2026-10-23",
+          "hours": 6
+        }
+      ],
+      "blocks": [
+        {
+          "workItemId": "68319",
+          "workItemType": "INCIDENTE",
+          "developerId": "AbraAran",
+          "start": "2026-10-14T09:23:40",
+          "end": "2026-10-14T15:23:40",
+          "hours": 6
+        },
+        {
+          "workItemId": "67923",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "AbraAran",
+          "start": "2026-10-19T09:00:00",
+          "end": "2026-10-19T13:00:00",
+          "hours": 4
+        },
+        {
+          "workItemId": "66222",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "AbraAran",
+          "start": "2026-10-23T09:00:00",
+          "end": "2026-10-23T12:00:00",
+          "hours": 3
+        },
+        {
+          "workItemId": "66913",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "AbraAran",
+          "start": "2026-10-23T12:00:00",
+          "end": "2026-10-23T17:00:00",
+          "hours": 5
+        },
+        {
+          "workItemId": "66913",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "AbraAran",
+          "start": "2026-10-26T09:00:00",
+          "end": "2026-10-26T10:00:00",
+          "hours": 1
+        }
+      ],
+      "displacedRequirements": [],
+      "rescheduleEvents": [],
+      "conflicts": [],
+      "incidentPolicies": [
+        {
+          "severity": "ALTO",
+          "targetOwnershipMinutes": 15,
+          "targetResolutionHours": 4,
+          "displacementPolicy": "INMEDIATA"
+        },
+        {
+          "severity": "MEDIO",
+          "targetOwnershipMinutes": 15,
+          "targetResolutionHours": 8,
+          "displacementPolicy": "POR_CAPACIDAD"
+        },
+        {
+          "severity": "BAJO",
+          "targetOwnershipMinutes": 15,
+          "targetResolutionHours": 12,
+          "displacementPolicy": "POR_SATURACION"
+        }
+      ],
+      "calendar": {
+        "startTime": "09:00:00",
+        "endTime": "17:00:00",
+        "weekend": [
+          "SATURDAY",
+          "SUNDAY"
+        ],
+        "holidays": []
+      },
+      "incidentDeadlines": [
+        {
+          "incidentId": "68319",
+          "severity": "MEDIO",
+          "reportedAt": "2026-10-14T09:23:40Z",
+          "targetResolutionHours": 8,
+          "dueAt": "2026-10-15T09:24:00Z"
+        }
+      ]
+    },
+    "discarded": [
+      {
+        "ticketId": "68704",
+        "code": "SIN_ESTIMACION_DECLARADA",
+        "reason": "no hay planificacion declarada para este elemento"
+      },
+      {
+        "ticketId": "68704",
+        "code": "SIN_COMPROMISO_DECLARADO",
+        "reason": "no hay planificacion declarada para este elemento"
+      },
+      {
+        "ticketId": "66560",
+        "code": "SIN_ESTIMACION_DECLARADA",
+        "reason": "la planificacion declarada no tiene estimacion"
+      },
+      {
+        "ticketId": "66560",
+        "code": "SIN_COMPROMISO_DECLARADO",
+        "reason": "la planificacion declarada no tiene fecha compromiso"
+      },
+      {
+        "ticketId": "44221",
+        "code": "SIN_ESTIMACION_DECLARADA",
+        "reason": "no hay planificacion declarada para este elemento"
+      },
+      {
+        "ticketId": "44221",
+        "code": "SIN_COMPROMISO_DECLARADO",
+        "reason": "no hay planificacion declarada para este elemento"
+      },
+      {
+        "ticketId": "62110",
+        "code": "SIN_ESTIMACION_DECLARADA",
+        "reason": "no hay planificacion declarada para este elemento"
+      },
+      {
+        "ticketId": "62110",
+        "code": "SIN_COMPROMISO_DECLARADO",
+        "reason": "no hay planificacion declarada para este elemento"
+      },
+      {
+        "ticketId": "67113",
+        "code": "SIN_ESTIMACION_DECLARADA",
+        "reason": "no hay planificacion declarada para este elemento"
+      },
+      {
+        "ticketId": "67113",
+        "code": "SIN_COMPROMISO_DECLARADO",
+        "reason": "no hay planificacion declarada para este elemento"
+      }
+    ]
+  }
+}

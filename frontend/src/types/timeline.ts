@@ -50,6 +50,39 @@ export interface TimelineItem {
   severity: IncidentSeverity | null
   planningStatus: TimelineItemStatus
   sourcePlanId: string
+  /**
+   * Por qué este elemento cambió de fecha, o `null` si no se movió.
+   *
+   * Es la auditoría del plan —el evento de reprogramación— puesta al lado del tramo: los dos
+   * extremos de fecha, la regla que se aplicó, el incidente que consumió la franja y el motivo ya
+   * redactado. Viaja con el tramo para que la rejilla pueda decir por qué una barra está donde está
+   * sin una segunda llamada y sin recalcular nada.
+   *
+   * Cuando un elemento se movió varias veces lleva **el último** evento, que es el que explica la
+   * fecha que se está viendo.
+   */
+  displacement: TimelineDisplacement | null
+}
+
+/**
+ * La causa de un desplazamiento, tal como quedó auditada en el plan.
+ *
+ * El motivo es el texto del motor y no se vuelve a redactar aquí; la severidad es la copia que
+ * guardó el evento, no la que el incidente tenga hoy en GLPI: un incidente reclasificado después no
+ * puede reescribir por qué se movió un requerimiento el mes pasado.
+ */
+export interface TimelineDisplacement {
+  /** Fecha en la que estaba pactado, en formato ISO (yyyy-MM-dd). */
+  originalDate: string
+  /** Fecha en la que el plan lo entregó. */
+  newDate: string
+  /** Valores del enum AppliedRule del backend. */
+  appliedRule: string
+  /** Nulo si el desplazamiento lo provocó la ocupación previa de la jornada. */
+  incidentId: string | null
+  incidentSeverity: IncidentSeverity | null
+  /** El motivo redactado por el motor, tal como lo publica. */
+  reason: string
 }
 
 /** Lo pactado por elemento, para no perder el total al mirar los tramos. */
@@ -73,4 +106,63 @@ export interface TimelinePlanResponse {
   /** Los tramos, ordenados por inicio. */
   items: TimelineItem[]
   allocations: TimelineAllocation[]
+}
+
+/**
+ * El plan vigente de una persona del equipo, con su propia ventana.
+ *
+ * Existe porque `resources` solo lleva el identificador de la persona, y quien tiene el plan vacío no
+ * tiene ningún tramo del que deducir cuál es su plan. Es lo que permite afirmar «este trabajo no entró
+ * en el plan vigente» sin adivinar.
+ */
+export interface TeamTimelinePlan {
+  developerId: string
+  planId: string
+  /** Primer día de los tramos de *este* plan, o nulo si no tiene agenda. */
+  from: string | null
+  /** Último día de los tramos de *este* plan, o nulo si no tiene agenda. */
+  to: string | null
+}
+
+/**
+ * Respuesta de `GET /api/planning/team/timeline`: la agenda de todo el equipo en una ventana común.
+ *
+ * **No es un tipo nuevo, es un envase.** Los recursos, la capacidad y los tramos son los mismos
+ * registros que publica la lectura de un plan, compuestos sin tocarlos. Lo único que añade es la
+ * ventana de equipo —una sola para todas las filas— y el mapa de qué plan es el vigente de cada uno;
+ * ninguna de las dos se puede calcular mirando un plan.
+ *
+ * **Por eso no vale concatenar las respuestas de cada plan.** La ventana de un plan son las fechas de
+ * sus propios tramos, así que dos planes con cargas distintas devuelven dos ventanas distintas: pegadas,
+ * las columnas de día no alinean y la capacidad de los días que un plan no cubre no existe en ninguna
+ * parte.
+ */
+export interface TeamTimelineResponse {
+  /** Primer día de la ventana común, o nulo si ningún plan tiene agenda. */
+  from: string | null
+  /** Último día de la ventana común, o nulo si ningún plan tiene agenda. */
+  to: string | null
+  /** Una entrada por desarrollador con tramos o con plan vigente, con su capacidad. */
+  resources: TimelineResource[]
+  /** Todos los tramos del equipo, ordenados por inicio. */
+  items: TimelineItem[]
+  /** El plan vigente de cada desarrollador, con su propia ventana. */
+  plans: TeamTimelinePlan[]
+  /** El trabajo que el motor no pudo ubicar, con el motivo que el mismo redactó. */
+  conflicts: TeamConflict[]
+}
+
+/**
+ * Trabajo que el plan vigente de alguien no pudo ubicar.
+ *
+ * **Es lo que separa «no hay tramo porque no se puede planificar» de «no hay tramo porque no cupo».**
+ * Las dos se ven igual en la rejilla —una celda vacía— y se arreglan distinto, así que el motivo
+ * viaja tal como lo escribió el motor: reescribirlo aquí sería la segunda versión de una explicación
+ * que ya tiene dueño.
+ */
+export interface TeamConflict {
+  developerId: string
+  workItemId: string
+  workItemType: WorkItemType
+  reason: string
 }

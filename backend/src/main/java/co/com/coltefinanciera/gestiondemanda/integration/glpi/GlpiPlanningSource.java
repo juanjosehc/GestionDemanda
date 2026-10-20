@@ -43,9 +43,11 @@ public interface GlpiPlanningSource {
      * <p>Devuelve los de cualquier tipo —incidencias y peticiones— porque separarlos es tarea del
      * mapeador, no del transporte. Filtrar aqui repartiria el criterio entre dos capas.
      *
-     * <p>Devuelve tambien los cerrados, y eso no es un descuido: es el historico, y quien pregunta
-     * esto —el plan— necesita ver todo lo que GLPI tiene para poder decir por que descarta lo que
-     * descarta. Quien mide lo que queda por hacer pregunta {@link #activeTicketsOf(String)}.
+     * <p>Devuelve tambien los cerrados: es el historico completo del tecnico. <strong>No alimenta la
+     * planificacion desde la Fase 51.</strong> El plan y la pantalla de declaracion preguntan los dos
+     * por {@link #activeTicketsOf(String)}, para que el universo que se declara y el que se planifica
+     * sea exactamente el mismo. Se conserva como lectura de diagnostico del historico y la ejercitan
+     * las pruebas del adaptador.
      */
     List<GlpiTicket> ticketsOf(String userId);
 

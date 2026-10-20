@@ -265,6 +265,9 @@ const TEAM: TeamCatalogResponse = teamCatalogFixture({ people: [...PEOPLE] })
 beforeEach(() => {
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
+  // El firmante se recuerda entre visitas, y eso es de una persona y no de una prueba: sin limpiarlo,
+  // lo que escribio una se veria precargado en la siguiente y las afirmaciones dependerian del orden.
+  window.localStorage.clear()
 })
 
 afterEach(() => {
@@ -650,6 +653,33 @@ describe('Declarations · la entrada directa', () => {
     expect(screen.queryByRole('table')).toBeNull()
   })
 
+  it('una entrada directa a un ticket intraducible no abre el formulario, y lo explica', async () => {
+    serve({})
+
+    renderWithClient(<Declarations />, {
+      route: `/declaraciones?tecnico=${DECLARATION_DEVELOPER_ID}&ticket=505`,
+    })
+
+    // El mensaje llega en vez del formulario: declarar horas y fecha no cambia el tipo que GLPI
+    // entrega, que es lo unico que impide planificarlo.
+    const notice = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[data-slot="not-declarable"]')
+
+      if (!found) {
+        throw new Error('No apareció el aviso del ticket intraducible')
+      }
+
+      return found
+    })
+
+    expect(notice).toHaveTextContent('505')
+    expect(notice).toHaveTextContent('no entra al plan')
+    expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull()
+
+    // Y no se pidió el recurso del ticket: sin formulario no hay nada que leer.
+    expect(order()).toEqual([`GET ${TEAM_URL}`, `GET ${LIST_URL}`])
+  })
+
   it('el enlace de vuelta nombra la pantalla de la que se salió', async () => {
     serve({})
 
@@ -738,6 +768,279 @@ describe('Declarations · el resumen y el atajo', () => {
     // llevaria a rellenar un formulario que no cambia nada.
     expect(figureOf(container, 'declaration-pending')).toBe(1)
     expect(screen.queryByRole('button', { name: 'Declarar siguiente pendiente' })).toBeNull()
+  })
+
+  it('un ticket intraducible se ve pero no se puede declarar, y la fila dice por qué', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await consultar(container)
+
+    // La fila sigue a la vista —esconderla dejaria al gestor sin saber que existe—, pero no ofrece
+    // ninguna accion: un formulario aqui no cambia lo que el motor haria con el ticket.
+    const row = within(rowOf(container, '505'))
+    expect(row.queryByRole('button')).toBeNull()
+    expect(row.getByText('No entra al plan')).toBeInTheDocument()
+    expect(
+      row.getByText(/GLPI no lo entrega de una forma que el contrato pueda leer/),
+    ).toBeInTheDocument()
+
+    // Las otras cuatro filas si se pueden declarar o editar.
+    expect(rows(container).filter((other) => within(other).queryByRole('button') === null)).toEqual([
+      rowOf(container, '505'),
+    ])
+  })
+})
+
+describe('Declarations · la declaración en lote', () => {
+  const BATCH_ROUTE = `/declaraciones?tecnico=${DECLARATION_DEVELOPER_ID}&lote=1`
+
+  function batchRows(container: HTMLElement): HTMLElement[] {
+    return [...container.querySelectorAll<HTMLElement>('[data-slot="batch-row"]')]
+  }
+
+  function fieldOf(container: HTMLElement, workItemId: string, kind: 'Horas' | 'Fecha') {
+    const row = container.querySelector<HTMLElement>(
+      `[data-slot="batch-row"][data-work-item="${workItemId}"]`,
+    )
+
+    if (!row) {
+      throw new Error(`No hay fila de lote para el ticket "${workItemId}"`)
+    }
+
+    return within(row).getByLabelText(new RegExp(`^${kind}`)) as HTMLInputElement
+  }
+
+  it('abre la persona entera: una fila por pendiente, un solo firmante y sin el atajo por ticket', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: BATCH_ROUTE })
+    await screen.findByText('Declaración en lote · Ana Perez')
+
+    // Solo lo que se arregla declarando: 501 ya es planificable y 505 no se puede traducir.
+    expect(batchRows(container).map((row) => row.getAttribute('data-work-item'))).toEqual([
+      '502',
+      '503',
+      '504',
+    ])
+
+    // Un firmante para el lote, no uno por fila: es la persona que opera, no un dato del ticket.
+    expect(screen.getAllByLabelText('Quién declara')).toHaveLength(1)
+
+    // La tabla sigue siendo la fuente del estado y el atajo por ticket deja de ofrecerse: la lista ya
+    // tiene todas las filas.
+    expect(rows(container)).toHaveLength(5)
+    expect(screen.queryByRole('button', { name: 'Declarar siguiente pendiente' })).toBeNull()
+
+    // Abrir el lote no escribe ni pide nada de mas.
+    expect(order()).toEqual([`GET ${TEAM_URL}`, `GET ${LIST_URL}`])
+    expect(writes('POST')).toHaveLength(0)
+    expect(writes('PUT')).toHaveLength(0)
+  })
+
+  it('guarda varias declaraciones con un solo firmante y una sola relectura', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: BATCH_ROUTE })
+    await screen.findByText('Declaración en lote · Ana Perez')
+
+    // El boton no se ofrece sin nada escrito ni sin firmante.
+    expect(screen.getByRole('button', { name: /Guardar/ })).toBeDisabled()
+
+    fireEvent.change(fieldOf(container, '502', 'Horas'), { target: { value: '3' } })
+    fireEvent.change(fieldOf(container, '504', 'Horas'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Quién declara'), { target: { value: 'maury' } })
+
+    const save = screen.getByRole('button', { name: 'Guardar 2 declaraciones' })
+    expect(save).toBeEnabled()
+    fireEvent.click(save)
+
+    await screen.findByText('2 declaraciones guardadas')
+
+    // Cada fila conserva su propia escritura: el 502 ya tenia fecha y el PUT la reenvia para no
+    // borrarla; el 504 no tenia nada y se crea con la fecha vacia dicha como nula.
+    expect(writes('PUT')).toEqual([
+      {
+        url: `${ITEM_PREFIX}502`,
+        body: { estimatedHours: 3, committedDate: '2026-10-21', changedBy: 'maury' },
+      },
+    ])
+    expect(writes('POST')).toEqual([
+      {
+        url: CREATE_URL,
+        body: {
+          workItemId: '504',
+          estimatedHours: 5,
+          committedDate: null,
+          changedBy: 'maury',
+        },
+      },
+    ])
+
+    // Una sola relectura para el lote entero, y ninguna escritura para las filas que no se tocaron.
+    expect(calls(LIST_URL)).toHaveLength(2)
+    expect(writes('PUT').map((write) => write.url)).not.toContain(`${ITEM_PREFIX}503`)
+  })
+
+  it('no envia las filas vacias ni las que quedaron como estaban', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: BATCH_ROUTE })
+    await screen.findByText('Declaración en lote · Ana Perez')
+
+    // Las dos filas con declaracion llegan precargadas con lo suyo.
+    expect(fieldOf(container, '502', 'Fecha').value).toBe('2026-10-21')
+    expect(fieldOf(container, '503', 'Horas').value).toBe('4')
+
+    // Se cambia solo las horas del 503. El 502 esta precargado pero intacto, y el 504 en blanco.
+    fireEvent.change(fieldOf(container, '503', 'Horas'), { target: { value: '6' } })
+    fireEvent.change(screen.getByLabelText('Quién declara'), { target: { value: 'maury' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar 1 declaración' }))
+
+    await screen.findByText('Declaración guardada')
+
+    expect(writes('PUT')).toEqual([
+      {
+        url: `${ITEM_PREFIX}503`,
+        body: { estimatedHours: 6, committedDate: null, changedBy: 'maury' },
+      },
+    ])
+    expect(writes('POST')).toHaveLength(0)
+  })
+
+  it('encadena el resto del ciclo con el tecnico ya puesto', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: BATCH_ROUTE })
+    await screen.findByText('Declaración en lote · Ana Perez')
+
+    fireEvent.change(fieldOf(container, '504', 'Horas'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Quién declara'), { target: { value: 'maury' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar 1 declaración' }))
+
+    const panel = await screen.findByText('Declaración guardada')
+
+    // Declarar no es cubrir: el panel dice lo que falta y lleva a las pantallas que lo hacen, sin
+    // volver a teclear a quien se acaba de declarar.
+    expect(panel.closest('[data-slot="cycle-close"]')).not.toBeNull()
+    expect(screen.getByRole('link', { name: 'Generar plan de Ana Perez' })).toHaveAttribute(
+      'href',
+      `/planificar?tecnico=${DECLARATION_DEVELOPER_ID}`,
+    )
+    expect(screen.getByRole('link', { name: 'Registrar acuerdos' })).toHaveAttribute(
+      'href',
+      ROUTES.renegotiations,
+    )
+    expect(screen.getByRole('link', { name: 'Volver al Timeline' })).toHaveAttribute(
+      'href',
+      ROUTES.teamTimeline,
+    )
+  })
+
+  it('recuerda quien declara entre visitas', async () => {
+    serve({})
+
+    const first = renderWithClient(<Declarations />, { route: BATCH_ROUTE })
+    await screen.findByText('Declaración en lote · Ana Perez')
+
+    fireEvent.change(fieldOf(first.container, '504', 'Horas'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Quién declara'), { target: { value: 'maury' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar 1 declaración' }))
+
+    await screen.findByText('Declaración guardada')
+
+    first.unmount()
+
+    // La misma persona vuelve a la pantalla y no vuelve a teclear su nombre.
+    renderWithClient(<Declarations />, { route: BATCH_ROUTE })
+    expect(await screen.findByLabelText('Quién declara')).toHaveValue('maury')
+  })
+})
+
+describe('Declarations · el formulario vive en un panel', () => {
+  /** El panel lateral abierto: un `role="dialog"` no modal, el mismo del Timeline. */
+  function panel(): HTMLElement {
+    return screen.getByRole('dialog')
+  }
+
+  it('declarar abre un panel fijo con el formulario dentro y la tabla detrás', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await consultar(container)
+    await abrir(container, '504')
+
+    // Fuera del flujo: es un panel `fixed` y la tabla sigue montada, en su sitio y completa.
+    expect(panel()).toHaveClass('fixed')
+    expect(within(panel()).getByRole('button', { name: 'Guardar' })).toBeInTheDocument()
+    expect(within(panel()).getByLabelText('Horas estimadas')).toBeInTheDocument()
+    expect(rows(container)).toHaveLength(5)
+
+    // La fila sigue marcada como abierta, que es de donde vendra el foco al cerrar.
+    expect(within(rowOf(container, '504')).getByRole('button')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+  })
+
+  it('el foco entra en el primer campo util al abrir y vuelve al boton de la fila al cerrar', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await consultar(container)
+    await abrir(container, '501')
+
+    // El formulario se monta después de la lectura previa, y al montarse toma el foco.
+    expect(field('Horas estimadas')).toHaveFocus()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(within(rowOf(container, '501')).getByRole('button')).toHaveFocus()
+  })
+
+  it('Escape cierra el panel y devuelve el foco a la fila', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await consultar(container)
+    await abrir(container, '502')
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(within(rowOf(container, '502')).getByRole('button')).toHaveFocus()
+  })
+
+  it('pulsar otra fila cambia el contenido del mismo panel, sin duplicarlo', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await consultar(container)
+    await abrir(container, '501')
+
+    expect(panel()).toHaveTextContent('501')
+
+    fireEvent.click(within(rowOf(container, '503')).getByRole('button'))
+
+    // Un solo panel, con el ticket nuevo y su foco en el primer campo.
+    await waitFor(() => expect(panel()).toHaveTextContent('503'))
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    // La lectura del ticket nuevo tarda un turno: el foco llega con los campos.
+    expect(await screen.findByLabelText('Horas estimadas')).toHaveFocus()
+  })
+
+  it('el atajo abre el pendiente en el mismo panel y no lo duplica', async () => {
+    serve({})
+
+    const { container } = renderWithClient(<Declarations />, { route: '/declaraciones' })
+    await consultar(container)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Declarar siguiente pendiente' }))
+    await screen.findByRole('button', { name: 'Guardar' })
+
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(panel()).toHaveTextContent('502')
   })
 })
 })

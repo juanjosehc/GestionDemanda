@@ -1,0 +1,2517 @@
+{
+  "developers": [
+    {
+      "developer": {
+        "id": "AbraAran",
+        "name": "Abraham Arana Aldana"
+      },
+      "items": [
+        {
+          "workItemId": "68704",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-10-19T14:31:29Z",
+          "title": "\"COLTEFINACIERA DIGITAL EMPRESAS Novedad Transferencia ACH",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "67923",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-08T10:51:09Z",
+          "title": "ASEGURAMIENTO APLICACIÓN PROPIA - SARAS ",
+          "declarationStatus": "PLANIFICABLE",
+          "discards": [],
+          "declaration": {
+            "workItemId": "67923",
+            "estimatedHours": 4.0,
+            "committedDate": "2026-10-17",
+            "estimatedBy": "Abraham",
+            "committedBy": "Abraham",
+            "estimatedAt": "2026-10-16T20:07:33.109227Z",
+            "committedAt": "2026-10-16T20:07:33.109227Z",
+            "source": "HTTP",
+            "commitmentOverdue": true
+          }
+        },
+        {
+          "workItemId": "66222",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-18T14:37:32Z",
+          "title": "CAPTACIONES (INTERCAPTA) Validacion comprobante registro de transferencia",
+          "declarationStatus": "PLANIFICABLE",
+          "discards": [],
+          "declaration": {
+            "workItemId": "66222",
+            "estimatedHours": 3.0,
+            "committedDate": "2026-10-23",
+            "estimatedBy": "Demostracion Fase 40",
+            "committedBy": "Demostracion Fase 40",
+            "estimatedAt": "2026-10-19T14:58:18.214838Z",
+            "committedAt": "2026-10-19T14:58:18.214838Z",
+            "source": "HTTP",
+            "commitmentOverdue": false
+          }
+        },
+        {
+          "workItemId": "66560",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-23T10:52:00Z",
+          "title": "COBIS Campos nuevos en COBIS (Proyecto MURIC)",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "la planificacion declarada no tiene estimacion"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "la planificacion declarada no tiene fecha compromiso"
+            }
+          ],
+          "declaration": {
+            "workItemId": "66560",
+            "estimatedHours": null,
+            "committedDate": null,
+            "estimatedBy": "Demostracion Fase 42",
+            "committedBy": null,
+            "estimatedAt": "2026-10-19T16:26:51.651245Z",
+            "committedAt": null,
+            "source": "HTTP",
+            "commitmentOverdue": false
+          }
+        },
+        {
+          "workItemId": "66913",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-28T09:39:58Z",
+          "title": "DIGIBEE ETL DEL ODS DE DIGIBEE",
+          "declarationStatus": "SIN_ESTIMACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "la planificacion declarada no tiene estimacion"
+            }
+          ],
+          "declaration": {
+            "workItemId": "66913",
+            "estimatedHours": null,
+            "committedDate": "2026-10-23",
+            "estimatedBy": null,
+            "committedBy": "verificacion-fase-37",
+            "estimatedAt": null,
+            "committedAt": "2026-10-16T15:52:56.720355Z",
+            "source": "HTTP",
+            "commitmentOverdue": false
+          }
+        },
+        {
+          "workItemId": "44221",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-03-11T10:26:42Z",
+          "title": "Mejora en avances tarjeta de crédito en agencias Coltefinanciera ",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "62110",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-04T13:50:47Z",
+          "title": "Otro Integración Reversión Ordenes de Ingreso y Egreso desde Omniteller",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68319",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-10-14T09:23:40Z",
+          "title": "RESPUESTA DADA A TRX CON TD EN EXTERIOR ",
+          "declarationStatus": "PLANIFICABLE",
+          "discards": [],
+          "declaration": {
+            "workItemId": "68319",
+            "estimatedHours": 6.0,
+            "committedDate": "2026-10-19",
+            "estimatedBy": "validacion-fase-43",
+            "committedBy": "validacion-fase-43",
+            "estimatedAt": "2026-10-19T17:03:48.274842Z",
+            "committedAt": "2026-10-19T17:03:48.274842Z",
+            "source": "HTTP",
+            "commitmentOverdue": false
+          }
+        },
+        {
+          "workItemId": "67113",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-30T08:15:22Z",
+          "title": "TESORERIA UNIFICADA (TUC) Revisión Transferencias con Cuenta Matriculada",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "AlejDiaz",
+        "name": "Alejandro Diaz ortiz"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "AlejPine",
+        "name": "Alejandro Pineda Machado"
+      },
+      "items": [
+        {
+          "workItemId": "68428",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-15T09:40:10Z",
+          "title": "Desarrollo backoffice portal vinculación -Captaciones Connser",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "64995",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-06T22:39:21Z",
+          "title": "Desarrollo nuevo flujo remesas (flujo directo) Connser",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68237",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-13T16:16:35Z",
+          "title": "Inclusión de la lista 14 en las listas restrictivas para consultas de compra y venta de cartera Connser",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "66549",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-23T09:46:29Z",
+          "title": "MERCAMSOFT ATENDER CASO LYNTIK PARA ACTUALIZAR VERSIÓN",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "52178",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-05-13T11:26:00Z",
+          "title": "MERCAMSOFT SOLICITUD PARA FILTRAR DATOS EN LA INTERFACE DE REMESAS",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "44938",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-03-17T08:45:15Z",
+          "title": "Novedad cargue pasaportes ",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "38212",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-01-30T15:09:39Z",
+          "title": "Validacion Codigo OTP en primera pantalla",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "AnalRuiz",
+        "name": "Analy Ruiz"
+      },
+      "items": [
+        {
+          "workItemId": "66120",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 2,
+          "createdAt": "2026-09-17T17:33:32Z",
+          "title": "Connser Minutograma pase a producción  DBM SuperGiros",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "AndeNava",
+        "name": "Andersom  de Jesus Navarro Ramirez"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "AndrBelt",
+        "name": "Andres Steven Beltran Forero"
+      },
+      "items": [
+        {
+          "workItemId": "66594",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-09-23T16:14:31Z",
+          "title": "\"COLTEFINACIERA DIGITAL EMPRESAS Error con transferencias ACH realizadas desde HomeBanking",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68016",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-09T09:26:34Z",
+          "title": "\"COLTEFINACIERA DIGITAL EMPRESAS Implementación riel transferencias inmediatas ACH en línea",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68347",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-10-14T12:15:04Z",
+          "title": "\"COLTEFINACIERA DIGITAL EMPRESAS Novedades con el envió de ciclos ACH",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68712",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 4,
+          "createdAt": "2026-10-19T15:25:30Z",
+          "title": "13 Reporte de Cambios a Programas Implementados en Producción (Corte 31 de Agosto) (67459)",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "65251",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-08T15:18:06Z",
+          "title": "COLTEFINANCIERA DIGITAL PERSONAS (HOME BANKING) No se puede ver en el portal los CDT desmaterializados para clientes sin cuenta",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68573",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 5,
+          "createdAt": "2026-10-16T14:21:51Z",
+          "title": "Coltefinanciera Error en los saldos de los libros mayores ",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "AndrEsco",
+        "name": "Andres Felipe Escobar Arango"
+      },
+      "items": [
+        {
+          "workItemId": "66190",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-18T10:42:03Z",
+          "title": "(HOME BANKING)\" Reporte Saldo vencido a Pse",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "46133",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-03-26T12:00:43Z",
+          "title": "ABONO A CA POR DEVOLUCIÓN TX ACH DIA ANTERIOR",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "47643",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-04-08T11:48:53Z",
+          "title": "Integración bidireccional entre Jira y GLPI para sincronización automática de tickets Connser",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "AndrGonza",
+        "name": "Andres Felipe Gonzalez Gonzalez"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "AndrLeal",
+        "name": "Andres Camilo Leal"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "AngiDiaz",
+        "name": "Angie Maritza Diaz Montaño"
+      },
+      "items": [
+        {
+          "workItemId": "67462",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-02T17:18:54Z",
+          "title": "9 Listado de usuarios administradores Base de Datos y Sistema Operativo COBIS",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "66224",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-18T14:57:49Z",
+          "title": "Actualización Microservicio módulo Clientes- 1.8.25",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "63989",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-26T08:12:55Z",
+          "title": "Back Up del servidor de GLPI produccion a pruebas  ",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "61159",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-07-24T15:46:55Z",
+          "title": "CLF-Instalación Release Menor Contabilidad(Accounting)- Versión: 2024-2.0.14",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "63231",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-18T11:24:48Z",
+          "title": "COBIS Validación de listado de usuarios y roles en COBIS",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "63694",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-23T01:23:04Z",
+          "title": "Connser Acceso a Grafana",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "47644",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-04-08T11:53:48Z",
+          "title": "Connser Revisión y acompañamiento para cambio de equipos tecnológicos dentro de presupuesto",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "62830",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-12T13:51:15Z",
+          "title": "Instalación Release Menor Microservicios Línea Base Infra-Serverless 2.31.10",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "67730",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-06T16:46:03Z",
+          "title": "Requerimientos y Solicitudes GLPI",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68183",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-13T09:46:38Z",
+          "title": "Requerimientos y Solicitudes GLPI",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68448",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-15T11:24:40Z",
+          "title": "Requerimientos y Solicitudes GLPI",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68577",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-16T14:52:42Z",
+          "title": "Solicitud licencia Claude y permiso para usar codex",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "CesaGira",
+        "name": "Cesar Giraldo Muñoz"
+      },
+      "items": [
+        {
+          "workItemId": "63909",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-25T11:49:42Z",
+          "title": "Agregar o Eliminar Funcionalidades en COBIS",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "65369",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-09T15:42:52Z",
+          "title": "COBIS Ayuda y explicación de migración de datos de Cobis a Integra",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "67820",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-10-07T12:00:53Z",
+          "title": "Coltefinanciera pago no viajo al tuc",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68227",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-10-13T15:34:02Z",
+          "title": "Error cargue de estructuras Flamingo",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "54528",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-06-01T14:17:47Z",
+          "title": "PEOPLESOFT-CXP (AP Y CM) CONSULTA LISTAS RESTRICTIVAS PEOPLE SOFT ",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "64007",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-26T09:48:06Z",
+          "title": "PEOPLESOFT-CXP (AP Y CM) Solicitud de análisis y plan de actualización de PeopleSoft compatible con Oracle 19c",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "65126",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 4,
+          "createdAt": "2026-09-07T16:46:16Z",
+          "title": "Solicitud de campos a COBIS",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68548",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-16T10:33:55Z",
+          "title": "Solicitud de desarrollo para automatizar el proceso de compra de cartera de Flamingo mediante Enlace.",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "63541",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-08-20T17:50:13Z",
+          "title": "Vulnerabilidades Coltefinanciera",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "DaniLope",
+        "name": "Daniel Felipe Lopez Rendon"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "DaniMont",
+        "name": "Daniel Steven Montealegre Peña"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "DiegEsco",
+        "name": "Diego Armando Escobar Salazar"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "EdisGarc",
+        "name": "Edisson García"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "FranZulu",
+        "name": "Francisco Javier Zuluaga A."
+      },
+      "items": [
+        {
+          "workItemId": "51665",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 5,
+          "createdAt": "2026-05-08T14:48:54Z",
+          "title": "COLOCACIONES (INTEGRA) MEJORA PARA CUBRIR HALLAZGO DETALLADO EN ULTIMA VISITA DE LA SUPERFINANCIERA",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68057",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 5,
+          "createdAt": "2026-10-09T14:42:33Z",
+          "title": "COLOCACIONES (INTEGRA) PRODUCTO 152",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "45428",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-03-20T11:37:12Z",
+          "title": "Otro Datacredito actualización y requerimiento para nuevos reportes",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JairSana",
+        "name": "Jairo Antonio Sanabria Suarez"
+      },
+      "items": [
+        {
+          "workItemId": "66959",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-09-28T15:11:26Z",
+          "title": "Error reportado en Forma COL21040 Connser",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JhonAteh",
+        "name": "Jhonnatan Atehortua Alvarez"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JohnTorr",
+        "name": "John Jander Torres Velez"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JonaPena",
+        "name": "Jonathan Stiven Peña Gonzalez"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JoseDiaz",
+        "name": "Jose Alejandro Diaz Urrego"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JoseGarc",
+        "name": "Jose Luis Garces Gonzalez"
+      },
+      "items": [
+        {
+          "workItemId": "66666",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-09-24T10:06:01Z",
+          "title": "\"COLTEFINACIERA DIGITAL EMPRESAS Aplicación de pago de un crédito cuando este presenta un rechazo en la cuenta.",
+          "declarationStatus": "SIN_ESTIMACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "la planificacion declarada no tiene estimacion"
+            }
+          ],
+          "declaration": {
+            "workItemId": "66666",
+            "estimatedHours": null,
+            "committedDate": "2026-10-20",
+            "estimatedBy": null,
+            "committedBy": "Juan Hernandez",
+            "estimatedAt": null,
+            "committedAt": "2026-10-15T21:18:34.504540Z",
+            "source": "HTTP",
+            "commitmentOverdue": false
+          }
+        },
+        {
+          "workItemId": "66913",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-28T09:39:58Z",
+          "title": "DIGIBEE ETL DEL ODS DE DIGIBEE",
+          "declarationStatus": "SIN_ESTIMACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "la planificacion declarada no tiene estimacion"
+            }
+          ],
+          "declaration": {
+            "workItemId": "66913",
+            "estimatedHours": null,
+            "committedDate": "2026-10-23",
+            "estimatedBy": null,
+            "committedBy": "verificacion-fase-37",
+            "estimatedAt": null,
+            "committedAt": "2026-10-16T15:52:56.720355Z",
+            "source": "HTTP",
+            "commitmentOverdue": false
+          }
+        },
+        {
+          "workItemId": "53350",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 2,
+          "createdAt": "2026-05-22T22:20:28Z",
+          "title": "Docker gateway debe controlar el acceso a URL a través de los roles de usuario",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68440",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 4,
+          "createdAt": "2026-10-15T10:18:19Z",
+          "title": "ESTRUCTURA FORMATO 343 TRIMESTRE 3",
+          "declarationStatus": "PLANIFICABLE",
+          "discards": [],
+          "declaration": {
+            "workItemId": "68440",
+            "estimatedHours": 6.0,
+            "committedDate": "2026-10-15",
+            "estimatedBy": "Jose Luis Garces",
+            "committedBy": "Jose Luis Garces",
+            "estimatedAt": "2026-10-15T19:20:07.546769Z",
+            "committedAt": "2026-10-15T19:20:07.546769Z",
+            "source": "HTTP",
+            "commitmentOverdue": true
+          }
+        },
+        {
+          "workItemId": "66912",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-28T09:34:53Z",
+          "title": "GRANDES EXPOSICIONES GRANDES EXPOSICIONES - FORMATO TOTAL REPORT",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68661",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-19T09:59:22Z",
+          "title": "GRANDES EXPOSICIONES PASO INFORMACIÓN SERVIDOR TOTAL REPORT FTO 427-428-433",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "59628",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 4,
+          "createdAt": "2026-07-09T21:10:45Z",
+          "title": "No está funcionando Momento 1",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68659",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-19T09:50:43Z",
+          "title": "Retención de Logs limitada a 365 - parte 23 Connser",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "63630",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-21T11:53:28Z",
+          "title": "Retención de logs limitada a 365 días en microservicios productivos — requiere ajuste",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JoseGonz",
+        "name": "Jose Fabian Gonzalez Tavera"
+      },
+      "items": [
+        {
+          "workItemId": "68660",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-19T09:51:04Z",
+          "title": "Coltefinanciera Solicitud de licencia de Claude - Laura Arango Duque",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68372",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-14T15:59:55Z",
+          "title": "Coltefinanciera Solicitud de licencia de Claude - Lydia Juliana Franco Vargas",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68442",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-15T10:28:56Z",
+          "title": "Connser  Solicitud de licencia de IA Cloud",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68483",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-15T19:05:39Z",
+          "title": "Connser Aprobación salida producción Flamingo Crédito Fiao",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68642",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-19T08:17:21Z",
+          "title": "Connser Licencias Claude",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68174",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-13T09:02:36Z",
+          "title": "Otro Solicitud de licencia de Claude",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68172",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-13T08:53:25Z",
+          "title": "Otro Solicitud de licencia de Cursor",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JoseMelo",
+        "name": "José Ricardo Melo Redondo"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JoseOroz",
+        "name": "Jose Carlos Orozco Medina"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JosePere",
+        "name": "Jose Perez"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JoseSanc",
+        "name": "Jose Luis Sanchez Forero"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "JuanEscb",
+        "name": "Juan Carlos Escobar Gil"
+      },
+      "items": [
+        {
+          "workItemId": "48259",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-04-13T12:46:59Z",
+          "title": "Reenvío de pagarés Connser",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "MariMesa",
+        "name": "Maria Jeimy Mesa Gomez"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "MaurMarm",
+        "name": "Maury Marmolejo Din"
+      },
+      "items": [
+        {
+          "workItemId": "65798",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-15T08:52:52Z",
+          "title": "(HOME BANKING)\" ERROR TRANSFERENCIAS BRE-B NO MUESRTA BANCO DE DESTINO",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68313",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-14T09:17:25Z",
+          "title": "Activación y desactivación Breb Banco de la republica Connser",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "66337",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-21T11:53:54Z",
+          "title": "Actualización de pago mínimo y pago total en pse canales Coltefinanciera",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68171",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-13T08:51:38Z",
+          "title": "Ajuste Componente Monitor Plus",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "61398",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-07-28T09:11:49Z",
+          "title": "COLTEFINANCIERA DIGITAL EMPRESAS (HOME BANKING) Consulta de movimientos crédito migrado a COBIS",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68559",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-10-16T12:20:57Z",
+          "title": "Error cargando detalles transferencia Breb Connser",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "33219",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2025-12-29T17:02:18Z",
+          "title": "Integracion con LDAP- Compra y Venta",
+          "declarationStatus": "PLANIFICABLE",
+          "discards": [],
+          "declaration": {
+            "workItemId": "33219",
+            "estimatedHours": 8.0,
+            "committedDate": "2026-10-24",
+            "estimatedBy": "verificacion-fase-47",
+            "committedBy": "verificacion-fase-47",
+            "estimatedAt": "2026-10-19T20:02:35.535400Z",
+            "committedAt": "2026-10-19T20:02:35.535400Z",
+            "source": "HTTP",
+            "commitmentOverdue": false
+          }
+        },
+        {
+          "workItemId": "60448",
+          "type": "INCIDENTE",
+          "status": "EN_ATENCION",
+          "priority": 3,
+          "createdAt": "2026-07-17T10:41:17Z",
+          "title": "No muestra la hora de las transacciones en aplicación movile Coltefinanciera. Connser",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "62711",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-11T14:26:33Z",
+          "title": "Solicitud Trama transacciones Modulo Branch",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "64838",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 2,
+          "createdAt": "2026-09-03T13:03:07Z",
+          "title": "Validación de viabilidad para implementar autenticación en servicio Redis",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "MeliMora",
+        "name": "Melisa Morales Gomez"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "NestFlor",
+        "name": "Nestor Fabian Florez Lozano"
+      },
+      "items": [
+        {
+          "workItemId": "55148",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 4,
+          "createdAt": "2026-06-04T17:18:54Z",
+          "title": "Bonos de dotación",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "NicoSuar",
+        "name": "Nicolas Alejandro Suarez Florez"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "NilsCort",
+        "name": "Nilson Cortes"
+      },
+      "items": [
+        {
+          "workItemId": "67677",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 4,
+          "createdAt": "2026-10-06T08:39:54Z",
+          "title": "Aplicación pago HOY GRUPO EMPRESARIAL SHALOM GES SAS NIT 900.664.206",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68340",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-14T11:46:46Z",
+          "title": "CAPTACIONES (INTERCAPTA) se requiere reporte de monitoreo trimestral corte de septiembre",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "63322",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-19T07:39:44Z",
+          "title": "CLIENTE ÚNICO Acumulación de días de incumplimiento para clientes en calificación D y E",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "63325",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-19T07:47:12Z",
+          "title": "CLIENTE ÚNICO Modificación calculo de la provisión Obligaciones FNG",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68253",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-13T22:41:38Z",
+          "title": "COLOCACIONES (INTEGRA)  HU_Parametrizacion_Fuentes_Pago_Excluidas  calidifaciones",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "65082",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 4,
+          "createdAt": "2026-09-07T10:58:02Z",
+          "title": "COLOCACIONES (INTEGRA) VALIDACION COBRO GMF",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "65708",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-14T11:17:28Z",
+          "title": "ERROR PARAMETROS CONTABLES TRX 2387 TUC PRUEBAS COBIS2",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68488",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-15T22:17:56Z",
+          "title": "GARANTIAS (FNG-FGA) excel de obligaciones,clientes y  garantias y avales x clientes y obligaciones",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68192",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-13T10:25:50Z",
+          "title": "Solicitud de paso a producción del desarrollo para la extracción de la composición accionaria.",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "OscaSern",
+        "name": "Oscar Dario Serna Posada"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "RonaGelv",
+        "name": "Ronal Mauricio Gelvez Ruiz"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "RonaHern",
+        "name": "Ronald Josue Hernandez Teran"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "SilvCast",
+        "name": "Silvia Alejandra Castro Garcia"
+      },
+      "items": [
+        {
+          "workItemId": "52923",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-05-20T09:52:07Z",
+          "title": "COBIS INFORMACION 1020 DE CDT DE ENERO-ABRIL 2026",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "64273",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-28T09:06:56Z",
+          "title": "Inconsistencias información centrales",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68332",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-14T10:58:30Z",
+          "title": "Informe 1019 Agosto 2026",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68333",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-14T11:01:14Z",
+          "title": "Informe 1019 Septiembre 2026",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "63392",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 4,
+          "createdAt": "2026-08-19T15:07:19Z",
+          "title": "NOVEDAD ABONO ADQUIRENCIA ",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "61190",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 4,
+          "createdAt": "2026-07-25T18:23:38Z",
+          "title": "Soporte documental",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "SimoFran",
+        "name": "Simon Franco Angarita"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "StelMedi",
+        "name": "Stella Patricia Medina O."
+      },
+      "items": [
+        {
+          "workItemId": "63599",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-08-21T10:57:48Z",
+          "title": "CAPTACIONES (INTERCAPTA) HABILITAR FORMULARIO GENERACION CERTIFICADO DE RENTA CONSOLIDADO Y DETALLADO DESDE INTERCAPTA",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "65613",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-11T15:15:25Z",
+          "title": "CAPTACIONES (INTERCAPTA) Validación reporte intercapta",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68672",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-19T11:04:43Z",
+          "title": "COLOCACIONES (INTEGRA) cambio de estado PXA a identificado",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "66794",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-25T10:05:52Z",
+          "title": "Coltefinanciera Error en la contabilizacion de  TDB30, TDB60",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "68662",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-10-19T10:00:13Z",
+          "title": "Duda sobre Cobis",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        },
+        {
+          "workItemId": "64979",
+          "type": "REQUERIMIENTO",
+          "status": "EN_EJECUCION",
+          "priority": 3,
+          "createdAt": "2026-09-04T16:54:03Z",
+          "title": "Solicitud de ajuste y validación de información en los Formatos 453, 454 y 457 Cosechas",
+          "declarationStatus": "SIN_DECLARACION",
+          "discards": [
+            {
+              "code": "SIN_ESTIMACION_DECLARADA",
+              "reason": "no hay planificacion declarada para este elemento"
+            },
+            {
+              "code": "SIN_COMPROMISO_DECLARADO",
+              "reason": "no hay planificacion declarada para este elemento"
+            }
+          ],
+          "declaration": null
+        }
+      ],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "WichSaen",
+        "name": "Wichmann Alexander Saenz Angulo"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    },
+    {
+      "developer": {
+        "id": "YadiCaic",
+        "name": "Yadier Caicedo Martinez"
+      },
+      "items": [],
+      "source": {
+        "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+        "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+      }
+    }
+  ],
+  "unknownDevelopers": []
+}

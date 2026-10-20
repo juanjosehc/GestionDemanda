@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { usePlanGeneration } from '@/hooks/usePlanGeneration'
 import { formatInstant } from '@/lib/format'
 import { ApiError } from '@/services/apiClient'
-import { ROUTES, calendarPath } from '@/routes/navigation'
+import { ROUTES, calendarPath, planningPreviewPath } from '@/routes/navigation'
 import type { PlanningFromGlpiResponse } from '@/types/planning'
 
 /** Esqueleto de la generación: la misma forma que el resultado, para que no haya salto de altura. */
@@ -174,7 +174,10 @@ function GenerationResult({ result }: { result: PlanningFromGlpiResponse }) {
  * última; las anteriores siguen donde estaban, y sus timelines se abren con el suyo.
  */
 export function Planning() {
-  const [draft, setDraft] = useState('')
+  // La siembra desde la dirección: quien acaba de declarar llega con el técnico ya puesto. Se lee
+  // una vez, al montar, y a partir de ahí manda el campo —el identificador puede corregirse a mano—.
+  const [params] = useSearchParams()
+  const [draft, setDraft] = useState(() => params.get('tecnico') ?? '')
   const generate = usePlanGeneration()
 
   const developerId = draft.trim()
@@ -235,12 +238,21 @@ export function Planning() {
         La vista previa, un paso antes. Vive en su propia pantalla y no aquí dentro: esta se monta sin
         consultar nada —abrirla no deja rastro—, y enseñar el estado de entrada exige una lectura por
         persona. El enlace no sale a la red, así que no cambia nada de lo de arriba.
+
+        **Lleva el técnico cuando ya está escrito** (Fase 50): quien llega desde la fila de cobertura
+        del Timeline viene a planificar a una persona concreta, y la vista previa tiene que contestar
+        por ella y no por el equipo entero. Sin identificador sigue siendo el enlace de siempre.
       */}
       <p className="text-xs text-muted-foreground">
-        <Link to={ROUTES.planningPreview} className="underline underline-offset-2 hover:text-foreground">
+        <Link
+          to={planningPreviewPath('operativo', developerId === '' ? undefined : developerId)}
+          className="underline underline-offset-2 hover:text-foreground"
+          data-slot="planning-preview"
+        >
           Ver el estado de entrada antes de generar →
         </Link>{' '}
-        Qué tickets recibiría el motor, cuáles están bloqueados y por qué.
+        Qué tickets recibiría el motor, cuáles están bloqueados y por qué
+        {developerId !== '' ? ' para este técnico' : ''}.
       </p>
 
       {/*

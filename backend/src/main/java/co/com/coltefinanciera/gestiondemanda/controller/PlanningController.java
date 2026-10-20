@@ -29,6 +29,7 @@ import co.com.coltefinanciera.gestiondemanda.dto.PlanningOperationalMetricsRespo
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningPlanResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningSimulationRequest;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningSimulationResponse;
+import co.com.coltefinanciera.gestiondemanda.dto.TeamTimelineResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.TimelinePlanResponse;
 import co.com.coltefinanciera.gestiondemanda.service.GlpiPlanningService;
 import co.com.coltefinanciera.gestiondemanda.service.OperationalAlertService;
@@ -41,14 +42,16 @@ import co.com.coltefinanciera.gestiondemanda.service.PlanningService;
  * <p>Sigue siendo una superficie de validacion y no el contrato definitivo: existe para ejercitar
  * las reglas de negocio antes de que GLPI alimente datos reales, y el controlador solo delega.
  *
- * <p>Los trece endpoints son tres preguntas y diez formas de responderlas. {@code simulate} pregunta
+ * <p>Los catorce endpoints son tres preguntas y once formas de responderlas. {@code simulate} pregunta
  * que pasaria; {@code plan} decide y lo deja escrito; {@code from-glpi} decide con los datos reales. Y
  * de lo escrito hay cinco lecturas de un plan —el plan entero ({@code /{planId}}), solo su agenda
  * ({@code /{planId}/blocks}), su agenda con la capacidad ya contada ({@code /{planId}/timeline}), que
  * es la que consume un timeline, solo su contexto ({@code /{planId}/context}) y solo su entrada
- * ({@code /{planId}/input})— mas cinco que no son de ningun plan: {@code /plans/{developerId}}, que
+ * ({@code /{planId}/input})— mas seis que no son de ningun plan: {@code /plans/{developerId}}, que
  * dice <em>cuales</em> tiene un tecnico y por eso es lo que permite nombrar su plan anterior;
- * {@code /metrics}, la fotografia del conjunto, sus dos desgloses —{@code /metrics/declared/{gap}} y
+ * {@code /team/timeline}, que es la agenda de todos los planes vigentes a la vez y por eso la unica que
+ * se puede abrir sin conocer ningun identificador; {@code /metrics}, la fotografia del conjunto, sus dos
+ * desgloses —{@code /metrics/declared/{gap}} y
  * {@code /metrics/displaced}—, que bajan de la cifra al elemento que la produce, y {@code /alerts}, que
  * dice cuales de esas cifras exigen que alguien mire. El reparto no es casual: lo que se guarda se
  * puede volver a pedir, y lo que solo se simula no.
@@ -278,6 +281,40 @@ public class PlanningController {
     @GetMapping("/alerts")
     public OperationalAlertResponse alerts() {
         return operationalAlertService.alerts();
+    }
+
+    /**
+     * {@code GET /api/planning/team/timeline}
+     *
+     * <p>La agenda de todo el equipo en una ventana comun: una fila por desarrollador con su capacidad
+     * dia a dia, todos los tramos y el plan vigente de cada uno. Es la lectura que permite abrir la
+     * aplicacion sin conocer de antemano ningun identificador de plan, que es lo que ninguna de las
+     * cinco lecturas de un plan permite.
+     *
+     * <p><strong>No inventa una segunda forma de leer un plan.</strong> Recorre el mismo
+     * {@code findLatestPerDeveloper()} que ya recorre la fotografia operativa y lee cada plan con
+     * {@code timeline(planId)}, quedandose los tramos que aquella descarta. El motor no se ejecuta, y no
+     * hay ninguna consulta nueva: lo unico que se calcula aqui es la ventana del equipo, que por
+     * definicion no se puede sacar de un plan solo.
+     *
+     * <p><strong>La ruta convive con {@code /{planId}/timeline} por especificidad de patron</strong>, en
+     * el mismo caso que {@code /metrics} y {@code /alerts}: un segmento literal gana a una variable de
+     * captura. Aqui la colision es mas estrecha que en aquellos —las dos rutas tienen dos segmentos y
+     * solo se distinguen en el primero—, asi que se prueba en vez de darse por sabido: el dia que
+     * dejara de cumplirse, lo que se rompe no es esta ruta, es {@code /{planId}/timeline}, que se leeria
+     * como un plan llamado {@code team} y responderia {@code 400}.
+     *
+     * <p><strong>Es la unica lectura de esta superficie que no falla por un plan incompleto.</strong>
+     * Un plan vigente al que le falte su contexto o su entrada se salta, y el resto del equipo se pinta
+     * igual. En {@code /{planId}/timeline} ese mismo caso es un {@code 404}, porque quien la pide nombro
+     * ese plan y tiene derecho a saber que no esta; aqui nadie nombro nada.
+     *
+     * <p>Sin ningun plan guardado devuelve {@code 200} con listas vacias y ventana nula. No es un error:
+     * es «hoy no hay ningun plan vigente», que es una respuesta completa.
+     */
+    @GetMapping("/team/timeline")
+    public TeamTimelineResponse teamTimeline() {
+        return planningService.teamTimeline();
     }
 
     /**

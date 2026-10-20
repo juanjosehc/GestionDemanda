@@ -3,6 +3,7 @@ package co.com.coltefinanciera.gestiondemanda.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -118,6 +119,14 @@ class PlanningDeclarationEndpointsTest {
         // Activos y no todos: lo resuelto y lo cerrado no se declara, asi que esta lectura no los pide.
         // El corte lo hace la busqueda del adaptador, y su prueba es la que lo fija.
         when(glpiPlanningSource.activeTicketsOf("7")).thenReturn(List.of(tickets));
+    }
+
+    /** Otra persona que GLPI conoce, con su numero y sus tickets. */
+    private void glpiConoce(String developerId, int glpiId, GlpiTicket... tickets) {
+        when(glpiPlanningSource.findUser(developerId))
+                .thenReturn(Optional.of(new GlpiUser(glpiId, developerId, "Prueba", developerId)));
+        when(glpiPlanningSource.activeTicketsOf(String.valueOf(glpiId)))
+                .thenReturn(List.of(tickets));
     }
 
     // --- Los cinco estados, por HTTP ---------------------------------------------------------
@@ -331,5 +340,73 @@ class PlanningDeclarationEndpointsTest {
                 .andExpect(jsonPath("$.developer.name").value("Ana Perez"))
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].declarationStatus").value("PLANIFICABLE"));
+    }
+
+    // --- La lectura por lote ----------------------------------------------------------------
+
+    @Test
+    @DisplayName("El lote devuelve varias personas en una lectura, cada una clasificada igual que sola")
+    void elLoteDevuelveVariasPersonasEnUnaSolaLectura() throws Exception {
+        declarar("501", "6", FECHA_COMPROMISO);
+        glpiConoce("dev-1", 7, incidencia(501));
+        glpiConoce("dev-2", 8, peticion(502));
+
+        mockMvc.perform(get(RUTA).param("developerId", "dev-1").param("developerId", "dev-2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.developers.length()").value(2))
+                .andExpect(jsonPath("$.developers[0].developer.id").value("dev-1"))
+                .andExpect(jsonPath("$.developers[0].items[0].declarationStatus")
+                        .value("PLANIFICABLE"))
+                .andExpect(jsonPath("$.developers[1].developer.id").value("dev-2"))
+                .andExpect(jsonPath("$.developers[1].items[0].declarationStatus")
+                        .value("SIN_DECLARACION"))
+                .andExpect(jsonPath("$.unknownDevelopers.length()").value(0));
+
+        // Una lectura por persona y no dos: el lote no vuelve a preguntar lo que ya tiene.
+        verify(glpiPlanningSource, times(1)).findUser("dev-1");
+        verify(glpiPlanningSource, times(1)).findUser("dev-2");
+    }
+
+    @Test
+    @DisplayName("Un identificador que GLPI no conoce no tumba el lote: se informa aparte")
+    void unDesconocidoNoTumbaElLote() throws Exception {
+        glpiConoce("dev-1", 7, incidencia(501));
+        when(glpiPlanningSource.findUser("fantasma")).thenReturn(Optional.empty());
+
+        // El 404 de la ruta por persona se convierte aqui en un dato: quien pidio el lote tiene que
+        // poder decir cual no se leyo, sin perder a los demas.
+        mockMvc.perform(get(RUTA).param("developerId", "dev-1").param("developerId", "fantasma"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.developers.length()").value(1))
+                .andExpect(jsonPath("$.developers[0].developer.id").value("dev-1"))
+                .andExpect(jsonPath("$.unknownDevelopers.length()").value(1))
+                .andExpect(jsonPath("$.unknownDevelopers[0]").value("fantasma"));
+    }
+
+    @Test
+    @DisplayName("Pedir dos veces a la misma persona no la lee dos veces")
+    void elLoteNoRepiteUnaPersonaPedidaDosVeces() throws Exception {
+        glpiConoce("dev-1", 7, incidencia(501));
+
+        mockMvc.perform(get(RUTA).param("developerId", "dev-1").param("developerId", "dev-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.developers.length()").value(1));
+
+        // Dos veces la misma persona serian dos sesiones con GLPI para devolver el mismo cuerpo.
+        verify(glpiPlanningSource, times(1)).findUser("dev-1");
+    }
+
+    @Test
+    @DisplayName("La ruta del lote no la captura el patron de un elemento de trabajo")
+    void laRutaDelLoteNoLaCapturaElPatronDeUnElemento() throws Exception {
+        glpiConoce("dev-1", 7, incidencia(501));
+
+        // `/declarations` tambien encaja en `GET /{workItemId}`. Si ganara ese patron, el cuerpo seria
+        // un PlanningMetadataResponse y no tendria `developers`; si ganara `GET
+        // /declarations/{developerId}` faltaria el parametro obligatorio y seria un 400.
+        mockMvc.perform(get(RUTA).param("developerId", "dev-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.developers[0].developer.id").value("dev-1"))
+                .andExpect(jsonPath("$.unknownDevelopers").isArray());
     }
 }

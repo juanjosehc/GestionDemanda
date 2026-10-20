@@ -21,7 +21,11 @@ const SEVERITY = {
 interface RenegotiationTableProps {
   items: readonly RenegotiationItem[]
   selected: string | null
-  onSelect: (workItemId: string) => void
+  /**
+   * Abre el acuerdo. Lleva el botón que se pulsó —no `document.activeElement`— porque es a ese
+   * botón, y no a donde estuviera el foco, a donde hay que devolverlo al cerrar el modal.
+   */
+  onSelect: (workItemId: string, opener: HTMLElement) => void
 }
 
 /**
@@ -174,7 +178,7 @@ export function RenegotiationTable({ items, selected, onSelect }: RenegotiationT
                     variant="outline"
                     size="sm"
                     aria-expanded={isSelected}
-                    onClick={() => onSelect(item.workItemId)}
+                    onClick={(event) => onSelect(item.workItemId, event.currentTarget)}
                   >
                     {agreement ? 'Editar acuerdo' : 'Registrar acuerdo'}
                   </Button>

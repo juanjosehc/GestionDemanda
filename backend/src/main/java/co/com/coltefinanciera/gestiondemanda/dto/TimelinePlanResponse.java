@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import co.com.coltefinanciera.gestiondemanda.domain.enums.AppliedRule;
 import co.com.coltefinanciera.gestiondemanda.domain.enums.IncidentSeverity;
 import co.com.coltefinanciera.gestiondemanda.domain.enums.TimelineItemStatus;
 import co.com.coltefinanciera.gestiondemanda.domain.enums.WorkItemType;
@@ -103,6 +104,8 @@ public record TimelinePlanResponse(
      * @param estimatedHours total estimado del elemento, de la foto de la entrada.
      * @param committedDate fecha compromiso del elemento, de la foto. Nula en incidentes.
      * @param severity      severidad del incidente, de la foto. Nula en requerimientos.
+     * @param displacement  por que este elemento cambio de fecha, o {@code null} si no se movio. Es
+     *                      la auditoria del plan puesta al lado del tramo, sin repetirla.
      */
     public record TimelineItem(
             String workItemId,
@@ -115,6 +118,36 @@ public record TimelinePlanResponse(
             LocalDate committedDate,
             IncidentSeverity severity,
             TimelineItemStatus planningStatus,
-            UUID sourcePlanId) {
+            UUID sourcePlanId,
+            Displacement displacement) {
+    }
+
+    /**
+     * La causa de un desplazamiento, tal como quedo auditada en el plan.
+     *
+     * <p><strong>Es la trazabilidad que ya existia, puesta donde se pregunta.</strong> El plan guarda
+     * un evento por cada pareja (incidente, requerimiento) que se movio, y hasta ahora solo se podia
+     * leer pidiendo las renegociaciones o el plan entero. Viajando con el tramo, la rejilla puede
+     * decir por que un bloque esta donde esta sin una segunda llamada y sin recalcular nada: los dos
+     * extremos de fecha y la regla son los del evento guardado.
+     *
+     * <p><strong>Ni el motivo ni la severidad se vuelven a deducir.</strong> El texto sale de la misma
+     * traduccion de regla que usa la simulacion —{@code reason(AppliedRule)}— y la severidad es la
+     * copia que el evento guardo, no la del incidente de hoy: un incidente reclasificado despues en
+     * GLPI no puede reescribir por que se movio un requerimiento el mes pasado.
+     *
+     * <p>Cuando un requerimiento se movio varias veces, el tramo lleva <strong>el ultimo</strong>
+     * evento: es el que explica la fecha que se esta viendo.
+     *
+     * @param incidentId incidente que consumio la franja, o {@code null} si el desplazamiento lo
+     *                   provoco la ocupacion previa de la jornada.
+     */
+    public record Displacement(
+            LocalDate originalDate,
+            LocalDate newDate,
+            AppliedRule appliedRule,
+            String incidentId,
+            IncidentSeverity incidentSeverity,
+            String reason) {
     }
 }

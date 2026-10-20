@@ -62,7 +62,10 @@ public class GlpiPlanningService {
                 .orElseThrow(() -> new GlpiDeveloperNotFoundException(
                         "GLPI no tiene un usuario con identificador " + developerId));
 
-        List<GlpiTicket> tickets = glpiPlanningSource.ticketsOf(String.valueOf(user.id()));
+        // La misma lectura que usa la pantalla de declaracion: el universo que se declara y el que
+        // se planifica tiene que ser uno solo. `ticketsOf` trae tambien el historico cerrado, que no
+        // es carga y que el plan descartaba ticket a ticket sin que nadie pudiera verlo en Declaracion.
+        List<GlpiTicket> tickets = glpiPlanningSource.activeTicketsOf(String.valueOf(user.id()));
 
         InputProvenance provenance = InputProvenance.glpi(
                 Instant.now(clock), GlpiRestPlanningSource.VERSION);

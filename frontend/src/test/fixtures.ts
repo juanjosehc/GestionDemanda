@@ -20,7 +20,7 @@ import type {
   RenegotiationsResponse,
 } from '@/types/renegotiations'
 import type { TeamCatalogResponse } from '@/types/team'
-import type { TimelinePlanResponse } from '@/types/timeline'
+import type { TeamTimelineResponse, TimelineItem, TimelinePlanResponse } from '@/types/timeline'
 
 export const PLAN_ID = '11111111-1111-1111-1111-111111111111'
 export const DEVELOPER_ID = 'dev-001'
@@ -61,6 +61,7 @@ export function timelineFixture(
         severity: 'MEDIO',
         planningStatus: 'PLANIFICADO',
         sourcePlanId: PLAN_ID,
+        displacement: null,
       },
       {
         workItemId: 'REQ-1',
@@ -74,6 +75,7 @@ export function timelineFixture(
         severity: null,
         planningStatus: 'DESPLAZADO',
         sourcePlanId: PLAN_ID,
+        displacement: null,
       },
       {
         workItemId: 'REQ-2',
@@ -87,6 +89,7 @@ export function timelineFixture(
         severity: null,
         planningStatus: 'DESPLAZADO',
         sourcePlanId: PLAN_ID,
+        displacement: null,
       },
     ],
     allocations: [],
@@ -1085,6 +1088,7 @@ export function previousTimelineFixture(
         severity: 'MEDIO',
         planningStatus: 'PLANIFICADO',
         sourcePlanId: PREVIOUS_PLAN_ID,
+        displacement: null,
       },
       {
         workItemId: 'REQ-1',
@@ -1098,6 +1102,7 @@ export function previousTimelineFixture(
         severity: null,
         planningStatus: 'PLANIFICADO',
         sourcePlanId: PREVIOUS_PLAN_ID,
+        displacement: null,
       },
       {
         workItemId: 'REQ-6',
@@ -1111,6 +1116,7 @@ export function previousTimelineFixture(
         severity: null,
         planningStatus: 'DESPLAZADO',
         sourcePlanId: PREVIOUS_PLAN_ID,
+        displacement: null,
       },
     ],
     allocations: [],
@@ -1135,6 +1141,75 @@ export function developerPlansFixture(
       { planId: PLAN_ID, createdAt: '2026-10-07T14:00:00Z' },
     ],
     scope: 'los planes guardados de un desarrollador, del mas antiguo al mas reciente',
+    ...overrides,
+  }
+}
+
+export const SECOND_PLAN_ID = '22222222-2222-2222-2222-222222222222'
+
+/**
+ * El timeline de equipo: dos personas con planes vigentes en la **misma** ventana.
+ *
+ * **La ventana es una sola y las dos filas la cubren entera.** La de `dev-001` trae el miercoles
+ * aunque su plan solo tenga tramos el lunes y el martes, porque con la ventana de equipo la capacidad
+ * se mide contra la ventana y no contra el plan de cada uno. Pegar las lecturas de los dos planes
+ * daria dos columnas de dias distintas y esa fila tendria dos dias en vez de tres: es exactamente la
+ * diferencia que el fixture tiene que representar.
+ *
+ * Los tramos y la capacidad de `dev-001` son **los del `timelineFixture`** y no unos inventados aqui,
+ * por la misma razon que en el resto del archivo: dos fixtures que se separan afirman cosas sobre
+ * datos que el backend no produce.
+ */
+export function teamTimelineFixture(
+  overrides: Partial<TeamTimelineResponse> = {},
+): TeamTimelineResponse {
+  const primera: TimelineItem = {
+    workItemId: 'REQ-9',
+    workItemType: 'REQUERIMIENTO',
+    startsAt: '2026-10-07T09:00:00',
+    endsAt: '2026-10-07T13:00:00',
+    durationHours: 4,
+    developerId: FULL_DEVELOPER_ID,
+    estimatedHours: 4,
+    committedDate: '2026-10-07',
+    severity: null,
+    planningStatus: 'PLANIFICADO',
+    sourcePlanId: SECOND_PLAN_ID,
+    displacement: null,
+  }
+
+  return {
+    from: '2026-10-05',
+    to: '2026-10-07',
+    resources: [
+      {
+        developerId: DEVELOPER_ID,
+        capacity: [
+          { date: '2026-10-05', availableHours: 8, occupiedHours: 8, remainingHours: 0 },
+          { date: '2026-10-06', availableHours: 8, occupiedHours: 2, remainingHours: 6 },
+          { date: '2026-10-07', availableHours: 8, occupiedHours: 0, remainingHours: 8 },
+        ],
+      },
+      {
+        developerId: FULL_DEVELOPER_ID,
+        capacity: [
+          { date: '2026-10-05', availableHours: 8, occupiedHours: 0, remainingHours: 8 },
+          { date: '2026-10-06', availableHours: 8, occupiedHours: 0, remainingHours: 8 },
+          { date: '2026-10-07', availableHours: 8, occupiedHours: 4, remainingHours: 4 },
+        ],
+      },
+    ],
+    items: [...timelineFixture().items, primera],
+    plans: [
+      { developerId: DEVELOPER_ID, planId: PLAN_ID, from: '2026-10-05', to: '2026-10-06' },
+      {
+        developerId: FULL_DEVELOPER_ID,
+        planId: SECOND_PLAN_ID,
+        from: '2026-10-07',
+        to: '2026-10-07',
+      },
+    ],
+    conflicts: [],
     ...overrides,
   }
 }

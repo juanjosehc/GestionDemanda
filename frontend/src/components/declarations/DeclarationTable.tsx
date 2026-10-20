@@ -21,7 +21,11 @@ interface DeclarationTableProps {
   items: readonly DeclarationItem[]
   /** El ticket cuyo formulario esta abierto, para marcar su fila. */
   selected: string | null
-  onSelect: (workItemId: string) => void
+  /**
+   * Abre el ticket. Lleva el boton que se pulso —no `document.activeElement`— porque es a ese
+   * boton, y no a donde estuviera el foco, a donde hay que devolverlo al cerrar el panel.
+   */
+  onSelect: (workItemId: string, opener: HTMLElement) => void
 }
 
 /**
@@ -132,17 +136,35 @@ export function DeclarationTable({ items, selected, onSelect }: DeclarationTable
                       ))}
                     </ul>
                   )}
+
+                  {item.declarationStatus === 'NO_TRADUCIBLE' && (
+                    <p className="mt-1 text-xs font-medium text-destructive">
+                      No entra al plan aunque se declare: GLPI no lo entrega de una forma que el
+                      contrato pueda leer.
+                    </p>
+                  )}
                 </td>
 
                 <td className="py-3">
-                  <Button
-                    variant={selected === item.workItemId ? 'secondary' : 'outline'}
-                    size="sm"
-                    aria-expanded={selected === item.workItemId}
-                    onClick={() => onSelect(item.workItemId)}
-                  >
-                    {hasDeclaration ? 'Editar' : 'Declarar'}
-                  </Button>
+                  {/*
+                    Un ticket que el contrato no puede traducir no se ofrece: declararlo no lo mete al
+                    plan, y un formulario que no cambia nada manda a alguien a trabajar en vano. La
+                    fila sigue a la vista para que el gestor sepa que existe y por qué queda fuera.
+                  */}
+                  {item.declarationStatus === 'NO_TRADUCIBLE' ? (
+                    <span className="text-xs font-medium text-destructive" data-slot="not-declarable">
+                      No entra al plan
+                    </span>
+                  ) : (
+                    <Button
+                      variant={selected === item.workItemId ? 'secondary' : 'outline'}
+                      size="sm"
+                      aria-expanded={selected === item.workItemId}
+                      onClick={(event) => onSelect(item.workItemId, event.currentTarget)}
+                    >
+                      {hasDeclaration ? 'Editar' : 'Declarar'}
+                    </Button>
+                  )}
                 </td>
               </tr>
             )

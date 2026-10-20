@@ -523,7 +523,7 @@ class PlanningTimelineEndpointsTest {
     private void glpiResponde() {
         when(glpiPlanningSource.findUser("dev-1"))
                 .thenReturn(Optional.of(new GlpiUser(7, "ana", "Perez", "Ana")));
-        when(glpiPlanningSource.ticketsOf("7")).thenReturn(List.of(
+        when(glpiPlanningSource.activeTicketsOf("7")).thenReturn(List.of(
                 new GlpiTicket(501, "Falla en produccion", 1, GlpiTicket.TYPE_INCIDENT, null, null,
                         null, 21600L, null, "2026-10-05 09:00:00"),
                 new GlpiTicket(502, "Ajuste de reporte", 1, GlpiTicket.TYPE_REQUEST, null, null,

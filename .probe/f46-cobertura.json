@@ -1,0 +1,49 @@
+{
+  "capturedAt": "2026-10-19T19:32:43Z",
+  "source": "Playwright sobre http://localhost:5173/ (backend real), DOM de data-slot=coverage-panel",
+  "total": "2 de 88 tickets activos en el plan (2,3%) · 84 recuperables mediante declaración · cobertura potencial 86 de 88 (97,7%)",
+  "causes": "Falta información: 84 · Sin acuerdo: 1 · No incluido en el último plan: 1",
+  "people": 18,
+  "callList": [
+    "1. Maury Marmolejo Din 10 bloqueados · quedaría en 10 de 10",
+    "2. Jose Luis Garces Gonzalez 9 bloqueados · quedaría en 9 de 10",
+    "3. Cesar Giraldo Muñoz 9 bloqueados · quedaría en 9 de 9",
+    "4. Nilson Cortes 9 bloqueados · quedaría en 9 de 9",
+    "5. Alejandro Pineda Machado 7 bloqueados · quedaría en 7 de 7",
+    "6. Jose Fabian Gonzalez Tavera 7 bloqueados · quedaría en 7 de 7",
+    "7. Abraham Arana Aldana 6 bloqueados · quedaría en 8 de 9",
+    "8. Silvia Alejandra Castro Garcia 6 bloqueados · quedaría en 6 de 6",
+    "9. Stella Patricia Medina O. 6 bloqueados · quedaría en 6 de 6",
+    "10. Andres Steven Beltran Forero 5 bloqueados · quedaría en 5 de 5",
+    "11. Andres Felipe Escobar Arango 3 bloqueados · quedaría en 3 de 3",
+    "12. Francisco Javier Zuluaga A. 3 bloqueados · quedaría en 3 de 3",
+    "13. Analy Ruiz 2 bloqueados · quedaría en 2 de 2",
+    "14. Andres Felipe Gonzalez Gonzalez 1 bloqueado · quedaría en 1 de 1",
+    "15. Nicolas Alejandro Suarez Florez 1 bloqueado · quedaría en 1 de 1"
+  ],
+  "priorityTickets": [
+    "Sin estimación · 66666 · Jose Luis Garces Gonzalez",
+    "Sin estimación · 66913 · Jose Luis Garces Gonzalez",
+    "Sin estimación · 66913 · Abraham Arana Aldana",
+    "Sin declaración · 33219 · Maury Marmolejo Din",
+    "Sin declaración · 60448 · Maury Marmolejo Din",
+    "Sin declaración · 61398 · Maury Marmolejo Din",
+    "Sin declaración · 62711 · Maury Marmolejo Din",
+    "Sin declaración · 65798 · Maury Marmolejo Din",
+    "76 más en «Trabajo pendiente»"
+  ],
+  "observations": [
+    "Los números se movieron durante la validación: 87/83/85 a las 19:04 y 88/84/86 a las 19:32. GLPI sigue publicando.",
+    "El ticket 66913 aparece asignado a dos personas (JoseGarc y AbraAran). La cobertura cuenta asignaciones, no tickets únicos.",
+    "Dos personas que a las 19:04 tenían cero tickets activos aparecieron con uno a las 19:32."
+  ],
+  "screenshots": [
+    ".probe/f46-cobertura-total.png",
+    ".probe/f46-llamadas.png",
+    ".probe/f46-tickets-prioritarios.png",
+    ".probe/f46-fila-sin-plan.png",
+    ".probe/f46-declaracion-desde-ticket.png",
+    ".probe/f46-declaracion-lista.png",
+    ".probe/f46-cobertura-potencial.png"
+  ]
+}

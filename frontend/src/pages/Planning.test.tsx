@@ -5,6 +5,7 @@ import { useAlerts } from '@/hooks/useAlerts'
 import { usePlanningMetrics } from '@/hooks/usePlanningMetrics'
 import { useRenegotiations } from '@/hooks/useRenegotiations'
 import { Planning } from '@/pages/Planning'
+import { ROUTES } from '@/routes/navigation'
 import {
   GENERATED_DEVELOPER_ID,
   GENERATED_PLAN_ID,
@@ -197,6 +198,25 @@ describe('Planning', () => {
     expect(figura(container, 'generated-conflicts')).toBe('1')
   })
 
+  it('siembra el técnico desde la dirección y genera para él sin teclearlo', async () => {
+    serve({})
+
+    // Quien acaba de declarar llega con el técnico ya puesto: generar el plan no debería pedir que
+    // se vuelva a escribir lo que la pantalla anterior sabía.
+    renderWithClient(<Planning />, { route: `/planificar?tecnico=${GENERATED_DEVELOPER_ID}` })
+
+    expect(screen.getByLabelText('Técnico')).toHaveValue(GENERATED_DEVELOPER_ID)
+    // Sembrar un campo no genera nada: la petición sigue saliendo del botón.
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /Generar plan/ }))
+    await screen.findByText('Plan generado')
+
+    expect(posts()).toEqual([
+      { url: GENERATE_URL, body: { developerId: GENERATED_DEVELOPER_ID } },
+    ])
+  })
+
   it('abre el timeline del plan recien generado, sin armar la direccion a mano', async () => {
     serve({})
 
@@ -211,7 +231,12 @@ describe('Planning', () => {
     )
 
     // Y los otros tres destinos del flujo son enlaces, no recargas.
-    expect(screen.getByRole('link', { name: /Métricas/ })).toHaveAttribute('href', '/')
+    // El tablero dejo de ser la raiz en la fase del timeline del equipo, asi que el destino se lee
+    // de `ROUTES` y no del literal que habia aqui: era el unico sitio que se habia quedado fijo.
+    expect(screen.getByRole('link', { name: /Métricas/ })).toHaveAttribute(
+      'href',
+      ROUTES.dashboard,
+    )
     expect(screen.getByRole('link', { name: /Alertas/ })).toHaveAttribute('href', '/alertas')
     expect(screen.getByRole('link', { name: /Renegociaciones/ })).toHaveAttribute(
       'href',

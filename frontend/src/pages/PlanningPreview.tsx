@@ -118,9 +118,26 @@ export function PlanningPreview() {
 
   const people = data?.people ?? []
 
+  /**
+   * El técnico de la dirección, cuando se llega desde la fila de cobertura del Timeline.
+   *
+   * **La vista sigue siendo la misma; lo que cambia es a quién contesta.** Con `tecnico` la tabla se
+   * limita a esa persona —se cruza por login y por número de GLPI, porque quien la pidió pudo
+   * teclearla de cualquiera de las dos formas— y el conmutador de equipo no aplica: no hay equipo
+   * que conmutar.
+   */
+  const technician = searchParams.get('tecnico') ?? ''
+  const matchesTechnician = (person: (typeof people)[number]) =>
+    person.developerId === technician || String(person.glpiId) === technician
+
   // El filtro de equipo operativo se hace sobre el padrón, como en Incidentes: aquí tampoco hay filas
   // inventadas —hay personas—, así que el predicado de la tabla del equipo no aplica.
-  const shown = mode === 'operativo' ? people.filter((person) => person.operational) : people
+  const shown =
+    technician !== ''
+      ? people.filter(matchesTechnician)
+      : mode === 'operativo'
+        ? people.filter((person) => person.operational)
+        : people
 
   // Una consulta por persona visible, en el orden de esta lista: `useQueries` empareja por posición.
   // Es la misma lectura, con la misma clave, que hacen Incidentes y Recursos: visitar las tres
@@ -204,7 +221,10 @@ export function PlanningPreview() {
    * la fila de quien esta fuera no apareceria.
    */
   const declarationHref = (entry: PersonEntry) =>
-    declarationPath({ developerId: entry.developerId, from: planningPreviewPath(mode) })
+    declarationPath({
+      developerId: entry.developerId,
+      from: planningPreviewPath(mode, technician === '' ? undefined : technician),
+    })
 
   return (
     <div className="space-y-6">
@@ -324,32 +344,62 @@ export function PlanningPreview() {
               </CardDescription>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2" data-slot="team-mode-switch">
-              <Button
-                variant={mode === 'operativo' ? 'secondary' : 'outline'}
-                size="sm"
-                aria-pressed={mode === 'operativo'}
-                onClick={() => setMode('operativo')}
-              >
-                Solo equipo operativo
-              </Button>
+            {/* Con un técnico pedido no hay equipo que conmutar: la vista contesta por una persona
+                y el enlace de abajo devuelve a la vista de todo el equipo. El conmutador no se
+                pinta vacío: desaparece. */}
+            {technician === '' && (
+              <div className="flex shrink-0 items-center gap-2" data-slot="team-mode-switch">
+                <Button
+                  variant={mode === 'operativo' ? 'secondary' : 'outline'}
+                  size="sm"
+                  aria-pressed={mode === 'operativo'}
+                  onClick={() => setMode('operativo')}
+                >
+                  Solo equipo operativo
+                </Button>
 
-              <Button
-                variant={mode === 'todos' ? 'secondary' : 'outline'}
-                size="sm"
-                aria-pressed={mode === 'todos'}
-                onClick={() => setMode('todos')}
-              >
-                Mostrar todo Desarrollo N2
-              </Button>
-            </div>
+                <Button
+                  variant={mode === 'todos' ? 'secondary' : 'outline'}
+                  size="sm"
+                  aria-pressed={mode === 'todos'}
+                  onClick={() => setMode('todos')}
+                >
+                  Mostrar todo Desarrollo N2
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {/* Cuando la vista viene pedida por una persona, lo dice antes de enseñar la tabla: la
+              pregunta cambió de alcance y el enlace de vuelta está a mano. */}
+          {technician !== '' && shown.length > 0 && (
+            <p className="text-xs text-muted-foreground" data-slot="preview-technician">
+              Solo el estado de entrada de <span className="font-mono">{technician}</span>.{' '}
+              <Link
+                to={planningPreviewPath(mode)}
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Ver todo el equipo →
+              </Link>
+            </p>
+          )}
+
           {/* Que no quede nadie es otra cosa que no tener trabajo —hay gente y ninguna declarada
               operativa—, y decirlo con la frase del vacío mandaría a buscar el problema a GLPI. */}
-          {shown.length === 0 ? (
+          {technician !== '' && shown.length === 0 ? (
+            <EmptyState
+              icon={Layers}
+              title="El padrón no conoce a este técnico"
+              detail={`Se pidió el estado de entrada de «${technician}» y el padrón no trae a nadie con ese identificador. El técnico puede haberse escrito con otro número, o no pertenecer al grupo que publica el padrón.`}
+              action={
+                <Button asChild variant="outline" size="sm">
+                  <Link to={planningPreviewPath(mode)}>Ver todo el equipo</Link>
+                </Button>
+              }
+            />
+          ) : shown.length === 0 ? (
             <EmptyState
               icon={Layers}
               title="Nadie está declarado en el equipo operativo"

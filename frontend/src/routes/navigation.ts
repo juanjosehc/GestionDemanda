@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   BellRing,
   CalendarRange,
+  ChartGantt,
   ClipboardList,
   Handshake,
   LayoutDashboard,
@@ -19,7 +20,22 @@ import type { MetricToken } from '@/types/planningMetrics'
 
 /** Rutas de la aplicacion, en un solo lugar para evitar literales dispersos. */
 export const ROUTES = {
-  dashboard: '/',
+  /**
+   * La pantalla con la que abre la aplicacion: la agenda de todo el equipo.
+   *
+   * **Ocupa la raiz y no una ruta con nombre a proposito.** Es la vista que responde «quien tiene
+   * trabajo, en que esta y cuanto le queda libre» sin que nadie configure nada: no pide un plan, ni
+   * un identificador, ni una seleccion. Cualquier otra ruta de entrada obligaria a pasar por una
+   * pantalla intermedia antes de contestar eso.
+   */
+  teamTimeline: '/',
+  /**
+   * El tablero de indicadores, que dejo de ser la raiz y, desde la Fase 50, tambien la entrada de
+   * menu: lo que mide —planes vigentes, carencias, incidentes— ya se lee en el Timeline, y la salud
+   * operativa se movio alli. La ruta sigue viva para el desglose de una metrica y para quien la
+   * tenga guardada.
+   */
+  dashboard: '/tablero',
   alerts: '/alertas',
   resources: '/recursos',
   calendar: '/calendario',
@@ -41,8 +57,9 @@ export const ROUTES = {
   /**
    * Lo que el motor recibiria si se generara el plan ahora.
    *
-   * Cuelga de `/planificar` porque es la misma pregunta un paso antes —y por eso el menu tiene que
-   * marcar las dos entradas con `end`: sin el, esta ruta, que es prefijo de la otra, resaltaria dos.
+   * Cuelga de `/planificar` porque es la misma pregunta un paso antes. Desde la Fase 50 no es una
+   * entrada de menu: se llega desde la accion de planificar, con el tecnico ya puesto, que es el
+   * unico momento en el que la pregunta tiene un destinatario.
    */
   planningPreview: '/planificar/estado',
   renegotiations: '/renegociaciones',
@@ -97,16 +114,41 @@ export function incidentsPath(filters: IncidentFilters, mode: TeamViewMode): str
 }
 
 /**
- * La vista previa del estado de entrada, con su conmutador de equipo.
+ * La vista previa del estado de entrada, con su conmutador de equipo y, si se pide, un tecnico.
  *
  * El modo viaja por el mismo motivo que en `incidentsPath`: quien entro con «Mostrar todo» puesto
  * tiene que volver a esa vista. Sin el, la fila de quien esta fuera del equipo operativo
  * desapareceria al otro lado del enlace y el cambio se leeria como si alguien la hubiera sacado.
+ *
+ * **`tecnico` es la Fase 50.** La vista previa contesta «que recibiria el motor» para todo el
+ * equipo; cuando se llega desde la accion de planificar de una persona, la pregunta es por ella.
+ * El nombre del parametro es el mismo que el de `planningPath`, porque es el mismo tecnico.
  */
-export function planningPreviewPath(mode: TeamViewMode): string {
+export function planningPreviewPath(mode: TeamViewMode, developerId?: string): string {
   const query = modeQuery(mode)
 
-  return query === '' ? ROUTES.planningPreview : `${ROUTES.planningPreview}?${query}`
+  if (!developerId) {
+    return query === '' ? ROUTES.planningPreview : `${ROUTES.planningPreview}?${query}`
+  }
+
+  const params = new URLSearchParams(query)
+  params.set('tecnico', developerId)
+
+  return `${ROUTES.planningPreview}?${params.toString()}`
+}
+
+/**
+ * La dirección que abre la renegociación de un ticket, con la fila ya seleccionada.
+ *
+ * Es el enlace que hace la acción «Renegociar» del timeline: lleva el ticket y nada más. La pantalla
+ * de renegociaciones siembra su selección con ese parámetro y abre el formulario, que es el mismo
+ * que se usa desde su listado — no hay formulario nuevo ni escritura nueva.
+ *
+ * **No lleva la vuelta.** Renegociaciones no es un formulario de paso que devuelva a otra pantalla:
+ * al guardar, el acuerdo aparece en su propia lista, y volver es abrir el timeline desde el menú.
+ */
+export function renegotiationPath(workItemId: string): string {
+  return `${ROUTES.renegotiations}?ticket=${encodeURIComponent(workItemId)}`
 }
 
 /**
@@ -122,6 +164,14 @@ export interface DeclarationContext {
   workItemId?: string
   /** A dónde volver, ya validado por `safeReturnPath`. */
   from?: string
+  /**
+   * Abrir la persona entera en modo lote, en vez de un ticket.
+   *
+   * Es lo que pide el Timeline cuando la unidad de trabajo es la persona y no el ticket: una sola
+   * vista con sus pendientes, un solo firmante y una sola escritura. El ticket concreto sigue
+   * mandando cuando viene —un enlace de Incidentes—, así que las dos formas no se mezclan.
+   */
+  batch?: boolean
 }
 
 /**
@@ -154,6 +204,9 @@ export function declarationPath(context: DeclarationContext): string {
   if (context.from) {
     params.set('volver', context.from)
   }
+  if (context.batch) {
+    params.set('lote', '1')
+  }
 
   return `${ROUTES.declarations}?${params.toString()}`
 }
@@ -164,7 +217,24 @@ export function declarationContextOf(params: URLSearchParams): DeclarationContex
     developerId: params.get('tecnico') ?? '',
     workItemId: params.get('ticket') ?? undefined,
     from: safeReturnPath(params.get('volver')),
+    batch: params.get('lote') === '1',
   }
+}
+
+/**
+ * La dirección que abre la generación del plan de una persona, con el técnico ya puesto.
+ *
+ * **Existe para que el cierre del ciclo no pida teclear lo que la pantalla anterior ya sabía.** El
+ * gestor acaba de declarar los tickets de alguien; preguntarle otra vez por su identificador en
+ * `/planificar` es exactamente la fricción que este flujo quita. Los dos nombres de parámetro viven
+ * aquí, junto a los de la declaración.
+ */
+export function planningPath(developerId: string): string {
+  const params = new URLSearchParams()
+
+  params.set('tecnico', developerId)
+
+  return `${ROUTES.planning}?${params.toString()}`
 }
 
 /**
@@ -213,8 +283,22 @@ export interface NavItem {
   description: string
 }
 
-/** Menu de navegacion principal. */
+/**
+ * El catalogo de pantallas con nombre y descripcion.
+ *
+ * **No es el menu.** Desde la Fase 50 el menu es `MENU_ITEMS`, y este catalogo se queda porque hay
+ * dos consumidores que necesitan nombrar una pantalla aunque no este en el menu: el encabezado
+ * —que titula la que se esta viendo— y el enlace de vuelta de la declaracion —que nombra a donde se
+ * vuelve—. Borrar las entradas ocultas dejaria las dos diciendo «Timeline del equipo» desde una
+ * pantalla que no lo es.
+ */
 export const NAV_ITEMS: readonly NavItem[] = [
+  {
+    label: 'Timeline del equipo',
+    to: ROUTES.teamTimeline,
+    icon: ChartGantt,
+    description: 'Quien tiene trabajo, en que esta, cuanto le queda libre y que sigue pendiente',
+  },
   {
     label: 'Dashboard',
     to: ROUTES.dashboard,
@@ -231,19 +315,19 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Recursos',
     to: ROUTES.resources,
     icon: Users,
-    description: 'El equipo de hoy: personas, carga y alertas',
+    description: 'Informacion auxiliar del equipo: personas, carga y alertas',
   },
   {
     label: 'Calendario',
     to: ROUTES.calendar,
     icon: CalendarRange,
-    description: 'Planificacion de recursos en el tiempo',
+    description: 'La agenda de un plan dia a dia, en el mismo modo que el timeline del equipo',
   },
   {
     label: 'Incidentes',
     to: ROUTES.incidents,
     icon: AlertTriangle,
-    description: 'Incidentes y requerimientos provenientes de GLPI',
+    description: 'La cola de trabajo: que esta abierto y que le falta a cada ticket',
   },
   {
     label: 'Declaración',
@@ -255,19 +339,19 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Planificación',
     to: ROUTES.planning,
     icon: PlayCircle,
-    description: 'Generación del plan de un técnico a partir de lo que GLPI tiene asignado',
+    description: 'Cómo se genera el plan que el timeline muestra: el motor, a pedido',
   },
   {
     label: 'Estado del plan',
     to: ROUTES.planningPreview,
     icon: ListChecks,
-    description: 'Qué recibiría el motor si se generara el plan ahora',
+    description: 'La capa de pendientes: qué recibiría el motor si se generara el plan ahora',
   },
   {
     label: 'Renegociación',
     to: ROUTES.renegotiations,
     icon: Handshake,
-    description: 'Fechas acordadas para los requerimientos que un incidente desplazó',
+    description: 'Las fechas acordadas para lo que un incidente desplazó en el timeline',
   },
   {
     label: 'Configuracion',
@@ -278,11 +362,35 @@ export const NAV_ITEMS: readonly NavItem[] = [
 ]
 
 /**
+ * El menu visible: las cuatro entradas que la operacion diaria necesita.
+ *
+ * **Las demas pantallas no desaparecieron; dejaron de tener puerta propia.** El Timeline es el
+ * puesto de mando y enlaza a cada una en el momento en que hace falta —declarar desde una persona,
+ * planificar desde su fila de cobertura, renegociar desde un tramo o desde la cola de acuerdos—,
+ * y el menu se queda con lo que no tiene un contexto unico: la agenda, la accion de declarar, la
+ * cola de acuerdos y el diagnostico. Una entrada de menu que solo se usa dentro de otra pantalla es
+ * una invitacion a empezar el trabajo por el sitio equivocado.
+ *
+ * Se deriva del catalogo para no escribir dos veces el rotulo, el icono y la descripcion.
+ */
+const MENU_ROUTES: readonly string[] = [
+  ROUTES.teamTimeline,
+  ROUTES.declarations,
+  ROUTES.renegotiations,
+  ROUTES.settings,
+]
+
+export const MENU_ITEMS: readonly NavItem[] = NAV_ITEMS.filter((item) =>
+  MENU_ROUTES.includes(item.to),
+)
+
+/**
  * La entrada de menu que corresponde a una direccion: su rotulo y su descripcion.
  *
  * **Gana la coincidencia mas larga, no la primera.** «Estado del plan» cuelga de `/planificar` y las
  * dos casan por prefijo, asi que quedarse con la primera le daria a la vista previa el titulo de la
- * pantalla de al lado. El respaldo es el tablero, que es lo que le toca a una direccion desconocida.
+ * pantalla de al lado. El respaldo es la primera entrada del menu —hoy el timeline del equipo—, que
+ * es a donde apunta la raiz y por tanto lo que le toca a una direccion desconocida.
  *
  * La usan el encabezado —para titular la pantalla— y el enlace de vuelta de la declaracion —para
  * nombrar a donde se vuelve—. Recibe la direccion entera, con su consulta, porque el enlace de vuelta

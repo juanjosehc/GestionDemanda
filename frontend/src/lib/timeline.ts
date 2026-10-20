@@ -1,5 +1,8 @@
+import type { TeamPerson } from '@/types/team'
 import type {
   IncidentSeverity,
+  TeamConflict,
+  TeamTimelineResponse,
   TimelineItem,
   TimelineItemStatus,
   TimelineResource,
@@ -59,6 +62,11 @@ export function parseLocalDateTime(value: string): Date {
   return new Date(year, month - 1, day, hour, minute, second)
 }
 
+/** «1 tramo» / «3 tramos»: el número decide la concordancia, no el sustantivo. */
+export function countOf(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`
+}
+
 /** Minutos desde medianoche de una fecha-hora local del contrato. */
 export function minutesOfDay(value: string): number {
   const [hour = 0, minute = 0] = (value.split('T')[1] ?? '').split(':').map(Number)
@@ -68,6 +76,16 @@ export function minutesOfDay(value: string): number {
 /** Fecha (yyyy-MM-dd) en la que arranca el tramo, que es su columna. */
 export function itemDate(item: TimelineItem): string {
   return item.startsAt.slice(0, 10)
+}
+
+/**
+ * La clave de un tramo: el elemento y el instante en que arranca.
+ *
+ * Es lo que reconoce un bloque entre lecturas —y lo que la simulación usa para decir cuáles
+ * movería—, así que se escribe una sola vez.
+ */
+export function blockKey(item: Pick<TimelineItem, 'workItemId' | 'startsAt'>): string {
+  return `${item.workItemId}@${item.startsAt}`
 }
 
 /**
@@ -94,6 +112,101 @@ export function timelineDays(
 
   // ISO (yyyy-MM-dd) ordena alfabeticamente igual que cronologicamente.
   return [...days].sort()
+}
+
+/**
+ * La agenda del equipo, con **las personas como filas**.
+ *
+ * `GET /api/planning/team/timeline` sigue siendo la lectura de los planes, y por eso solo trae una
+ * fila por técnico con plan. **Quién aparece lo decide el padrón**, que llega por otra ruta: esta
+ * función cruza las dos lecturas y devuelve una fila por persona operativa, tenga plan o no. Una
+ * persona sin plan queda con capacidad vacía, que es el hecho de que hoy no tiene nada planificado y
+ * no de que no exista.
+ *
+ * **El cruce es por login y por número de GLPI**, porque un plan se guarda con lo que se tecleó al
+ * pedirlo (`keysOf` en `lib/team.ts` hace lo mismo para la tabla de Recursos). Sin la segunda clave,
+ * `FranZulu`, `NilsCort` y `JoseDiaz` perderían su plan —guardado como `160`, `17` y `296`— y
+ * aparecerían dos veces: una fila vacía con su nombre y otra con su trabajo.
+ *
+ * Los tramos y conflictos de quien no está en el equipo **no se descartan en silencio**: vuelven en
+ * `outside` para que la pantalla pueda decir cuántos son. No se dibujan, porque un identificador que
+ * el padrón no conoce no es una persona del equipo, pero borrarlos de la lectura sin decirlo sería
+ * esconder trabajo real —el de un usuario de GLPI fuera del grupo— junto con el de demostración.
+ */
+export interface TeamAgenda {
+  /** Una fila por persona operativa, en el orden en que llega el padrón. */
+  resources: TimelineResource[]
+  /** Los tramos de esas personas, reetiquetados con su login canónico. */
+  items: TimelineItem[]
+  /** Los conflictos de esas personas, reetiquetados igual. */
+  conflicts: TeamConflict[]
+  /** Lo que quedó fuera del equipo: tramos y conflictos que no se dibujan. */
+  outside: {
+    items: TimelineItem[]
+    conflicts: TeamConflict[]
+  }
+}
+
+export function teamAgenda(
+  people: readonly TeamPerson[],
+  timeline: Pick<TeamTimelineResponse, 'resources' | 'items' | 'conflicts'> | undefined,
+): TeamAgenda {
+  // La clave con la que se guardó el plan, al login con el que el padrón nombra a la persona.
+  const canonical = new Map<string, string>()
+
+  for (const person of people) {
+    canonical.set(person.developerId, person.developerId)
+
+    if (person.glpiId !== null) {
+      canonical.set(String(person.glpiId), person.developerId)
+    }
+  }
+
+  const plannedByPerson = new Map<string, TimelineResource>()
+
+  for (const resource of timeline?.resources ?? []) {
+    const developerId = canonical.get(resource.developerId)
+
+    if (developerId) {
+      plannedByPerson.set(developerId, resource)
+    }
+  }
+
+  const resources = people.map((person) => {
+    const planned = plannedByPerson.get(person.developerId)
+
+    // La fila es la persona: su login manda aunque el plan se haya guardado con el número.
+    return {
+      developerId: person.developerId,
+      capacity: planned?.capacity ?? [],
+    }
+  })
+
+  const items: TimelineItem[] = []
+  const conflicts: TeamConflict[] = []
+  const outside: TeamAgenda['outside'] = { items: [], conflicts: [] }
+
+  for (const item of timeline?.items ?? []) {
+    const developerId = canonical.get(item.developerId)
+
+    if (developerId) {
+      items.push({ ...item, developerId })
+    } else {
+      outside.items.push(item)
+    }
+  }
+
+  for (const conflict of timeline?.conflicts ?? []) {
+    const developerId = canonical.get(conflict.developerId)
+
+    if (developerId) {
+      conflicts.push({ ...conflict, developerId })
+    } else {
+      outside.conflicts.push(conflict)
+    }
+  }
+
+  return { resources, items, conflicts, outside }
 }
 
 /**

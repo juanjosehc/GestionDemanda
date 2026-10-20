@@ -7,9 +7,12 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -30,6 +33,7 @@ import co.com.coltefinanciera.gestiondemanda.domain.enums.TimelineItemStatus;
 import co.com.coltefinanciera.gestiondemanda.domain.model.BusinessHours;
 import co.com.coltefinanciera.gestiondemanda.domain.model.Developer;
 import co.com.coltefinanciera.gestiondemanda.domain.model.Incident;
+import co.com.coltefinanciera.gestiondemanda.domain.model.PlanReference;
 import co.com.coltefinanciera.gestiondemanda.domain.model.PlanSnapshot;
 import co.com.coltefinanciera.gestiondemanda.domain.model.PlanningConflict;
 import co.com.coltefinanciera.gestiondemanda.domain.model.PlanningContextSnapshot;
@@ -53,6 +57,7 @@ import co.com.coltefinanciera.gestiondemanda.dto.PlanningInputResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningPlanResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningSimulationRequest;
 import co.com.coltefinanciera.gestiondemanda.dto.PlanningSimulationResponse;
+import co.com.coltefinanciera.gestiondemanda.dto.TeamTimelineResponse;
 import co.com.coltefinanciera.gestiondemanda.dto.TimelinePlanResponse;
 import co.com.coltefinanciera.gestiondemanda.exception.PlanNotFoundException;
 
@@ -232,6 +237,150 @@ public class PlanningService {
                 .orElseThrow(() -> new PlanNotFoundException(planId));
 
         return toTimelineResponse(planId, snapshot, input, context);
+    }
+
+    /**
+     * {@code GET /api/planning/team/timeline}: la agenda de todo el equipo en una ventana comun.
+     *
+     * <p><strong>Es el mismo bucle que ya hacia la fotografia, quedandose lo que tiraba.</strong>
+     * {@code PlanningMetricsService} recorre {@code findLatestPerDeveloper()} y llama a
+     * {@link #timeline} por cada plan para sumar capacidad y desplazamientos, y descarta los tramos
+     * porque no los necesita. Aqui se recorre igual y se conservan los tramos: no hay una segunda forma
+     * de leer un plan guardado, ni un segundo motor, ni una consulta nueva.
+     *
+     * <p><strong>No recalcula nada.</strong> Cada plan entra por {@link #timeline}, que a su vez lee
+     * bloques, foto de entrada y contexto congelado. El motor no se ejecuta en ningun punto, asi que
+     * este timeline no puede discrepar del plan de nadie.
+     *
+     * <p><strong>Por que no vale concatenar las lecturas de cada plan.</strong> La ventana de un plan
+     * son las fechas de sus propios tramos, asi que dos planes con cargas distintas traen dos ventanas
+     * distintas: pegadas, las columnas de dia no alinean y la capacidad de los dias que un plan no cubre
+     * no existe en ninguna parte. Aqui la ventana se calcula una vez sobre todos los tramos, y cada
+     * persona se mide contra ella con <em>el calendario congelado de su propio plan</em> —que es la
+     * unica combinacion que {@link #timeline} no puede producir, porque mide un plan contra su ventana—.
+     *
+     * <p><strong>Un plan ilegible no se lleva la respuesta.</strong> Si a un plan vigente le falta la
+     * foto o el contexto, se salta y el resto del equipo se sigue pintando. En la lectura de un plan eso
+     * es un {@code 404}, porque quien la pide nombro ese plan y tiene que saber que no esta; aqui nadie
+     * nombro nada, y perder cuarenta filas porque una este incompleta seria peor que enseñar cuarenta sin
+     * una. El hueco no se esconde: esa persona sale sin plan vigente en {@code plans}.
+     *
+     * <p><strong>Quien aparece.</strong> Una entrada por desarrollador, y sale de dos sitios: el
+     * desarrollador con el que se guardo cada plan —que aparece aunque su plan no tenga agenda, porque su
+     * capacidad si se conoce— y el de los bloques, por si un dia un plan cubre a mas de uno. Es la misma
+     * regla que {@link #timelineResources}, con la ventana del equipo en lugar de la del plan.
+     *
+     * <p><strong>Sin ningun tramo en todo el equipo la ventana es nula</strong> y no se mide capacidad
+     * ninguna: un rango no se puede inventar, y devolver dias de relleno afirmaria una jornada que nadie
+     * publico. Las personas siguen saliendo, con su capacidad vacia.
+     *
+     * <p>Sin planes guardados devuelve una respuesta vacia y no un error: «hoy no hay ningun plan
+     * vigente» es una respuesta completa, y quien la lee tiene que poder distinguirla de un fallo.
+     */
+    public TeamTimelineResponse teamTimeline() {
+        List<FromPlan> plans = new ArrayList<>();
+
+        for (PlanReference reference : planSnapshots.findLatestPerDeveloper()) {
+            Optional<PlanSnapshot> snapshot = planSnapshots.findById(reference.planId());
+            Optional<PlanningInputSnapshot> input = planSnapshots.findInput(reference.planId());
+            Optional<PlanningContextSnapshot> context = planSnapshots.findContext(reference.planId());
+
+            if (snapshot.isPresent() && input.isPresent() && context.isPresent()) {
+                plans.add(new FromPlan(reference.planId(), snapshot.get(), input.get(), context.get()));
+            }
+        }
+
+        List<WorkBlock> everyBlock = plans.stream()
+                .flatMap(plan -> plan.snapshot().result().blocks().stream())
+                .toList();
+
+        LocalDate from = everyBlock.stream().map(WorkBlock::date).min(Comparator.naturalOrder())
+                .orElse(null);
+        LocalDate to = everyBlock.stream().map(WorkBlock::date).max(Comparator.naturalOrder())
+                .orElse(null);
+
+        Map<String, List<TimelinePlanResponse.TimelineCapacity>> capacities = new LinkedHashMap<>();
+        List<TimelinePlanResponse.TimelineItem> items = new ArrayList<>();
+        List<TeamTimelineResponse.TeamPlan> published = new ArrayList<>();
+        List<TeamTimelineResponse.PlanConflict> conflicts = new ArrayList<>();
+
+        for (FromPlan plan : plans) {
+            List<WorkBlock> blocks = plan.snapshot().result().blocks();
+            WorkingCalendar calendar = plan.context().rules().workingCalendar();
+
+            Set<String> developers = new LinkedHashSet<>();
+            developers.add(plan.input().developerId());
+            blocks.forEach(block -> developers.add(block.developerId()));
+
+            for (String developerId : developers) {
+                List<WorkBlock> own = blocks.stream()
+                        .filter(block -> block.developerId().equals(developerId))
+                        .toList();
+
+                capacities.computeIfAbsent(developerId,
+                        ignored -> teamCapacity(own, calendar, from, to));
+            }
+
+            items.addAll(timelineItems(blocks, plan.input(), plan.planId(),
+                    plan.snapshot().result().rescheduleEvents()));
+
+            // Lo que el motor no pudo ubicar se publica con el plan que lo decidio: sin esta lista, un
+            // elemento planificable sin tramo no se distingue de uno que nunca entro a planificar.
+            plan.snapshot().result().conflicts().forEach(conflict -> conflicts.add(
+                    new TeamTimelineResponse.PlanConflict(
+                            plan.input().developerId(),
+                            conflict.workItemId(),
+                            conflict.workItemType(),
+                            conflict.reason())));
+
+            published.add(new TeamTimelineResponse.TeamPlan(
+                    plan.input().developerId(), plan.planId(),
+                    blocks.stream().map(WorkBlock::date).min(Comparator.naturalOrder()).orElse(null),
+                    blocks.stream().map(WorkBlock::date).max(Comparator.naturalOrder()).orElse(null)));
+        }
+
+        // Cada plan ya trae sus tramos ordenados; entre planes se entrelazan, asi que el orden se
+        // arregla aqui y no en el navegador, igual que en la lectura de uno solo.
+        items.sort(Comparator.comparing(TimelinePlanResponse.TimelineItem::startsAt));
+
+        // Los conflictos se ordenan por persona y elemento para que dos llamadas devuelvan lo mismo.
+        conflicts.sort(Comparator.comparing(TeamTimelineResponse.PlanConflict::developerId)
+                .thenComparing(TeamTimelineResponse.PlanConflict::workItemId));
+
+        return new TeamTimelineResponse(from, to, teamResources(capacities), items, published, conflicts);
+    }
+
+    /**
+     * Los recursos del equipo, ordenados por identificador.
+     *
+     * <p>El orden es explicito y no el del mapa, para que dos llamadas devuelvan la misma respuesta: el
+     * mapa ya viene ordenado porque {@code findLatestPerDeveloper} resuelve con un {@code TreeMap}, pero
+     * eso es un detalle del repositorio y no algo que esta lectura deba heredar.
+     */
+    private static List<TimelinePlanResponse.TimelineResource> teamResources(
+            Map<String, List<TimelinePlanResponse.TimelineCapacity>> capacities) {
+
+        return capacities.entrySet().stream()
+                .map(entry -> new TimelinePlanResponse.TimelineResource(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparing(TimelinePlanResponse.TimelineResource::developerId))
+                .toList();
+    }
+
+    /**
+     * La capacidad de un desarrollador sobre la ventana del equipo, o vacia si no hay ventana.
+     *
+     * <p>Un rango nulo significa que ningun plan del equipo dejo tramos, y ahi no hay dias que medir.
+     */
+    private static List<TimelinePlanResponse.TimelineCapacity> teamCapacity(
+            List<WorkBlock> blocks, WorkingCalendar calendar, LocalDate from, LocalDate to) {
+
+        return from == null || to == null ? List.of() : timelineCapacity(blocks, calendar, from, to);
+    }
+
+    /** Un plan vigente con sus tres lecturas, ya resueltas y comprobadas. */
+    private record FromPlan(
+            UUID planId, PlanSnapshot snapshot, PlanningInputSnapshot input,
+            PlanningContextSnapshot context) {
     }
 
     /**
@@ -626,15 +775,21 @@ public class PlanningService {
 
         Map<String, Incident> incidents = byId(input.incidents(), Incident::id);
         Map<String, Requirement> requirements = byId(input.requirements(), Requirement::id);
-        Set<String> displaced = rescheduleEvents.stream()
-                .map(RescheduleEvent::requirementId)
-                .collect(Collectors.toSet());
+
+        // Un requerimiento puede haberse movido varias veces en la misma generacion; el tramo lleva el
+        // ultimo evento, que es el que explica la fecha que se esta viendo. El desempate se escribe
+        // para que dos llamadas sobre el mismo plan devuelvan el mismo motivo.
+        Map<String, RescheduleEvent> displacements = rescheduleEvents.stream()
+                .collect(Collectors.toMap(RescheduleEvent::requirementId, Function.identity(),
+                        (previous, current) -> current.timestamp().isAfter(previous.timestamp())
+                                ? current
+                                : previous));
 
         return blocks.stream()
                 .sorted(Comparator.comparing(WorkBlock::start))
                 .map(block -> timelineItem(block, incidents.get(block.workItemId()),
                         requirements.get(block.workItemId()), planId,
-                        displaced.contains(block.workItemId())))
+                        displacements.get(block.workItemId())))
                 .toList();
     }
 
@@ -644,9 +799,14 @@ public class PlanningService {
      * <p>Incidente y requerimiento llegan los dos y solo uno viene: el tipo del bloque dice cual. Se
      * pasan los dos en lugar de ramificar fuera para que este metodo sea el unico sitio donde se
      * decide que campo sale de cual, y no haya dos listas de reglas que mantener.
+     *
+     * <p>El evento de desplazamiento entra por la misma puerta: si el tramo lo tiene, viaja con el
+     * como su causa. No se vuelve a decidir si esta desplazado —lo dice el evento— ni se recalcula el
+     * motivo, que sale de la misma traduccion de regla que publica la simulacion.
      */
     private static TimelinePlanResponse.TimelineItem timelineItem(
-            WorkBlock block, Incident incident, Requirement requirement, UUID planId, boolean displaced) {
+            WorkBlock block, Incident incident, Requirement requirement, UUID planId,
+            RescheduleEvent displacement) {
 
         BigDecimal estimatedHours = incident != null ? incident.estimatedHours()
                 : requirement == null ? null : requirement.estimatedHours();
@@ -663,8 +823,26 @@ public class PlanningService {
                 estimatedHours,
                 committedDate,
                 severity,
-                displaced ? TimelineItemStatus.DESPLAZADO : TimelineItemStatus.PLANIFICADO,
-                planId);
+                displacement == null ? TimelineItemStatus.PLANIFICADO : TimelineItemStatus.DESPLAZADO,
+                planId,
+                displacement(displacement));
+    }
+
+    /**
+     * La causa del desplazamiento, traducida al contrato.
+     *
+     * <p>El motivo es el mismo texto que publica la simulacion para esa regla: dos traducciones de la
+     * misma regla acabarian diciendo dos cosas distintas de un solo hecho.
+     */
+    private static TimelinePlanResponse.Displacement displacement(RescheduleEvent event) {
+        return event == null ? null
+                : new TimelinePlanResponse.Displacement(
+                        event.originalDate(),
+                        event.rescheduledDate(),
+                        event.appliedRule(),
+                        event.incidentId(),
+                        event.severity(),
+                        reason(event.appliedRule()));
     }
 
     private static <T> Map<String, T> byId(List<T> items, Function<T, String> id) {

@@ -1,0 +1,406 @@
+{
+  "declaration": {
+    "developer": {
+      "id": "JoseGarc",
+      "name": "Jose Luis Garces Gonzalez"
+    },
+    "items": [
+      {
+        "workItemId": "66666",
+        "type": "INCIDENTE",
+        "status": "EN_ATENCION",
+        "priority": 3,
+        "createdAt": "2026-09-24T10:06:01Z",
+        "title": "\"COLTEFINACIERA DIGITAL EMPRESAS Aplicación de pago de un crédito cuando este presenta un rechazo en la cuenta.",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "66666",
+          "estimatedHours": 8,
+          "committedDate": "2026-10-20",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "Juan Hernandez",
+          "estimatedAt": "2026-10-19T21:25:16.441929Z",
+          "committedAt": "2026-10-15T21:18:34.504540Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "66913",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-09-28T09:39:58Z",
+        "title": "DIGIBEE ETL DEL ODS DE DIGIBEE",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "66913",
+          "estimatedHours": 6,
+          "committedDate": "2026-10-23",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-37",
+          "estimatedAt": "2026-10-19T21:25:16.494927Z",
+          "committedAt": "2026-10-16T15:52:56.720355Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "53350",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 2,
+        "createdAt": "2026-05-22T22:20:28Z",
+        "title": "Docker gateway debe controlar el acceso a URL a través de los roles de usuario",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "53350",
+          "estimatedHours": 4,
+          "committedDate": "2026-10-27",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:25:16.510235Z",
+          "committedAt": "2026-10-19T21:25:16.510235Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "68440",
+        "type": "INCIDENTE",
+        "status": "EN_ATENCION",
+        "priority": 4,
+        "createdAt": "2026-10-15T10:18:19Z",
+        "title": "ESTRUCTURA FORMATO 343 TRIMESTRE 3",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "68440",
+          "estimatedHours": 6,
+          "committedDate": "2026-10-15",
+          "estimatedBy": "Jose Luis Garces",
+          "committedBy": "Jose Luis Garces",
+          "estimatedAt": "2026-10-15T19:20:07.546769Z",
+          "committedAt": "2026-10-15T19:20:07.546769Z",
+          "source": "HTTP",
+          "commitmentOverdue": true
+        }
+      },
+      {
+        "workItemId": "66912",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-09-28T09:34:53Z",
+        "title": "GRANDES EXPOSICIONES GRANDES EXPOSICIONES - FORMATO TOTAL REPORT",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "66912",
+          "estimatedHours": 6,
+          "committedDate": "2026-10-28",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:25:16.525947Z",
+          "committedAt": "2026-10-19T21:25:16.525947Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "68661",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-10-19T09:59:22Z",
+        "title": "GRANDES EXPOSICIONES PASO INFORMACIÓN SERVIDOR TOTAL REPORT FTO 427-428-433",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "68661",
+          "estimatedHours": 4,
+          "committedDate": "2026-10-29",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:25:16.537538Z",
+          "committedAt": "2026-10-19T21:25:16.537538Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "59628",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 4,
+        "createdAt": "2026-07-09T21:10:45Z",
+        "title": "No está funcionando Momento 1",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "59628",
+          "estimatedHours": 8,
+          "committedDate": "2026-10-30",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:25:16.541859Z",
+          "committedAt": "2026-10-19T21:25:16.541859Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "68659",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-10-19T09:50:43Z",
+        "title": "Retención de Logs limitada a 365 - parte 23 Connser",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "68659",
+          "estimatedHours": 3,
+          "committedDate": "2026-11-02",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:25:16.561642Z",
+          "committedAt": "2026-10-19T21:25:16.561642Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      },
+      {
+        "workItemId": "63630",
+        "type": "REQUERIMIENTO",
+        "status": "EN_EJECUCION",
+        "priority": 3,
+        "createdAt": "2026-08-21T11:53:28Z",
+        "title": "Retención de logs limitada a 365 días en microservicios productivos — requiere ajuste",
+        "declarationStatus": "PLANIFICABLE",
+        "discards": [],
+        "declaration": {
+          "workItemId": "63630",
+          "estimatedHours": 4,
+          "committedDate": "2026-11-03",
+          "estimatedBy": "verificacion-fase-48",
+          "committedBy": "verificacion-fase-48",
+          "estimatedAt": "2026-10-19T21:25:16.576731Z",
+          "committedAt": "2026-10-19T21:25:16.576731Z",
+          "source": "HTTP",
+          "commitmentOverdue": false
+        }
+      }
+    ],
+    "source": {
+      "glpi": "/search/Ticket por criterio de tecnico (opcion 5): workItemId, type, status, priority, createdAt y title",
+      "declaration": "planning_metadata por workItemId: estimatedHours y committedDate, con su autor, su sello y lo que falta"
+    }
+  },
+  "plan": {
+    "planId": "848a235f-7b63-4179-8c72-e8d816c67a10",
+    "createdAt": "2026-10-19T23:14:14.354077700Z",
+    "plan": {
+      "developerId": "JoseGarc",
+      "allocations": [
+        {
+          "workItemId": "68440",
+          "workItemType": "INCIDENTE",
+          "developerId": "JoseGarc",
+          "date": "2026-10-15",
+          "hours": 6
+        },
+        {
+          "workItemId": "66666",
+          "workItemType": "INCIDENTE",
+          "developerId": "JoseGarc",
+          "date": "2026-09-24",
+          "hours": 8
+        },
+        {
+          "workItemId": "66913",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "date": "2026-10-23",
+          "hours": 6
+        },
+        {
+          "workItemId": "53350",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "date": "2026-10-27",
+          "hours": 4
+        },
+        {
+          "workItemId": "66912",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "date": "2026-10-28",
+          "hours": 6
+        },
+        {
+          "workItemId": "68661",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "date": "2026-10-29",
+          "hours": 4
+        },
+        {
+          "workItemId": "59628",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "date": "2026-10-30",
+          "hours": 8
+        },
+        {
+          "workItemId": "68659",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "date": "2026-11-02",
+          "hours": 3
+        },
+        {
+          "workItemId": "63630",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "date": "2026-11-03",
+          "hours": 4
+        }
+      ],
+      "blocks": [
+        {
+          "workItemId": "68440",
+          "workItemType": "INCIDENTE",
+          "developerId": "JoseGarc",
+          "start": "2026-10-15T10:18:19",
+          "end": "2026-10-15T16:18:19",
+          "hours": 6
+        },
+        {
+          "workItemId": "66666",
+          "workItemType": "INCIDENTE",
+          "developerId": "JoseGarc",
+          "start": "2026-09-24T10:06:01",
+          "end": "2026-09-24T16:59:01",
+          "hours": 6.8833
+        },
+        {
+          "workItemId": "66666",
+          "workItemType": "INCIDENTE",
+          "developerId": "JoseGarc",
+          "start": "2026-09-25T09:00:00",
+          "end": "2026-09-25T10:07:00",
+          "hours": 1.1167
+        },
+        {
+          "workItemId": "66913",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "start": "2026-10-23T09:00:00",
+          "end": "2026-10-23T15:00:00",
+          "hours": 6
+        },
+        {
+          "workItemId": "53350",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "start": "2026-10-27T09:00:00",
+          "end": "2026-10-27T13:00:00",
+          "hours": 4
+        },
+        {
+          "workItemId": "66912",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "start": "2026-10-28T09:00:00",
+          "end": "2026-10-28T15:00:00",
+          "hours": 6
+        },
+        {
+          "workItemId": "68661",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "start": "2026-10-29T09:00:00",
+          "end": "2026-10-29T13:00:00",
+          "hours": 4
+        },
+        {
+          "workItemId": "59628",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "start": "2026-10-30T09:00:00",
+          "end": "2026-10-30T17:00:00",
+          "hours": 8
+        },
+        {
+          "workItemId": "68659",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "start": "2026-11-02T09:00:00",
+          "end": "2026-11-02T12:00:00",
+          "hours": 3
+        },
+        {
+          "workItemId": "63630",
+          "workItemType": "REQUERIMIENTO",
+          "developerId": "JoseGarc",
+          "start": "2026-11-03T09:00:00",
+          "end": "2026-11-03T13:00:00",
+          "hours": 4
+        }
+      ],
+      "displacedRequirements": [],
+      "rescheduleEvents": [],
+      "conflicts": [],
+      "incidentPolicies": [
+        {
+          "severity": "ALTO",
+          "targetOwnershipMinutes": 15,
+          "targetResolutionHours": 4,
+          "displacementPolicy": "INMEDIATA"
+        },
+        {
+          "severity": "MEDIO",
+          "targetOwnershipMinutes": 15,
+          "targetResolutionHours": 8,
+          "displacementPolicy": "POR_CAPACIDAD"
+        },
+        {
+          "severity": "BAJO",
+          "targetOwnershipMinutes": 15,
+          "targetResolutionHours": 12,
+          "displacementPolicy": "POR_SATURACION"
+        }
+      ],
+      "calendar": {
+        "startTime": "09:00:00",
+        "endTime": "17:00:00",
+        "weekend": [
+          "SATURDAY",
+          "SUNDAY"
+        ],
+        "holidays": []
+      },
+      "incidentDeadlines": [
+        {
+          "incidentId": "66666",
+          "severity": "MEDIO",
+          "reportedAt": "2026-09-24T10:06:01Z",
+          "targetResolutionHours": 8,
+          "dueAt": "2026-09-25T10:07:00Z"
+        },
+        {
+          "incidentId": "68440",
+          "severity": "ALTO",
+          "reportedAt": "2026-10-15T10:18:19Z",
+          "targetResolutionHours": 4,
+          "dueAt": "2026-10-15T14:18:19Z"
+        }
+      ]
+    },
+    "discarded": []
+  }
+}

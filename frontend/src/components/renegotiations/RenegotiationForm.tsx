@@ -112,9 +112,12 @@ function Fields({ item, agreement, onClose }: FieldsProps) {
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1">
           <span className="text-xs text-muted-foreground">Nueva fecha acordada</span>
+          {/* El foco entra donde se empieza a escribir. El formulario solo se monta cuando la fila
+              abre el diálogo —o cuando llega la lectura previa—, así que no roba el foco al cargar. */}
           <input
             type="date"
             required
+            autoFocus
             value={agreedDate}
             onChange={(event) => setAgreedDate(event.target.value)}
             className={FIELD_CLASS}
@@ -207,6 +210,13 @@ function Fields({ item, agreement, onClose }: FieldsProps) {
 
 interface RenegotiationFormProps {
   item: RenegotiationItem
+  /**
+   * Sin la tarjeta ni su cabecera, para el modal.
+   *
+   * El diálogo ya trae el título y el ticket en su propia cabecera; repetirlos dentro sería dos
+   * veces la misma frase a dos centímetros. No es otro formulario: es el mismo cuerpo sin el marco.
+   */
+  bare?: boolean
   onClose: () => void
 }
 
@@ -227,7 +237,7 @@ interface RenegotiationFormProps {
  * Sin acuerdo no hay nada que leer y no se pide nada: la creacion es un `POST`, y el `409` es la
  * respuesta correcta si alguien se adelanto.
  */
-export function RenegotiationForm({ item, onClose }: RenegotiationFormProps) {
+export function RenegotiationForm({ item, bare = false, onClose }: RenegotiationFormProps) {
   const hasAgreement = item.renegotiation !== null
   const { data, isPending, isError, error, refetch } = useRenegotiation(
     item.workItemId,
@@ -235,6 +245,32 @@ export function RenegotiationForm({ item, onClose }: RenegotiationFormProps) {
   )
 
   const loading = hasAgreement && isPending && !data
+
+  const body = loading ? (
+    <Skeleton className="h-40 w-full" />
+  ) : isError ? (
+    // El 404 del backend, con su mensaje. Ocurre cuando la fila traia un acuerdo que ya no
+    // esta: alguien lo cambio entre la lectura de la lista y esta. No se cae al `POST` por
+    // cuenta propia —eso crearia un acuerdo que la fila decia que ya existia—: se enseña lo
+    // que respondio el servidor y se ofrece reintentar.
+    <EmptyState
+      tone="danger"
+      icon={AlertTriangle}
+      title="No fue posible leer el acuerdo"
+      detail={error instanceof Error ? error.message : 'Error desconocido'}
+      action={
+        <Button variant="outline" size="sm" onClick={() => void refetch()}>
+          Reintentar
+        </Button>
+      }
+    />
+  ) : (
+    <Fields key={item.workItemId} item={item} agreement={data ?? null} onClose={onClose} />
+  )
+
+  if (bare) {
+    return body
+  }
 
   return (
     <Card>
@@ -253,34 +289,7 @@ export function RenegotiationForm({ item, onClose }: RenegotiationFormProps) {
         </CardDescription>
       </CardHeader>
 
-      <CardContent>
-        {loading ? (
-          <Skeleton className="h-40 w-full" />
-        ) : isError ? (
-          // El 404 del backend, con su mensaje. Ocurre cuando la fila traia un acuerdo que ya no
-          // esta: alguien lo cambio entre la lectura de la lista y esta. No se cae al `POST` por
-          // cuenta propia —eso crearia un acuerdo que la fila decia que ya existia—: se enseña lo
-          // que respondio el servidor y se ofrece reintentar.
-          <EmptyState
-            tone="danger"
-            icon={AlertTriangle}
-            title="No fue posible leer el acuerdo"
-            detail={error instanceof Error ? error.message : 'Error desconocido'}
-            action={
-              <Button variant="outline" size="sm" onClick={() => void refetch()}>
-                Reintentar
-              </Button>
-            }
-          />
-        ) : (
-          <Fields
-            key={item.workItemId}
-            item={item}
-            agreement={data ?? null}
-            onClose={onClose}
-          />
-        )}
-      </CardContent>
+      <CardContent>{body}</CardContent>
     </Card>
   )
 }
