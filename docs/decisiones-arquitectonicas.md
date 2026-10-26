@@ -8772,6 +8772,8 @@ El estado `SIN_ESTIMACION` —«tiene fecha y no tiene horas»— es la prueba d
 
 La auditoría cruzó, persona por persona, la búsqueda de GLPI contra `GET /api/planning-metadata/declarations`: «falta en el backend» = 0, «con 180 y sin fecha en el backend» = 0, «fechas distintas» = 0.
 
+**El conjunto es vivo.** Las cifras son la medición de las 15:15 del 2026-10-26. Repetida a las 16:12 da **80 asignaciones y 79 tickets únicos**, porque GLPI resolvió el **69351** a las 16:00:22 y cerró el **69301** a las 16:09:54: salieron de los estados 1-4 y con ellos del conjunto activo. El cruce en ambos sentidos sigue en **0 discrepancias** —ningún ticket del backend falta en GLPI ni al revés— y las 80 traen fecha.
+
 ### 431. La fecha no se degrada en el camino: las 594 apariciones del campo 180 son cadenas con el formato del patrón
 
 Se inspeccionaron todas las respuestas de búsqueda de la instancia: el campo 180 aparece **594 veces y siempre como `String`** con `yyyy-MM-dd HH:mm:ss`, que es justo el patrón de `parseDateTime`. El campo 18 (804 apariciones) también es cadena salvo **9 `null`**, que el mapeador convierte en «sin fecha». No hay números, objetos ni formatos alternos: el lector no puede fallar por normalización, y el respaldo no inventa nada cuando el valor falta.
