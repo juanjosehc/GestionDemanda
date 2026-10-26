@@ -7,19 +7,22 @@ import {
   navItemFor,
   planningPath,
   planningPreviewPath,
+  ticketTimelinePath,
 } from '@/routes/navigation'
 
 /**
- * El menú de la Fase 50 y lo que quedó fuera de él.
+ * El menú de la Fase 61 y lo que quedó fuera de él.
  *
  * La separación entre `MENU_ITEMS` y `NAV_ITEMS` es deliberada: el catálogo sigue teniendo todas las
  * pantallas porque el encabezado y los enlaces de vuelta necesitan nombrarlas. Lo que se comprueba
- * aquí es la mitad visible —cuatro entradas— y que las ocultas no se hayan borrado.
+ * aquí es la mitad visible —cinco entradas desde que Tickets se sumó a las cuatro de la Fase 50— y
+ * que las ocultas no se hayan borrado.
  */
 describe('el menú y el catálogo de pantallas', () => {
-  it('deja en el menú solo las cuatro entradas de la operación diaria', () => {
+  it('deja en el menú las cinco entradas de la operación diaria', () => {
     expect(MENU_ITEMS.map((item) => item.to)).toEqual([
       ROUTES.teamTimeline,
+      ROUTES.incidents,
       ROUTES.declarations,
       ROUTES.renegotiations,
       ROUTES.settings,
@@ -32,7 +35,6 @@ describe('el menú y el catálogo de pantallas', () => {
       ROUTES.alerts,
       ROUTES.resources,
       ROUTES.calendar,
-      ROUTES.incidents,
       ROUTES.planning,
       ROUTES.planningPreview,
     ]
@@ -53,6 +55,13 @@ describe('el menú y el catálogo de pantallas', () => {
     expect(navItemFor(ROUTES.planningPreview).label).toBe('Estado del plan')
     expect(navItemFor(planningPath('dev-001')).label).toBe('Planificación')
   })
+
+  it('titula Tickets la pantalla de incidentes, y conserva su ruta', () => {
+    // El rótulo cambió en la Fase 61 porque la tabla pinta incidencias y requerimientos; la ruta no,
+    // porque hay enlaces guardados y la vuelta de la declaración se compone con ella.
+    expect(navItemFor(ROUTES.incidents).label).toBe('Tickets')
+    expect(ROUTES.incidents).toBe('/incidentes')
+  })
 })
 
 describe('las direcciones contextuales', () => {
@@ -67,5 +76,12 @@ describe('las direcciones contextuales', () => {
     expect(planningPreviewPath('todos', 'dev-001')).toBe(
       '/planificar/estado?modo=todos&tecnico=dev-001',
     )
+  })
+
+  it('abre el Timeline filtrado por persona y, si se pide, con el ticket señalado', () => {
+    expect(ticketTimelinePath('dev-001')).toBe('/?tecnico=dev-001')
+    expect(ticketTimelinePath('dev-001', '901')).toBe('/?tecnico=dev-001&ticket=901')
+    // El identificador viaja codificado como en toda dirección de la aplicación.
+    expect(ticketTimelinePath('dev-001', 'REQ 9')).toBe('/?tecnico=dev-001&ticket=REQ+9')
   })
 })

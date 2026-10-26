@@ -365,7 +365,7 @@ describe('Calendar', () => {
     expect(container.querySelectorAll('[data-slot="timeline-block"]').length).toBeGreaterThan(0)
   })
 
-  it('un día no laborable se distingue de uno laborable sin trabajo', async () => {
+  it('un día no laborable se distingue de uno laborable sin trabajo, persona por persona', async () => {
     serve({
       timeline: timelineFixture({
         resources: [
@@ -373,8 +373,8 @@ describe('Calendar', () => {
             developerId: 'dev-001',
             capacity: [
               { date: '2026-10-05', availableHours: 8, occupiedHours: 8, remainingHours: 0 },
-              // Un sábado: cero disponible, cero ocupado y cero libre. Es lo que hoy se pinta igual
-              // que un martes sin nada agendado.
+              // Un día sin jornada para esa persona: cero disponible, cero ocupado y cero libre. Es
+              // lo que antes se pintaba igual que un martes sin nada agendado.
               { date: '2026-10-06', availableHours: 0, occupiedHours: 0, remainingHours: 0 },
             ],
           },
@@ -383,9 +383,22 @@ describe('Calendar', () => {
     })
     const container = await calendar()
 
-    const days = [...container.querySelectorAll<HTMLElement>('[data-slot="timeline-day"]')]
-    expect(days.map((day) => day.dataset.working)).toEqual(['true', 'false'])
-    expect(days[1].textContent).toContain('no laborable')
+    // La jornada es de cada persona, no del equipo: la marca vive en su celda y no en una cabecera
+    // que hablaría por todo el mundo. La semana se pinta entera, de lunes a domingo.
+    const cells = [...container.querySelectorAll<HTMLElement>('[data-slot="timeline-cell"]')]
+    expect(cells.map((cell) => cell.dataset.working)).toEqual([
+      'true',
+      'false',
+      // Sin fila de capacidad no se sabe: «desconocido» no es lo mismo que «no laborable».
+      'unknown',
+      'unknown',
+      'unknown',
+      'unknown',
+      'unknown',
+    ])
+    expect(cells[1].querySelector('[data-slot="timeline-not-working"]')).not.toBeNull()
+    // Un día laborable sin trabajo conserva su franja de capacidad, no la marca de cierre.
+    expect(cells[0].querySelector('[data-slot="timeline-not-working"]')).toBeNull()
   })
 
   it('enlaza a la comparación con el plan anterior sin resolver nada aquí', async () => {

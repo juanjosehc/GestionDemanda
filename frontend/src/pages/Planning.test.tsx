@@ -342,7 +342,7 @@ describe('Planning', () => {
     expect(filas.map((fila) => fila.getAttribute('data-ticket'))).toEqual(['504', '504'])
     expect(filas.map((fila) => fila.getAttribute('data-code'))).toEqual([
       'SIN_ESTIMACION_DECLARADA',
-      'SIN_COMPROMISO_DECLARADO',
+      'SIN_FECHA_EN_GLPI',
     ])
 
     // El motivo que se enseña es el que redacto el backend, no el codigo de la causa.

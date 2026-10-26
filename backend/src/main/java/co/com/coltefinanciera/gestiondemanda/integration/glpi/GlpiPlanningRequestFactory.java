@@ -214,7 +214,7 @@ public class GlpiPlanningRequestFactory {
                     List.of(glpi.get()), null, null);
         }
 
-        List<GlpiDiscardedItem> missing = validator.missingDeclaration(ticket, declaration);
+        List<GlpiDiscardedItem> missing = validator.missingInputs(ticket, declaration);
         if (!missing.isEmpty()) {
             return new Verdict(ticket, declaration, reading(ticket), statusOf(missing), missing,
                     null, null);
@@ -226,8 +226,13 @@ public class GlpiPlanningRequestFactory {
                     .map(found -> plannable(ticket, declaration, found, null))
                     .orElseGet(() -> failed(ticket, declaration, "la incidencia"));
         }
-        Optional<Requirement> requirement = mapper.toRequirement(ticket,
-                declaration.estimatedHours(), declaration.committedDate());
+        // La fecha sale de GLPI y no de la declaracion: es el cambio de la Fase 66b. El validador ya
+        // comprobo que hay una, asi que el flatMap es una guarda de seguridad, no un camino que se
+        // recorra; si algun dia el validador y el mapeador dejan de coincidir, esto devuelve "no se
+        // pudo traducir" en lugar de reventar con una fecha nula.
+        Optional<Requirement> requirement = mapper.operationalDate(ticket)
+                .map(GlpiTicketMapper.OperationalDate::date)
+                .flatMap(date -> mapper.toRequirement(ticket, declaration.estimatedHours(), date));
         return requirement
                 .map(found -> plannable(ticket, declaration, null, found))
                 .orElseGet(() -> failed(ticket, declaration, "la peticion"));
@@ -238,17 +243,22 @@ public class GlpiPlanningRequestFactory {
      *
      * <p><strong>Se deriva de los codigos, no de los valores nulos.</strong> Volver a preguntar aqui si
      * la estimacion es nula seria escribir por segunda vez la regla que ya decidio
-     * {@code missingDeclaration}, y el dia que esa regla cambie esta se quedaria atras sin que nada
-     * avisara. Los codigos son la unica fuente, y los dos que el validador puede devolver a la vez
-     * significan lo mismo que no tener declaracion: hay que declarar las dos cosas.
+     * {@code missingInputs}, y el dia que esa regla cambie esta se quedaria atras sin que nada
+     * avisara. Los codigos son la unica fuente.
+     *
+     * <p><strong>Cuando faltan las dos cosas el estado es {@code SIN_DECLARACION}, y es correcto.</strong>
+     * El nombre se lee como "no hay declaracion", que es cierto: sin horas no hay nada declarado para
+     * este ticket. Que ademas GLPI no tenga fecha no lo dice el estado, lo dice la lista de descartes,
+     * que trae los dos motivos con su fuente. Resumirlos en un estado unico obligaria a inventar un
+     * sexto valor y a tocar la pantalla para decir lo mismo que ya dice el descarte.
      */
     private static DeclarationStatus statusOf(List<GlpiDiscardedItem> missing) {
         boolean estimacion = missing.stream()
                 .anyMatch(item -> item.code() == GlpiDiscardReason.SIN_ESTIMACION_DECLARADA);
-        boolean compromiso = missing.stream()
-                .anyMatch(item -> item.code() == GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
+        boolean fecha = missing.stream()
+                .anyMatch(item -> item.code() == GlpiDiscardReason.SIN_FECHA_EN_GLPI);
 
-        if (estimacion && compromiso) {
+        if (estimacion && fecha) {
             return DeclarationStatus.SIN_DECLARACION;
         }
         return estimacion ? DeclarationStatus.SIN_ESTIMACION : DeclarationStatus.SIN_COMPROMISO;

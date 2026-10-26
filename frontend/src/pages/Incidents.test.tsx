@@ -1,11 +1,27 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  AGREED,
+  DISPLACED,
+  PENDING_AGREEMENT,
+  PLANNED,
+  WITH_PLAN,
+  WITHOUT_PLAN,
+} from '@/lib/incidents'
 import { Incidents } from '@/pages/Incidents'
-import { declarationItemFixture, declarationsFixture, teamCatalogFixture } from '@/test/fixtures'
+import {
+  declarationItemFixture,
+  declarationsFixture,
+  renegotiationsFixture,
+  teamCatalogFixture,
+  teamTimelineFixture,
+} from '@/test/fixtures'
 import { renderWithClient } from '@/test/render'
 import type { DeclarationItem } from '@/types/declarations'
+import type { RenegotiationsResponse } from '@/types/renegotiations'
 import type { TeamPerson } from '@/types/team'
+import type { TimelineItem } from '@/types/timeline'
 
 const fetchMock = vi.fn()
 
@@ -19,6 +35,8 @@ function errorResponse(status: number, body: unknown) {
 
 const TEAM_URL = '/api/team'
 const DECLARATIONS_PREFIX = '/api/planning-metadata/declarations/'
+const TEAM_TIMELINE_URL = '/api/planning/team/timeline'
+const RENEGOTIATIONS_URL = '/api/renegotiations'
 
 /** Las tres personas del padrón de las pruebas, por el papel que juegan en cada caso. */
 const ANA = 'dev-001'
@@ -61,6 +79,28 @@ const REQUERIMIENTO = ticket({
   title: 'Acceso al reporte de cartera',
 })
 
+/**
+ * Un tramo del plan para un ticket de una persona: lo único que la columna Plan lee.
+ *
+ * Sale de un tramo real del fixture y se cambia lo que la prueba necesita —de quién es, qué ticket
+ * es y cómo quedó—, para no inventar un contrato paralelo al del backend.
+ */
+function block(
+  developerId: string,
+  workItemId: string,
+  planningStatus: TimelineItem['planningStatus'],
+): TimelineItem {
+  return { ...teamTimelineFixture().items[0], developerId, workItemId, planningStatus }
+}
+
+/** Un acuerdo registrado para un ticket, con lo mínimo que la columna Acuerdo lee. */
+function agreement(
+  workItemId: string,
+  status: RenegotiationsResponse['items'][number]['status'],
+): RenegotiationsResponse['items'][number] {
+  return { ...renegotiationsFixture().items[0], workItemId, status }
+}
+
 type Served = ReturnType<typeof okResponse> | ReturnType<typeof errorResponse>
 
 function declarationsUrl(developerId: string) {
@@ -68,22 +108,47 @@ function declarationsUrl(developerId: string) {
 }
 
 /**
- * Sirve las dos únicas lecturas de la pantalla: el padrón y el trabajo de cada persona que se enseña.
+ * Sirve las cuatro lecturas de la pantalla: el padrón, el trabajo de cada persona que se enseña, la
+ * agenda del equipo y las renegociaciones.
  *
- * **Una dirección que no sea una de esas dos lanza**, y eso es lo que fija que esta pantalla no pide
- * las métricas ni las alertas: si algún día las pidiera, la prueba fallaría aquí en vez de pasar
+ * **Una dirección que no sea una de esas cuatro lanza**, y eso es lo que fija que esta pantalla no
+ * pide las métricas ni las alertas: si algún día las pidiera, la prueba fallaría aquí en vez de pasar
  * enseñando una segunda copia del tablero.
+ *
+ * Las dos últimas llegan **vacías por defecto**, porque la mayoría de los casos solo necesitan que la
+ * lectura conteste algo: un plan sin tramos dice «Sin plan» y una renegociación sin acuerdos deja el
+ * hueco. Las pruebas que afirman sobre ellos los sirven a propósito.
  */
 function serve({
   team,
   declarations,
+  timeline,
+  renegotiations,
 }: {
   team?: Served
   declarations?: (developerId: string) => Served
+  timeline?: Served
+  renegotiations?: Served
 } = {}) {
   fetchMock.mockImplementation((url: string) => {
     if (url === TEAM_URL) {
       return Promise.resolve(team ?? okResponse(teamCatalogFixture()))
+    }
+
+    if (url === TEAM_TIMELINE_URL) {
+      return Promise.resolve(
+        timeline ??
+          okResponse(teamTimelineFixture({ resources: [], items: [], plans: [], conflicts: [] })),
+      )
+    }
+
+    if (url === RENEGOTIATIONS_URL) {
+      return Promise.resolve(
+        renegotiations ??
+          okResponse(
+            renegotiationsFixture({ summary: { displaced: 0, pending: 0, agreed: 0 }, items: [] }),
+          ),
+      )
     }
 
     if (url.startsWith(DECLARATIONS_PREFIX)) {
@@ -177,7 +242,7 @@ afterEach(() => {
 })
 
 describe('Incidents', () => {
-  it('pide el padrón y el trabajo de cada persona, y nada más', async () => {
+  it('pide el padrón, el trabajo de cada persona, el plan y los acuerdos, y nada más', async () => {
     serve({ declarations: byDeveloper({ [ANA]: [INCIDENTE] }) })
 
     const { container } = renderWithClient(<Incidents />)
@@ -185,13 +250,17 @@ describe('Incidents', () => {
 
     expect(rows(container)).toHaveLength(1)
 
-    // Las dos únicas lecturas: el padrón, una vez, y una declaración por persona visible.
+    // Cuatro lecturas, ni una más: el padrón una vez, una declaración por persona visible, y las
+    // dos de las que salen las columnas Plan y Acuerdo. Estas dos son **las mismas consultas del
+    // Timeline** —misma clave de caché—, no una lectura por ticket ni por filtro.
     expect(requestedUrls()).toContain(TEAM_URL)
+    expect(requestedUrls()).toContain(TEAM_TIMELINE_URL)
+    expect(requestedUrls()).toContain(RENEGOTIATIONS_URL)
     expect(requestedDeclarations().sort()).toEqual([declarationsUrl(ANA), declarationsUrl(CARLOS), declarationsUrl(DIANA)])
 
-    // Y ninguna del tablero: las cifras de esta pantalla son de la vista, no del negocio.
-    expect(requestedUrls().filter((url) => url.startsWith('/api/planning/'))).toEqual([])
-    expect(requestedUrls()).not.toContain('/api/renegotiations')
+    // Y ninguna del tablero ni de alertas: las cifras de esta pantalla son de la vista, no del negocio.
+    expect(requestedUrls().filter((url) => url.startsWith('/api/planning/metrics'))).toEqual([])
+    expect(requestedUrls().filter((url) => url.startsWith('/api/alerts'))).toEqual([])
   })
 
   it('pinta un incidente activo con su tipo, su estado, su persona y su declaración', async () => {
@@ -208,9 +277,10 @@ describe('Incidents', () => {
     // El nombre lo publica el padrón, no la respuesta de la declaración.
     expect(cellOf(row, 'incident-person')).toBe('Ana Perez')
     expect(within(row).getByText('La impresora de contabilidad no imprime')).toBeInTheDocument()
-    // El estado de declaración llega calculado y la tabla no lo deduce: lo pinta.
+    // El estado de declaración llega calculado y la tabla no lo deduce: lo pinta en palabras, y el
+    // código del backend queda en el `title`, que es lo que permite contrastarlo con la regla.
     expect(row.getAttribute('data-declaration')).toBe('PLANIFICABLE')
-    expect(within(row).getByText('PLANIFICABLE')).toBeInTheDocument()
+    expect(within(row).getByText('Planificable')).toHaveAttribute('title', 'PLANIFICABLE')
   })
 
   it('pinta un requerimiento activo y lo distingue del incidente', async () => {
@@ -365,7 +435,7 @@ describe('Incidents', () => {
     expect(orderOf(container)).toEqual(['902'])
 
     chooseFilter('Tipo', '')
-    chooseFilter('Estado', 'EN_ATENCION')
+    chooseFilter('Estado GLPI', 'EN_ATENCION')
     expect(orderOf(container)).toEqual(['901'])
 
     // Filtrar es mirar de otra forma lo que ya está: ninguna lectura nueva.
@@ -531,9 +601,11 @@ describe('Incidents', () => {
     declarationStatus: 'SIN_DECLARACION',
     discards: [
       { code: 'SIN_ESTIMACION_DECLARADA', reason: 'no hay planificacion declarada para este elemento' },
-      { code: 'SIN_COMPROMISO_DECLARADO', reason: 'no hay planificacion declarada para este elemento' },
+      { code: 'SIN_FECHA_EN_GLPI', reason: 'GLPI no trae ni internal_time_to_resolve ni time_to_resolve' },
     ],
     declaration: null,
+    operationalDate: null,
+    operationalDateSource: null,
   })
 
   it('un ticket pendiente ofrece el atajo, con el técnico, el ticket y la vuelta', async () => {
@@ -583,16 +655,26 @@ describe('Incidents', () => {
     expect(decodeURIComponent(href ?? '')).toContain('modo=todos')
   })
 
-  it('un ticket ya declarado no ofrece atajo: se sigue editando desde la declaración', async () => {
+  it('un ticket ya declarado no ofrece declarar ni renegociar: solo la salida al Timeline', async () => {
     serve({ declarations: byDeveloper({ [ANA]: [INCIDENTE] }) })
 
     const { container } = renderWithClient(<Incidents />)
     await tableRendered()
 
-    expect(rowOf(container, '901').getAttribute('data-declaration')).toBe('PLANIFICABLE')
-    expect(within(rowOf(container, '901')).queryByRole('link')).toBeNull()
-    // La columna está en todas las filas: lo que falta es el enlace, no la celda.
-    expect(cellOf(rowOf(container, '901'), 'incident-action')).toBe('')
+    const row = rowOf(container, '901')
+
+    expect(row.getAttribute('data-declaration')).toBe('PLANIFICABLE')
+    // Declarar se sigue haciendo desde la declaración, y sin acuerdo pendiente no hay nada que
+    // renegociar: la fila no ofrece ninguna de las dos acciones.
+    expect(within(row).queryByRole('link', { name: /^Declarar/ })).toBeNull()
+    expect(within(row).queryByRole('link', { name: /^Renegociar/ })).toBeNull()
+
+    // La salida al Timeline sí está siempre: es una vista, no una acción que dependa del estado.
+    expect(
+      within(row).getByRole('link', { name: 'Ver el ticket 901 de Ana Perez en el Timeline' }),
+    ).toHaveAttribute('href', '/?tecnico=dev-001&ticket=901')
+
+    expect(cellOf(row, 'incident-action')).toBe('Timeline')
   })
 
   it('el desglose cuenta declarados, pendientes, sin estimación y sin compromiso', async () => {
@@ -618,5 +700,146 @@ describe('Incidents', () => {
         'su fila creada y el compromiso sin declarar. Las cuentas se solapan —un ticket sin ' +
         'estimación también está pendiente—: es un desglose, no un reparto.',
     )
+  })
+
+  it('la columna Plan dice dónde está cada ticket, y «Sin plan» no es no haber leído', async () => {
+    serve({
+      declarations: byDeveloper({
+        [ANA]: [
+          INCIDENTE, // 901: el plan lo colocó.
+          ticket({ workItemId: '902', title: 'El que el plan movió' }),
+          ticket({ workItemId: '903', title: 'El que no está en el plan' }),
+        ],
+      }),
+      timeline: okResponse(
+        teamTimelineFixture({
+          resources: [],
+          plans: [],
+          conflicts: [],
+          items: [block(ANA, '901', 'PLANIFICADO'), block(ANA, '902', 'DESPLAZADO')],
+        }),
+      ),
+    })
+
+    const { container } = renderWithClient(<Incidents />)
+    await tableRendered()
+
+    expect(cellOf(rowOf(container, '901'), 'incident-plan')).toBe('Planificado')
+    expect(cellOf(rowOf(container, '902'), 'incident-plan')).toBe('Desplazado')
+    // El plan se leyó y no trae tramo para el 903: eso es un hecho —«Sin plan»—, no un hueco.
+    expect(cellOf(rowOf(container, '903'), 'incident-plan')).toBe('Sin plan')
+    expect(rowOf(container, '903').getAttribute('data-plan')).toBe('')
+  })
+
+  it('la columna Acuerdo dice qué espera una fecha, y solo el pendiente ofrece renegociar', async () => {
+    serve({
+      declarations: byDeveloper({
+        [ANA]: [
+          INCIDENTE, // 901
+          ticket({ workItemId: '902' }),
+          ticket({ workItemId: '903' }),
+        ],
+      }),
+      renegotiations: okResponse(
+        renegotiationsFixture({
+          summary: { displaced: 2, pending: 1, agreed: 1 },
+          items: [agreement('901', 'ACORDADA'), agreement('902', 'PENDIENTE_DE_ACUERDO')],
+        }),
+      ),
+    })
+
+    const { container } = renderWithClient(<Incidents />)
+    await tableRendered()
+
+    expect(cellOf(rowOf(container, '901'), 'incident-agreement')).toBe('Acordado')
+    expect(cellOf(rowOf(container, '902'), 'incident-agreement')).toBe('Pendiente de acuerdo')
+    // Sin acuerdo registrado no hay nada que esperar ni que renegociar: la celda dice el hueco.
+    expect(cellOf(rowOf(container, '903'), 'incident-agreement')).toBe('—')
+
+    // La acción abre la renegociación de ese ticket, con su fila ya seleccionada.
+    expect(
+      within(rowOf(container, '902')).getByRole('link', {
+        name: 'Renegociar el ticket 902 de Ana Perez',
+      }),
+    ).toHaveAttribute('href', '/renegociaciones?ticket=902')
+
+    expect(within(rowOf(container, '901')).queryByRole('link', { name: /^Renegociar/ })).toBeNull()
+  })
+
+  it('los filtros de planificación y de renegociación acotan sin volver a consultar', async () => {
+    serve({
+      declarations: byDeveloper({
+        [ANA]: [
+          INCIDENTE, // 901
+          ticket({ workItemId: '902' }),
+          ticket({ workItemId: '903' }),
+        ],
+      }),
+      timeline: okResponse(
+        teamTimelineFixture({
+          resources: [],
+          plans: [],
+          conflicts: [],
+          items: [block(ANA, '901', 'PLANIFICADO'), block(ANA, '902', 'DESPLAZADO')],
+        }),
+      ),
+      renegotiations: okResponse(
+        renegotiationsFixture({
+          summary: { displaced: 2, pending: 1, agreed: 1 },
+          items: [agreement('901', 'ACORDADA'), agreement('902', 'PENDIENTE_DE_ACUERDO')],
+        }),
+      ),
+    })
+
+    const { container } = renderWithClient(<Incidents />)
+    await tableRendered()
+
+    // Planificación es una sola escala: la pertenencia —con plan, sin plan— y el estado del tramo.
+    chooseFilter('Planificación', WITH_PLAN)
+    expect(orderOf(container)).toEqual(['901', '902'])
+
+    chooseFilter('Planificación', WITHOUT_PLAN)
+    expect(orderOf(container)).toEqual(['903'])
+
+    chooseFilter('Planificación', PLANNED)
+    expect(orderOf(container)).toEqual(['901'])
+
+    chooseFilter('Planificación', DISPLACED)
+    expect(orderOf(container)).toEqual(['902'])
+
+    chooseFilter('Planificación', '')
+    chooseFilter('Renegociación', PENDING_AGREEMENT)
+    expect(orderOf(container)).toEqual(['902'])
+
+    chooseFilter('Renegociación', AGREED)
+    expect(orderOf(container)).toEqual(['901'])
+
+    // Filtrar es mirar de otra forma lo que ya está leído: ninguna lectura nueva, ni por filtro ni
+    // por ticket.
+    expect(requestedUrls().filter((url) => url === TEAM_TIMELINE_URL)).toHaveLength(1)
+    expect(requestedUrls().filter((url) => url === RENEGOTIATIONS_URL)).toHaveLength(1)
+    expect(requestedDeclarations()).toHaveLength(3)
+  })
+
+  it('si el plan o los acuerdos no se pudieron leer, la columna queda en hueco y se dice', async () => {
+    serve({
+      declarations: byDeveloper({ [ANA]: [INCIDENTE] }),
+      timeline: errorResponse(500, { message: 'El motor no responde' }),
+      renegotiations: errorResponse(500, { message: 'El motor no responde' }),
+    })
+
+    const { container } = renderWithClient(<Incidents />)
+    await tableRendered()
+
+    // El hueco es no haber podido leer, no un hecho sobre el ticket.
+    expect(cellOf(rowOf(container, '901'), 'incident-plan')).toBe('—')
+    expect(cellOf(rowOf(container, '901'), 'incident-agreement')).toBe('—')
+    expect(screen.getByText(/El plan vigente no se pudo leer/)).toBeInTheDocument()
+    expect(screen.getByText(/Los acuerdos no se pudieron leer/)).toBeInTheDocument()
+
+    // «Sin plan» afirmaría que se comprobó que no tiene tramo, y no se pudo comprobar: el filtro
+    // deja la tabla vacía en vez de inventar el hecho.
+    chooseFilter('Planificación', WITHOUT_PLAN)
+    expect(rows(container)).toHaveLength(0)
   })
 })

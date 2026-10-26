@@ -8,12 +8,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTeamDeclarations } from '@/hooks/useDeclarations'
+import { useRenegotiations } from '@/hooks/useRenegotiations'
 import { useTeam } from '@/hooks/useTeam'
+import { useTeamTimeline } from '@/hooks/useTeamTimeline'
 import {
+  AGREED,
   ANY,
   DECLARED,
+  DISPLACED,
   PENDING,
+  PENDING_AGREEMENT,
+  PLANNED,
+  WITH_PLAN,
+  WITHOUT_PLAN,
   declarationBreakdown,
+  factsReader,
   filterIncidents,
   filtersFromParams,
   modeFromParams,
@@ -24,7 +33,13 @@ import {
   type TeamViewMode,
 } from '@/lib/incidents'
 import { declarationKeysFor } from '@/lib/team'
-import { declarationPath, incidentsPath } from '@/routes/navigation'
+import { teamAgenda } from '@/lib/timeline'
+import {
+  declarationPath,
+  incidentsPath,
+  renegotiationPath,
+  ticketTimelinePath,
+} from '@/routes/navigation'
 import type { TeamPerson } from '@/types/team'
 
 /** Esqueleto de la carga: la misma forma que el contenido, para que no haya salto de altura. */
@@ -140,6 +155,12 @@ function Filter({
 export function Incidents() {
   const { data, isPending, isError, error, refetch } = useTeam()
 
+  // Las dos lecturas que convierten la tabla en el inventario completo: el plan vigente dice dónde
+  // está cada ticket y la renegociación dice qué espera una fecha. Son las mismas consultas que el
+  // Timeline —misma clave de caché—, así que ir y volver entre las dos pantallas no relee nada.
+  const timeline = useTeamTimeline()
+  const renegotiations = useRenegotiations()
+
   // La dirección **siembra** el modo y los filtros, una sola vez, y el estado local sigue mandando. Si
   // la dirección los gobernara, cada `<select>` sería una navegación y el botón «atrás» desharía
   // filtros en vez de salir de la pantalla. Lo que sí viaja es el enlace de vuelta, que se compone con
@@ -159,10 +180,24 @@ export function Incidents() {
   const keys = declarationKeysFor(shown, [])
   const declarations = useTeamDeclarations(keys)
 
+  /*
+   * La agenda se cruza con el padrón igual que en el Timeline: un plan guardado puede nombrar a la
+   * persona por su número de GLPI, y `teamAgenda` lo traduce al login. Sin esa traducción, la
+   * columna de plan saldría «Sin plan» para quien sí lo tiene.
+   */
+  const agenda = teamAgenda(people, timeline.data)
+
+  /*
+   * Los hechos del plan y del acuerdo, sin recalcular nada. Cuando una lectura no llegó se pasa
+   * `undefined` y la tabla enseña el hueco: no es lo mismo «sin plan» que «no se pudo leer el plan».
+   */
+  const factsOf = factsReader(timeline.data ? agenda.items : undefined, renegotiations.data)
+
   const rows = sortIncidents(
     toIncidentRows(
       shown,
       declarations.map((declaration) => declaration.data),
+      factsOf,
     ),
   )
 
@@ -185,6 +220,13 @@ export function Incidents() {
       workItemId: row.item.workItemId,
       from: incidentsPath(filters, mode),
     })
+
+  // Las otras dos salidas de la fila no dependen del estado de la pantalla: el Timeline se filtra
+  // por la persona y señala el ticket, y la renegociación abre la fila de ese ticket.
+  const timelineHref = (row: IncidentRow) =>
+    ticketTimelinePath(row.developerId, row.item.workItemId)
+
+  const renegotiationHref = (row: IncidentRow) => renegotiationPath(row.item.workItemId)
 
   // Una respuesta que falta es una persona a la que **no se le pudo leer el trabajo**, y eso no es lo
   // mismo que no tener ninguno. Se cuenta para poder decirlo.
@@ -255,7 +297,8 @@ export function Incidents() {
         vista{filtersExcludeNothing(filters) ? '' : `, de los que ${visible.length} pasan los filtros`}
         . Solo entran los que GLPI tiene sin resolver —nuevo, asignado, planificado o pendiente—: lo
         resuelto y lo cerrado no aparecen. El tipo, el estado, la prioridad y la fecha los publica
-        GLPI; el estado de declaración lo calcula el backend sobre la planificación declarada.
+        GLPI; el estado de declaración lo calcula el backend sobre la planificación declarada; el
+        plan y el acuerdo se leen de los tramos y de la renegociación, sin recalcular nada.
       </p>
 
       {/* El desglose de la observabilidad, sobre lo que se ve. Se dice que las cuentas se solapan
@@ -283,6 +326,17 @@ export function Incidents() {
         </p>
       )}
 
+      {/* Las dos lecturas que no son de GLPI fallan por su cuenta y no se llevan la tabla por
+          delante: lo que no se pudo leer se declara y su columna queda en hueco. */}
+      {(timeline.isError || renegotiations.isError) && (
+        <p className="text-xs text-muted-foreground">
+          {timeline.isError && <span>El plan vigente no se pudo leer: la columna Plan queda en hueco. </span>}
+          {renegotiations.isError && (
+            <span>Los acuerdos no se pudieron leer: la columna Acuerdo queda en hueco.</span>
+          )}
+        </p>
+      )}
+
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -295,7 +349,9 @@ export function Incidents() {
                 aparece en las dos, porque las dos lo tienen como carga. La persona la dice la lectura
                 —cada respuesta es la de alguien— y no se deduce del ticket. El estado de declaración
                 dice si al ticket no le falta nada para planificarse, y cuando le falta algo lo nombra
-                con el código de la regla y su motivo.
+                con el código de la regla y su motivo. El plan dice si el motor lo colocó y si lo
+                movió de fecha; el acuerdo, si esa fecha nueva ya se acordó. Un hueco —«—»— es que la
+                lectura no llegó, no que falte el dato.
                 <br />
                 Los filtros no vuelven a consultar nada: se aplican sobre lo que ya está en pantalla.
                 El conmutador sí, porque aquí las filas son el trabajo de cada persona y ampliar la
@@ -339,7 +395,7 @@ export function Incidents() {
                 />
                 <Filter
                   id="filtro-estado"
-                  label="Estado"
+                  label="Estado GLPI"
                   value={filters.status}
                   options={optionsOf(
                     rows.map((row) => row.item.status).filter((status) => status !== null),
@@ -353,11 +409,40 @@ export function Incidents() {
                   value={filters.declaration}
                   options={[
                     { value: ANY, label: 'Todas' },
-                    { value: DECLARED, label: 'Declarado' },
+                    { value: DECLARED, label: 'Planificable' },
                     { value: PENDING, label: 'Pendiente' },
                   ]}
                   onChange={(declaration) =>
                     setFilters((current) => ({ ...current, declaration }))
+                  }
+                />
+                {/* La pertenencia al plan y el estado del tramo en el mismo control: son una sola
+                    pregunta —«¿dónde está?»— y elegir una cosa a la vez evita pedir «con plan» y
+                    «sin plan» juntos. */}
+                <Filter
+                  id="filtro-planificacion"
+                  label="Planificación"
+                  value={filters.planning}
+                  options={[
+                    { value: ANY, label: 'Todas' },
+                    { value: WITH_PLAN, label: 'Con plan' },
+                    { value: WITHOUT_PLAN, label: 'Sin plan' },
+                    { value: PLANNED, label: 'Planificado' },
+                    { value: DISPLACED, label: 'Desplazado' },
+                  ]}
+                  onChange={(planning) => setFilters((current) => ({ ...current, planning }))}
+                />
+                <Filter
+                  id="filtro-renegociacion"
+                  label="Renegociación"
+                  value={filters.renegotiation}
+                  options={[
+                    { value: ANY, label: 'Todas' },
+                    { value: PENDING_AGREEMENT, label: 'Pendiente de acuerdo' },
+                    { value: AGREED, label: 'Acordado' },
+                  ]}
+                  onChange={(renegotiation) =>
+                    setFilters((current) => ({ ...current, renegotiation }))
                   }
                 />
               </div>
@@ -379,7 +464,12 @@ export function Incidents() {
                   detail={`Se recibieron ${rows.length} tickets activos y los filtros dejan fuera a todos. Los filtros no vuelven a consultar nada: se aplican sobre lo que ya está en pantalla.`}
                 />
               ) : (
-                <IncidentTable rows={visible} declarationHref={declarationHref} />
+                <IncidentTable
+                  rows={visible}
+                  declarationHref={declarationHref}
+                  timelineHref={timelineHref}
+                  renegotiationHref={renegotiationHref}
+                />
               )}
             </>
           )}
@@ -391,10 +481,5 @@ export function Incidents() {
 
 /** Si los filtros están todos sin aplicar. Se usa solo para no repetir la cuenta en el resumen. */
 function filtersExcludeNothing(filters: IncidentFilters): boolean {
-  return (
-    filters.person === ANY &&
-    filters.type === ANY &&
-    filters.status === ANY &&
-    filters.declaration === ANY
-  )
+  return Object.values(filters).every((value) => value === ANY)
 }

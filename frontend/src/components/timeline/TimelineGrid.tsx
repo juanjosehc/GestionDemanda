@@ -1,29 +1,40 @@
-import { AlertTriangle, ClipboardList } from 'lucide-react'
+import { AlertTriangle, ClipboardList, Flag, HelpCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { SEVERITY_VARIANTS } from '@/lib/severity'
 import {
+  addDays,
+  blockState,
   capacityOn,
   countOf,
+  dayPositions,
   formatDay,
   formatHours,
   formatTime,
+  formatWeek,
   hourAxis,
+  itemDate,
   itemsByDate,
+  localTodayIso,
   minutesOfDay,
   timelineDays,
+  weekAnchor,
+  weekDaysOf,
+  weekStartOf,
 } from '@/lib/timeline'
 import { cn } from '@/lib/utils'
-import type { HourAxis } from '@/lib/timeline'
+import type { DayPosition, HourAxis } from '@/lib/timeline'
 import type { BadgeVariant } from '@/components/ui/badge'
 import type {
   IncidentSeverity,
   TimelineCapacity,
   TimelineItem,
-  TimelineItemStatus,
   TimelineResource,
+  TimelineState,
+  UnscheduledItem,
 } from '@/types/timeline'
 
 /**
@@ -34,12 +45,41 @@ const ZOOM = [
   { label: 'Compacta', hourHeight: 26, dayWidth: 132 },
   { label: 'Normal', hourHeight: 44, dayWidth: 168 },
   { label: 'Amplia', hourHeight: 72, dayWidth: 224 },
+  /*
+   * «Detalle» prioriza la lectura del tiempo, no el ancho: una hora son 120 px, así que media hora
+   * mide lo que una fila de texto y un tramo de 30 minutos enseña sus horas, su duración y su
+   * estado sin recortar nada. Las tres anteriores siguen sirviendo para ver el día entero de un
+   * vistazo; esta es para leerlo.
+   */
+  { label: 'Detalle', hourHeight: 120, dayWidth: 210 },
 ] as const
 
 /** Un tramo corto se queda sin sitio para su contenido; se le deja un minimo legible. */
 const MIN_BLOCK_HEIGHT = 18
 
-const STATUS: Record<TimelineItemStatus, { label: string; variant: BadgeVariant; block: string }> = {
+/** Cuantos pixeles del tramo simulado se enseñan al simular; el resto queda para el panel. */
+const REVEAL = 200
+
+/**
+ * La paleta de los seis estados, en un solo sitio.
+ *
+ * **Cada estado tiene un color que ningún otro usa**, porque el color es lo único que un tramo de
+ * dos líneas puede decir antes de que alguien lo lea: azul es «está donde debe», ámbar «el plan lo
+ * movió», violeta «espera una decisión de una persona», verde y verde azulado «ya hay acuerdo» —uno
+ * lo concilió el sistema y otro lo firmó alguien—, y gris punteado «no se puede planificar todavía».
+ *
+ * **El gris no es el color del error**: un ticket sin estimación no está mal, está incompleto, y la
+ * pantalla lo que hace es pedir el dato, no denunciarlo. El rojo queda para lo único que es un
+ * error: capacidad ocupada por encima de la disponible, que ya se pinta en la franja del día.
+ *
+ * El estado no se decide aquí: llega resuelto por `blockState`, que cruza el plan con el acuerdo.
+ */
+const STATES: Record<TimelineState, { label: string; variant: BadgeVariant; block: string }> = {
+  SIN_ESTIMACION: {
+    label: 'Requiere estimación',
+    variant: 'secondary',
+    block: 'border-dashed border-slate-400 bg-slate-50 text-slate-600',
+  },
   PLANIFICADO: {
     label: 'Planificado',
     variant: 'info',
@@ -50,13 +90,35 @@ const STATUS: Record<TimelineItemStatus, { label: string; variant: BadgeVariant;
     variant: 'warning',
     block: 'border-amber-400 bg-amber-50 text-amber-900',
   },
+  PENDIENTE_DE_ACUERDO: {
+    label: 'Pendiente de acuerdo',
+    variant: 'warning',
+    block: 'border-violet-400 bg-violet-50 text-violet-900',
+  },
+  ACORDADO_GLPI: {
+    label: 'Acordado en GLPI',
+    variant: 'success',
+    block: 'border-emerald-400 bg-emerald-50 text-emerald-900',
+  },
+  ACORDADO_MANUAL: {
+    label: 'Acordado manualmente',
+    variant: 'success',
+    block: 'border-teal-400 bg-teal-50 text-teal-900',
+  },
 }
 
-const SEVERITY: Record<IncidentSeverity, BadgeVariant> = {
-  ALTO: 'danger',
-  MEDIO: 'warning',
-  BAJO: 'secondary',
-}
+/**
+ * El orden en que se leen los estados: primero lo que falta, después lo que el plan decidió y al
+ * final los acuerdos. Es el orden de la leyenda y el del recorrido de un gestor.
+ */
+const STATE_ORDER: readonly TimelineState[] = [
+  'SIN_ESTIMACION',
+  'PLANIFICADO',
+  'DESPLAZADO',
+  'PENDIENTE_DE_ACUERDO',
+  'ACORDADO_GLPI',
+  'ACORDADO_MANUAL',
+]
 
 const TYPE = {
   INCIDENTE: { label: 'Incidente', icon: AlertTriangle },
@@ -64,18 +126,31 @@ const TYPE = {
 } as const
 
 /** Texto del tooltip nativo. La aplicacion no tiene componente de tooltip; el navegador basta. */
-function describe(item: TimelineItem): string {
+function describe(item: TimelineItem, state: TimelineState, position: DayPosition | undefined): string {
   const parts = [
     `${TYPE[item.workItemType].label} ${item.workItemId}`,
     `${formatTime(item.startsAt)}–${formatTime(item.endsAt)} · ${formatHours(item.durationHours)} h de ${formatHours(item.estimatedHours)} h estimadas`,
-    STATUS[item.planningStatus].label,
+    STATES[state].label,
   ]
+
+  if (position && position.days > 1) {
+    parts.push(
+      position.delivery
+        ? `Día ${position.day} de ${position.days} · entrega`
+        : `Día ${position.day} de ${position.days} · continúa`,
+    )
+  } else if (position?.delivery) {
+    parts.push('Día de entrega')
+  }
 
   if (item.severity) {
     parts.push(`Severidad ${item.severity}`)
   }
   if (item.committedDate) {
-    parts.push(`Compromiso ${formatDay(item.committedDate)}`)
+    // `committedDate` es el compromiso **declarado** del ticket, no la fecha de GLPI. La fecha que el
+    // plan obedeció —el Internal TTR— no viaja en el tramo: lo que se ve es dónde la puso, y los dos
+    // datos no siempre coinciden porque GLPI y la declaración se corrigen por vías distintas.
+    parts.push(`Compromiso declarado ${formatDay(item.committedDate)}`)
   }
   // La causa completa va en el texto: el tramo puede ser demasiado bajo para pintarla, y esconderla
   // porque no cabe no es lo mismo que no tenerla.
@@ -97,6 +172,10 @@ interface BlockProps {
   item: TimelineItem
   axis: HourAxis
   hourHeight: number
+  /** El estado visual ya resuelto: plan y acuerdo cruzados, nunca deducido aquí. */
+  state: TimelineState
+  /** En qué día de cuántos va. Indefinido cuando la rejilla no recibió la secuencia. */
+  position?: DayPosition
   /** Sin esto el tramo es de solo lectura, que es lo que era antes del timeline accionable. */
   onSelect?: (item: TimelineItem) => void
   selected?: boolean
@@ -119,14 +198,42 @@ interface BlockProps {
 const MIN_TIME_HEIGHT = 34
 const MIN_BADGES_HEIGHT = 54
 
-function Block({ item, axis, hourHeight, onSelect, selected, displacedTo }: BlockProps) {
-  const status = STATUS[item.planningStatus]
+/**
+ * Una hora del eje, en formato `HH:mm`.
+ *
+ * El eje ya no empieza y acaba en horas exactas —la jornada oficial cierra a las 17:30—, así que
+ * la cuenta no puede suponer que los minutos son cero: `17.5:00` no es una hora.
+ */
+function clockLabel(minutes: number): string {
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return `${String(hours).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
+}
+
+function Block({ item, axis, hourHeight, state, position, onSelect, selected, displacedTo }: BlockProps) {
+  const status = STATES[state]
   const Icon = TYPE[item.workItemType].icon
   const demo = displacedTo !== undefined
+  /*
+   * Un trabajo de varios días se ve como varios tramos —el plan así lo guarda— y sin marca se leen
+   * como trabajos distintos. `continues` dice que hay más después, y solo el último día es la
+   * entrega: es el día en que el requerimiento cierra (`placed.getLast().date()` del motor), y no
+   * hay que confundirlo con el día en que empieza.
+   */
+  const continues = position !== undefined && position.day < position.days
+  const delivered = position?.delivery ?? false
 
   const start = minutesOfDay(item.startsAt)
   const end = minutesOfDay(item.endsAt)
-  const height = Math.max(((end - start) / 60) * hourHeight, MIN_BLOCK_HEIGHT)
+  const naturalHeight = ((end - start) / 60) * hourHeight
+  const height = Math.max(naturalHeight, MIN_BLOCK_HEIGHT)
+  /*
+   * El alto mínimo es una concesión de legibilidad, no una medida: un tramo de media hora mide
+   * 13 px con el zoom compacto y se pinta con 18 para que se pueda tocar. La marca `clamped` deja
+   * constancia de que ese borde inferior no es el final real del tramo.
+   */
+  const clamped = naturalHeight < MIN_BLOCK_HEIGHT
+  const dense = height < MIN_TIME_HEIGHT
   const cause = item.displacement
 
   const style = {
@@ -135,8 +242,13 @@ function Block({ item, axis, hourHeight, onSelect, selected, displacedTo }: Bloc
   }
 
   const className = cn(
-    'absolute inset-x-1 overflow-hidden rounded-md border px-1.5 py-1 text-left text-[11px] leading-tight shadow-xs',
+    // El `<button>` centra su contenido en vertical: en un tramo largo el texto flotaba a media
+    // altura, lejos de la hora en la que empieza. Como columna, cada línea arranca en el borde
+    // superior del tramo, que es donde está su hora de inicio.
+    'absolute inset-x-1 flex flex-col overflow-hidden rounded-md border px-1.5 text-left text-[11px] leading-tight shadow-xs',
+    dense ? 'py-0.5' : 'py-1',
     status.block,
+    clamped && 'border-b border-dashed',
     // Un tramo que la simulación mueve se marca con un contorno, no se mueve: lo que se ve sigue
     // siendo la agenda real, y la simulación es una capa encima que se puede quitar.
     demo && 'border-red-500 ring-2 ring-red-500 ring-offset-1',
@@ -147,11 +259,35 @@ function Block({ item, axis, hourHeight, onSelect, selected, displacedTo }: Bloc
       <span className="flex items-center gap-1 font-medium">
         <Icon className="size-3 shrink-0" aria-hidden="true" />
         <span className="truncate">{item.workItemId}</span>
+        {/*
+          Las horas no dependen de que el tramo sea alto: cuando no cabe la segunda línea se pintan
+          en la primera, a la derecha. La escala de la rejilla nunca deja un bloque sin decir a qué
+          hora empieza y a qué hora termina. La bandera del día de entrega cabe incluso en un tramo
+          de 18 px, y es la marca que no puede faltar.
+        */}
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {delivered && (
+            <Flag
+              data-slot="timeline-delivery"
+              className="size-3 shrink-0"
+              aria-label="Día de entrega"
+            />
+          )}
+          {dense && (
+            <span
+              data-slot="timeline-block-time"
+              className="text-[9px] font-normal tabular-nums opacity-80"
+            >
+              {formatTime(item.startsAt)}–{formatTime(item.endsAt)}
+            </span>
+          )}
+        </span>
       </span>
 
       {height >= MIN_TIME_HEIGHT && (
         <span className="block truncate tabular-nums opacity-80">
           {formatTime(item.startsAt)}–{formatTime(item.endsAt)} · {formatHours(item.durationHours)} h
+          {position !== undefined && position.days > 1 && ` · día ${position.day} de ${position.days}`}
         </span>
       )}
 
@@ -177,22 +313,57 @@ function Block({ item, axis, hourHeight, onSelect, selected, displacedTo }: Bloc
       {height >= MIN_BADGES_HEIGHT && (
         <span className="mt-0.5 flex flex-wrap items-center gap-1">
           <Badge variant={status.variant}>{status.label}</Badge>
-          {item.severity && <Badge variant={SEVERITY[item.severity]}>{item.severity}</Badge>}
+          {item.severity && <Badge variant={SEVERITY_VARIANTS[item.severity]}>{item.severity}</Badge>}
+        </span>
+      )}
+
+      {/*
+        Las dos marcas de la duración multidía, y por qué son dos.
+        La barra inferior dice «aquí termina el trabajo» y es la única que puede faltar si el tramo
+        es bajo, porque el borde inferior del bloque ya marca dónde acaba. El chevron dice que el
+        trabajo sigue en la columna de al lado, que es lo que de otro modo se lee como dos tickets.
+      */}
+      {delivered && (
+        <span
+          aria-hidden="true"
+          data-slot="timeline-delivery-bar"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-current opacity-60"
+        />
+      )}
+      {continues && (
+        <span
+          aria-hidden="true"
+          data-slot="timeline-continues"
+          className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 text-sm leading-none opacity-70"
+        >
+          ›
+        </span>
+      )}
+      {position !== undefined && position.day > 1 && (
+        <span
+          aria-hidden="true"
+          data-slot="timeline-continued"
+          className="pointer-events-none absolute top-1/2 left-0.5 -translate-y-1/2 text-sm leading-none opacity-70"
+        >
+          ‹
         </span>
       )}
     </>
   )
 
   const title = demo
-    ? `${describe(item)} · SIMULADO: se movería a ${displacedTo ?? 'ningún día hábil de la ventana'}`
-    : describe(item)
+    ? `${describe(item, state, position)} · SIMULADO: se movería a ${displacedTo ?? 'ningún día hábil de la ventana'}`
+    : describe(item, state, position)
 
   if (!onSelect) {
     return (
       <div
         data-slot="timeline-block"
         data-status={item.planningStatus}
+        data-state={state}
+        data-delivery={delivered ? 'true' : undefined}
         data-demo={demo ? 'true' : undefined}
+        data-clamped={clamped ? 'true' : undefined}
         title={title}
         className={className}
         style={style}
@@ -212,7 +383,10 @@ function Block({ item, axis, hourHeight, onSelect, selected, displacedTo }: Bloc
       type="button"
       data-slot="timeline-block"
       data-status={item.planningStatus}
+      data-state={state}
+      data-delivery={delivered ? 'true' : undefined}
       data-demo={demo ? 'true' : undefined}
+      data-clamped={clamped ? 'true' : undefined}
       aria-pressed={selected ?? false}
       title={title}
       onClick={() => onSelect(item)}
@@ -235,6 +409,26 @@ function Block({ item, axis, hourHeight, onSelect, selected, displacedTo }: Bloc
  * negativo que viniera del plan tiene que verse.
  */
 function CapacityStrip({ capacity }: { capacity: TimelineCapacity | undefined }) {
+  /*
+   * Una fila de capacidad con cero disponible y cero ocupado es la jornada que esa persona no
+   * tiene. Se dice «no laborable» en **su** celda, día por día: que un plan cierre el sábado no
+   * significa que el de al lado también, y la vista no puede afirmarlo por el equipo entero.
+   *
+   * Sin fila de capacidad no se dice nada: `—` es «esta vista no sabe», no «no trabaja».
+   */
+  if (capacity && capacity.availableHours === 0 && capacity.occupiedHours === 0) {
+    return (
+      <div className="flex h-10 items-center px-2">
+        <span
+          data-slot="timeline-not-working"
+          className="truncate text-[10px] text-muted-foreground"
+        >
+          no laborable
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div className="h-10 space-y-1 px-2 py-1.5">
       {capacity ? (
@@ -260,32 +454,6 @@ function CapacityStrip({ capacity }: { capacity: TimelineCapacity | undefined })
         <span className="text-[10px] text-muted-foreground">—</span>
       )}
     </div>
-  )
-}
-
-/**
- * Los dias en que **ningun** recurso tiene jornada.
- *
- * El backend calcula `availableHours` con el calendario congelado del plan, asi que un dia no
- * laborable llega con cero disponible —y cero ocupado, porque el motor no coloca trabajo fuera de la
- * jornada—. No hay que leer el calendario para saberlo: ya esta en la respuesta que la pagina pide
- * desde siempre.
- *
- * Se exige que el dia traiga al menos una fila: un dia que solo aparece por un tramo, sin capacidad
- * que lo respalde, no es un dia cerrado —es un dia del que esta vista no sabe nada—, y marcarlo
- * afirmaria algo que nadie publico.
- */
-function nonWorkingDays(
-  resources: readonly TimelineResource[],
-  days: readonly string[],
-): ReadonlySet<string> {
-  const rows = resources.flatMap((resource) => resource.capacity)
-
-  return new Set(
-    days.filter((day) => {
-      const onDay = rows.filter((row) => row.date === day)
-      return onDay.length > 0 && onDay.every((row) => row.availableHours === 0)
-    }),
   )
 }
 
@@ -335,6 +503,20 @@ interface TimelineGridProps {
    * declaración dice exactamente cuáles y qué le falta a cada uno.
    */
   nameLinks?: Readonly<Record<string, string>>
+  /**
+   * A dónde lleva el chip «N pendientes» de cada persona, cuando tiene uno solo.
+   *
+   * Es la diferencia entre un aviso y una acción: el número dice que hay trabajo sin colocar, y el
+   * chip lleva al ticket ya abierto —a declararlo, a acordarlo o a replanificarlo, según su causa—,
+   * sin que el gestor tenga que buscarlo por identificador en otra pantalla. La ruta la calcula
+   * quien llama con `pendingPath`, la misma que usa la fila del panel de pendientes.
+   */
+  pendingLinks?: Readonly<Record<string, string>>
+  /**
+   * Qué hacer con el chip cuando la persona tiene **varios** pendientes: no hay un ticket que abrir,
+   * así que quien llama filtra por esa persona el panel donde están todos.
+   */
+  onPendingSelect?: (developerId: string) => void
   /** Nombre accesible de la región. Por defecto, la agenda de un plan. */
   label?: string
   /**
@@ -352,7 +534,7 @@ interface TimelineGridProps {
    * por persona y lo que importa es cuántas se ven de un vistazo, así que esa vista abre compacta.
    * Es el mismo control —sigue en pantalla—, solo cambia el valor inicial.
    */
-  initialZoom?: 0 | 1 | 2
+  initialZoom?: 0 | 1 | 2 | 3
   /**
    * Qué hacer al elegir un tramo. Sin esto la rejilla es de solo lectura, que es lo que era.
    *
@@ -362,6 +544,23 @@ interface TimelineGridProps {
   onSelect?: (item: TimelineItem) => void
   /** El tramo elegido, por su clave `workItemId@startsAt`. Solo sirve para marcarlo. */
   selected?: string | null
+  /**
+   * El estado de cada elemento por ticket, cuando quien llama sabe más que el plan.
+   *
+   * La rejilla **no pregunta por los acuerdos**: pinta los tramos de un plan y no tiene la lista de
+   * renegociaciones. Quien la tiene —el Timeline del equipo— la cruza con `agreementStates` y la
+   * pasa hecha. Sin esta prop el estado es el del plan y la leyenda no menciona acuerdos, que es lo
+   * correcto para el calendario de un plan suelto.
+   */
+  states?: Readonly<Record<string, TimelineState>>
+  /**
+   * Tickets con día de GLPI y sin horas: no están en el plan y hay que verlos igual.
+   *
+   * Se pintan en su día como una franja sin alto de tiempo: **no ocupan jornada y no suman
+   * capacidad**, porque no son trabajo planificado. Quien los calcula es `unscheduledOf`, que filtra
+   * los que ya están en el plan y los que no tienen fecha.
+   */
+  unscheduled?: readonly UnscheduledItem[]
   /**
    * El incidente simulado, si hay uno. Se pinta como una capa de demostración y **no altera ni los
    * recursos ni los tramos**: al quitarlo, la rejilla vuelve a ser exactamente la misma.
@@ -377,6 +576,59 @@ interface TimelineGridProps {
  * decidido, la vista se sostiene con lo que ya hay. Sustituir este componente por FullCalendar o
  * vis-timeline no cambia ni el contrato ni el backend.
  */
+/**
+ * El chip «N pendientes» de una fila.
+ *
+ * **Es la acción, no el aviso.** Con un solo pendiente es un enlace que lleva directo a donde ese
+ * pendiente se resuelve —la misma ruta que la fila del panel—; con varios es un botón que filtra el
+ * panel de pendientes por esa persona. Sin ninguna de las dos cosas sigue siendo un distintivo, que
+ * es lo que ve el calendario de un plan, donde no hay panel al que llevar.
+ */
+function PendingChip({
+  count,
+  name,
+  to,
+  onSelect,
+}: {
+  count: number
+  name: string
+  to?: string
+  onSelect?: () => void
+}) {
+  const label = `${count} ${count === 1 ? 'pendiente' : 'pendientes'}`
+  const className = cn(
+    'rounded-md hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+  )
+
+  if (to) {
+    return (
+      <Link to={to} data-slot="timeline-pending" title={`Abrir el pendiente de ${name}.`} className={className}>
+        <Badge variant="warning">{label}</Badge>
+      </Link>
+    )
+  }
+
+  if (onSelect) {
+    return (
+      <button
+        type="button"
+        onClick={onSelect}
+        data-slot="timeline-pending"
+        title={`Ver ${count === 1 ? 'el pendiente' : `los ${count} pendientes`} de ${name} en el panel de trabajo pendiente.`}
+        className={cn(className, 'cursor-pointer')}
+      >
+        <Badge variant="warning">{label}</Badge>
+      </button>
+    )
+  }
+
+  return (
+    <Badge variant="warning" data-slot="timeline-pending">
+      {label}
+    </Badge>
+  )
+}
+
 export function TimelineGrid({
   resources,
   items,
@@ -384,28 +636,134 @@ export function TimelineGrid({
   pending,
   recoverable,
   nameLinks,
+  pendingLinks,
+  onPendingSelect,
   label,
   dayColumns,
   initialZoom = 1,
   onSelect,
   selected,
   simulation,
+  states,
+  unscheduled,
 }: TimelineGridProps) {
   const [zoom, setZoom] = useState<number>(initialZoom)
 
-  /** El marco que scrollea. La simulación se lleva a la vista dentro de él, no en la página. */
+  /** El desplazamiento horizontal vivo: la cabecera se dibuja fuera del scroller y lo imita. */
+  const [scrollLeft, setScrollLeft] = useState(0)
+
+  /** El scroller horizontal de las filas. Es el único scroll propio de la rejilla. */
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const { hourHeight, dayWidth } = ZOOM[zoom]
   const computedDays = useMemo(() => timelineDays(resources, items), [resources, items])
-  const days = dayColumns ?? computedDays
-  const axis = useMemo(() => hourAxis(items), [items])
-  const closed = useMemo(() => nonWorkingDays(resources, days), [resources, days])
+  const allDays = dayColumns ?? computedDays
 
   /*
-   * Al simular, el incidente aparece en su día —que en una ventana de cuatro meses puede estar a
-   * más de trece mil píxeles a la derecha—. Sin esto la demostración se calcula bien y no se ve, que
-   * es indistinguible de no haberla hecho: se centra la celda del incidente dentro del marco.
+   * La agenda se pinta por **semanas**, no por la ventana entera del plan: siete columnas de lunes
+   * a domingo y tres controles para moverse. Antes había un horizonte de más de quince mil píxeles
+   * y la única forma de navegarlo era el scroll horizontal, que es lo que esta fase quita como
+   * mecanismo principal. La semana se puede seguir desplazando a lo ancho cuando el zoom la hace
+   * más ancha que la pantalla, pero ya no es la forma de avanzar en el tiempo.
+   */
+  const today = useMemo(() => localTodayIso(), [])
+  const anchor = useMemo(() => weekAnchor(allDays, today), [allDays, today])
+  const [weekStart, setWeekStart] = useState(anchor)
+
+  /*
+   * Simular en un día que no está en la semana visible lleva la vista a su semana. La demostración
+   * no puede desplazar trabajo sobre una semana que no está en pantalla: sería un resultado
+   * invisible, indistinguible de no haber simulado nada. Se ajusta durante el render —el patrón de
+   * React para estado derivado de una prop— y no en un efecto, que pintaría una semana y saltaría
+   * a otra en el cuadro siguiente.
+   */
+  const [seenSimulation, setSeenSimulation] = useState(simulation)
+  if (simulation !== seenSimulation) {
+    setSeenSimulation(simulation)
+    if (simulation && (simulation.date < weekStart || simulation.date > addDays(weekStart, 6))) {
+      setWeekStart(weekStartOf(simulation.date))
+    }
+  }
+
+  const days = useMemo(() => weekDaysOf(weekStart), [weekStart])
+
+  // Los bordes de la ventana cargada: no se navega fuera de ella, porque ahí no hay nada que mirar.
+  const firstWeek = weekStartOf(allDays[0] ?? today)
+  const lastWeek = weekStartOf(allDays[allDays.length - 1] ?? today)
+
+  const axis = useMemo(() => hourAxis(items), [items])
+
+  /** En qué día de cuántos va cada tramo: es lo que convierte dos bloques sueltos en un trabajo. */
+  const positions = useMemo(() => dayPositions(items), [items])
+
+  /** Los tickets sin horas, por fila y día. Se agrupan una vez y no dentro del recorrido. */
+  const ghostsByCell = useMemo(() => {
+    const byCell = new Map<string, UnscheduledItem[]>()
+
+    for (const ghost of unscheduled ?? []) {
+      const key = `${ghost.developerId}|${ghost.date}`
+      const bucket = byCell.get(key)
+
+      if (bucket) {
+        bucket.push(ghost)
+      } else {
+        byCell.set(key, [ghost])
+      }
+    }
+
+    return byCell
+  }, [unscheduled])
+
+  /**
+   * Los estados que de verdad se ven esta semana.
+   *
+   * La leyenda explica lo que hay en pantalla y nada más: una leyenda con los seis estados cuando
+   * solo hay dos clases de bloque enseñaría cuatro colores que no existen, y el gestor los buscaría.
+   */
+  const presentStates = useMemo(() => {
+    const present = new Set<TimelineState>()
+
+    // Solo los del rango de columnas: `items` es el plan entero, y anunciar el color de un tramo
+    // que está en otra semana es prometer un bloque que no se puede encontrar en pantalla.
+    for (const item of items) {
+      if (days.includes(itemDate(item))) {
+        present.add(blockState(item, states))
+      }
+    }
+    for (const ghost of unscheduled ?? []) {
+      if (days.includes(ghost.date)) {
+        present.add('SIN_ESTIMACION')
+      }
+    }
+
+    return STATE_ORDER.filter((state) => present.has(state))
+  }, [items, states, unscheduled, days])
+
+  /**
+   * Si hay algún ticket sin horas esta semana.
+   *
+   * La franja donde se enseña se reserva en **todas** las celdas de la semana o en ninguna: si solo
+   * la reservara el día que tiene uno, la rejilla de las horas de esa columna empezaría veinte
+   * píxeles más abajo y las filas dejarían de leerse en horizontal.
+   */
+  const hasGhosts = useMemo(
+    () => (unscheduled ?? []).some((ghost) => days.includes(ghost.date)),
+    [unscheduled, days],
+  )
+
+  /* Cambiar de semana empieza en su primer día y no donde quedó el desplazamiento de la anterior. */
+  function goToWeek(next: string) {
+    const scroller = scrollRef.current
+    if (scroller) scroller.scrollLeft = 0
+    setScrollLeft(0)
+    setWeekStart(next)
+  }
+
+  /*
+   * Al simular, el incidente aparece en su día —que puede ser otra semana, ya resuelta arriba—.
+   * Sin esto la demostración se calcula bien y no se ve, que es indistinguible de no haberla
+   * hecho: se centra la celda del incidente a lo ancho del marco. La vertical la gobierna la
+   * página, así que aquí solo hay un eje que mover.
    */
   useEffect(() => {
     const scroller = scrollRef.current
@@ -422,21 +780,102 @@ export function TimelineGrid({
 
       scroller.scrollLeft +=
         cellRect.left - frameRect.left - (scroller.clientWidth - cellRect.width) / 2
-      scroller.scrollTop +=
-        cellRect.top - frameRect.top - (scroller.clientHeight - cellRect.height) / 2
+      // Se lee de vuelta porque el navegador recorta al máximo: la cabecera se pinta con este valor.
+      setScrollLeft(scroller.scrollLeft)
+
+      /*
+       * La vertical la gobierna `main`, el único scroller de la página. Se enseña el principio del
+       * tramo y no el tramo entero: subir hasta su final dejaría fuera el panel que cuenta qué se
+       * movió, que es la otra mitad de la demostración. Nunca se desplaza hacia arriba.
+       */
+      const main = scroller.closest('main')
+      if (main) {
+        const hidden = cellRect.top + REVEAL - main.getBoundingClientRect().bottom
+        if (hidden > 0) main.scrollTop += hidden
+      }
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [simulation, zoom, days.length])
+  }, [simulation, zoom, weekStart])
+
+  /*
+   * Cambiar de zoom cambia el ancho del contenido, y el desplazamiento puede quedar recortado sin
+   * disparar `scroll`. Se vuelve a leer para que la cabecera no quede desalineada.
+   */
+  useEffect(() => {
+    const scroller = scrollRef.current
+    if (scroller) setScrollLeft(scroller.scrollLeft)
+  }, [zoom])
 
   const bodyHeight = ((axis.endMinutes - axis.startMinutes) / 60) * hourHeight
   const hourMarks: number[] = []
-  for (let mark = axis.startMinutes; mark <= axis.endMinutes; mark += 60) {
+  /*
+   * Estrictamente menor que el final: la marca del último minuto caía justo en el borde inferior
+   * de la fila —una línea que repetía la del borde— y su hora, dibujada con `top-0.5`, colgaba por
+   * debajo y alargaba el contenido 19 px. Con un scroller que no scrollea en vertical, eso además
+   * recortaba la etiqueta.
+   */
+  for (let mark = axis.startMinutes; mark < axis.endMinutes; mark += 60) {
     hourMarks.push(mark)
+  }
+
+  /*
+   * Las medias horas solo cuando hay alto para distinguirlas: con el zoom compacto una hora son
+   * 26 px y una línea cada 13 px sería ruido, no información.
+   */
+  const halfMarks: number[] = []
+  if (hourHeight >= 40) {
+    for (let mark = axis.startMinutes + 30; mark < axis.endMinutes; mark += 60) {
+      halfMarks.push(mark)
+    }
   }
 
   return (
     <div className="space-y-3">
+      {/*
+        La navegación temporal: una semana, la anterior, la siguiente y la vuelta a hoy. Es la
+        forma de avanzar en el tiempo de la agenda; el desplazamiento horizontal ya solo sirve para
+        ver una semana que no cabe a lo ancho con el zoom elegido.
+      */}
+      <div data-slot="timeline-week" className="flex flex-wrap items-center gap-1.5">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => goToWeek(addDays(weekStart, -7))}
+          disabled={weekStart <= firstWeek}
+        >
+          ‹ Semana anterior
+        </Button>
+        <span
+          data-slot="timeline-week-label"
+          className="min-w-44 text-center text-xs font-medium tabular-nums"
+        >
+          {formatWeek(weekStart)}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => goToWeek(addDays(weekStart, 7))}
+          disabled={weekStart >= lastWeek}
+        >
+          Semana siguiente ›
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => goToWeek(anchor)}
+          disabled={weekStart === anchor}
+        >
+          Volver a hoy
+        </Button>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex items-center gap-1.5">
           <span id="timeline-zoom-label" className="text-xs text-muted-foreground">
@@ -472,6 +911,30 @@ export function TimelineGrid({
           data-slot="timeline-legend"
           className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"
         >
+          {/*
+            La leyenda de los estados va primero porque es la que el tramo no puede explicar solo:
+            un bloque azul y uno ámbar se distinguen por el color y nada más. Solo se listan los que
+            están en la semana visible.
+          */}
+          {presentStates.map((state) => (
+            <li key={state} data-slot="timeline-legend-state" data-state={state} className="flex items-center gap-1.5">
+              <span
+                className={cn('size-3 shrink-0 rounded-xs border', STATES[state].block)}
+                aria-hidden="true"
+              />
+              {STATES[state].label}
+            </li>
+          ))}
+          <li className="flex items-center gap-1.5">
+            <Flag className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+            Día de entrega: el último que ocupa el trabajo
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="text-sm leading-none" aria-hidden="true">
+              ›
+            </span>
+            Continúa en el día siguiente
+          </li>
           <li className="flex items-center gap-1.5">
             <span className="h-1.5 w-6 shrink-0 rounded-full bg-primary" aria-hidden="true" />
             Ocupado sobre lo disponible
@@ -485,198 +948,297 @@ export function TimelineGrid({
               className="size-3 shrink-0 rounded-xs border border-border bg-muted"
               aria-hidden="true"
             />
-            Día no laborable
+            Día sin jornada para esa persona
           </li>
         </ul>
       </div>
 
       {/*
-        El marco scrollea en los dos ejes. `overflow-x-auto` a secas convertía este div en el
-        contenedor de scroll horizontal y el encabezado no podía quedarse pegado al hacer scroll
-        vertical en la página: no era el suyo. Con el alto máximo aquí, el scroll vertical ocurre
-        dentro del marco y el encabezado temporal se queda arriba mientras las filas pasan debajo,
-        sin necesidad de sincronizar dos scrolls a mano.
+        Un único flujo vertical: la página. La rejilla desplaza solo en horizontal —con el zoom
+        amplio una semana de siete días no cabe a lo ancho— y deja de tener puerto de scroll
+        vertical propio, que era el segundo sistema con el que competía el de la página al girar la
+        rueda. La semana se cambia con los controles de arriba, no desplazando.
+
+        La cabecera de fechas vive fuera del scroller y se pega al borde superior de `main`: dentro
+        de un contenedor que desborda, `sticky` se pegaría a él, que es quien no desplaza. El
+        desplazamiento horizontal se imita con una traslación, y la esquina «Recurso» se contraslada
+        para quedarse quieta mientras las fechas pasan por debajo, como antes.
       */}
       <div
         role="region"
         aria-label={label ?? 'Agenda del plan'}
-        data-slot="timeline-scroll"
-        ref={scrollRef}
-        className="max-h-[70vh] overflow-auto rounded-lg border border-border"
+        className="rounded-lg border border-border"
       >
-        <div className="min-w-max">
-          {/*
-            El encabezado es sticky y con fondo sólido: los tramos pasan por debajo al scrollear y
-            una franja translúcida los dejaría verse entre las fechas. La esquina queda por encima
-            de las dos capas (z-30) para que al hacer scroll horizontal las fechas se deslicen por
-            debajo de «Recurso» en vez de pintarse encima.
-          */}
-          <div
-            data-slot="timeline-header"
-            className="sticky top-0 z-20 flex border-b border-border bg-muted"
-          >
+        <div
+          data-slot="timeline-header"
+          // `-top-6` compensa el `py-6` de `main`: sin él la cabecera se pega en el borde del
+          // contenido y deja una franja de 24 px por la que las filas asoman por encima de las fechas.
+          className="sticky -top-6 z-20 overflow-hidden rounded-t-lg border-b border-border bg-muted"
+        >
+          <div className="flex w-max" style={{ transform: `translateX(${-scrollLeft}px)` }}>
             <div
               data-slot="timeline-corner"
-              className="sticky left-0 z-30 flex w-44 shrink-0 items-center border-r border-border bg-muted px-3 py-2 text-xs font-medium"
+              className="relative z-30 flex w-44 shrink-0 items-center border-r border-border bg-muted px-3 py-2 text-xs font-medium"
+              style={{ transform: `translateX(${scrollLeft}px)` }}
             >
               Recurso
             </div>
+            {/* La columna de horas, separada de los días: así la escala no queda debajo de los tramos. */}
+            <div
+              data-slot="timeline-axis-header"
+              aria-hidden="true"
+              className="z-20 w-10 shrink-0 border-r border-border bg-muted"
+              style={{ transform: `translateX(${scrollLeft}px)` }}
+            />
             {days.map((day) => (
               <div
                 key={day}
                 data-slot="timeline-day"
-                // La marca de la prueba: el dia cerrado se reconoce por el dato, no por el color.
-                data-working={closed.has(day) ? 'false' : 'true'}
+                data-today={day === today ? 'true' : undefined}
                 style={{ width: dayWidth }}
                 className="shrink-0 border-r border-border bg-muted px-2 py-2 last:border-r-0"
               >
                 <p className="truncate text-xs font-medium capitalize">{formatDay(day)}</p>
-                {closed.has(day) && <p className="truncate text-[10px]">no laborable</p>}
               </div>
             ))}
           </div>
+        </div>
 
-          {resources.map((resource) => {
-            const resourceItems = items.filter((item) => item.developerId === resource.developerId)
-            // El indice es de esta fila y no de todo el equipo: agrupado por fecha sin mirar de quien
-            // es cada tramo, cada fila pintaba los de todas.
-            const resourceByDate = itemsByDate(resourceItems)
-            const waiting = pending?.[resource.developerId] ?? 0
-            const recovering = recoverable?.[resource.developerId] ?? 0
+        <div
+          data-slot="timeline-scroll"
+          ref={scrollRef}
+          onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
+          className="overflow-x-auto overflow-y-hidden"
+        >
+          <div className="min-w-max">
+            {resources.map((resource) => {
+              const resourceItems = items.filter((item) => item.developerId === resource.developerId)
+              // El indice es de esta fila y no de todo el equipo: agrupado por fecha sin mirar de quien
+              // es cada tramo, cada fila pintaba los de todas.
+              const resourceByDate = itemsByDate(resourceItems)
+              const waiting = pending?.[resource.developerId] ?? 0
+              const recovering = recoverable?.[resource.developerId] ?? 0
 
-            return (
-              <div
-                key={resource.developerId}
-                data-slot="timeline-resource"
-                className="flex border-b border-border last:border-b-0"
-              >
-                <div className="sticky left-0 z-10 flex w-44 shrink-0 flex-col justify-center gap-0.5 border-r border-border bg-card px-3 py-2">
-                  {nameLinks?.[resource.developerId] ? (
-                    <Link
-                      to={nameLinks[resource.developerId]}
-                      className="truncate text-xs font-medium underline-offset-2 hover:underline"
-                      title={`Abrir la declaración de ${names?.[resource.developerId] ?? resource.developerId}.`}
-                    >
-                      {names?.[resource.developerId] ?? resource.developerId}
-                    </Link>
-                  ) : (
-                    <span className="truncate text-xs font-medium" title={resource.developerId}>
-                      {names?.[resource.developerId] ?? resource.developerId}
-                    </span>
-                  )}
-                  <span className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
-                    {/* La persona simulada se marca en su propia fila: si el día queda fuera de la
-                        vista, la fila sigue diciendo que lo que hay ahí es una demostración. */}
-                    {simulation?.developerId === resource.developerId && (
-                      <Badge variant="danger" data-slot="timeline-demo-row">
-                        DEMO
-                      </Badge>
-                    )}
-                    {/* Una fila sin capacidad es una persona que el equipo tiene y que hoy no tiene
-                        plan: el backend publica la capacidad de todo plan vigente, aunque no tenga
-                        tramos. Se dice «Sin plan» y no «0 tramos» para no afirmar que se miró un
-                        plan que no existe. */}
-                    {resource.capacity.length === 0 ? (
-                      <Badge variant="secondary" data-slot="timeline-no-plan">
-                        Sin plan
-                      </Badge>
+              return (
+                <div
+                  key={resource.developerId}
+                  data-slot="timeline-resource"
+                  className="flex border-b border-border last:border-b-0"
+                >
+                  <div className="sticky left-0 z-10 flex w-44 shrink-0 flex-col justify-center gap-0.5 border-r border-border bg-card px-3 py-2">
+                    {nameLinks?.[resource.developerId] ? (
+                      <Link
+                        to={nameLinks[resource.developerId]}
+                        className="truncate text-xs font-medium underline-offset-2 hover:underline"
+                        title={`Abrir la declaración de ${names?.[resource.developerId] ?? resource.developerId}.`}
+                      >
+                        {names?.[resource.developerId] ?? resource.developerId}
+                      </Link>
                     ) : (
-                      countOf(resourceItems.length, 'tramo', 'tramos')
-                    )}
-                    {waiting > 0 && (
-                      <Badge variant="warning" data-slot="timeline-pending">
-                        {waiting} {waiting === 1 ? 'pendiente' : 'pendientes'}
-                      </Badge>
-                    )}
-                    {recovering > 0 && (
-                      <span data-slot="timeline-recoverable" className="text-[10px]">
-                        {countOf(recovering, 'recuperable', 'recuperables')}
+                      <span className="truncate text-xs font-medium" title={resource.developerId}>
+                        {names?.[resource.developerId] ?? resource.developerId}
                       </span>
                     )}
-                  </span>
-                </div>
-
-                {days.map((day, dayIndex) => {
-                  // El día del incidente simulado, solo en la fila de la persona elegida. La franja de
-                  // capacidad es de alto fijo, así que sustituirla por el aviso no desalinea las
-                  // horas de esta celda con las de las demás.
-                  const demoHere =
-                    simulation?.developerId === resource.developerId && simulation.date === day
-
-                  return (
-                    <div
-                      key={day}
-                      data-slot="timeline-cell"
-                      data-working={closed.has(day) ? 'false' : 'true'}
-                      data-demo={demoHere ? 'true' : undefined}
-                      style={{ width: dayWidth }}
-                      className={cn(
-                        'shrink-0 border-r border-border last:border-r-0',
-                        closed.has(day) && 'bg-muted/40',
-                        demoHere && 'bg-red-50/50',
+                    <span className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+                      {/* La persona simulada se marca en su propia fila: si el día queda fuera de la
+                          vista, la fila sigue diciendo que lo que hay ahí es una demostración. */}
+                      {simulation?.developerId === resource.developerId && (
+                        <Badge variant="danger" data-slot="timeline-demo-row">
+                          DEMO
+                        </Badge>
                       )}
-                    >
-                      {demoHere && simulation ? (
-                        <div
-                          data-slot="timeline-demo-incident"
-                          className="flex h-10 flex-wrap content-center items-center gap-1 bg-red-100 px-2 py-1 text-[10px] font-semibold text-red-900"
-                        >
-                          <span className="rounded-xs bg-red-600 px-1 py-0.5 text-white">DEMO</span>
-                          <span>
-                            incidente {formatHours(simulation.hours)} h · {simulation.severity}
-                          </span>
-                          {/* La capacidad ya consumida se ve en el sitio donde se consume: lo que
-                              queda después del incidente, no la capacidad intacta del plan. */}
-                          <span
-                            className="font-normal"
-                            data-slot="timeline-demo-capacity"
-                          >
-                            {simulation.remainingAfter >= 0
-                              ? `quedan ${formatHours(simulation.remainingAfter)} h de ${formatHours(simulation.availableHours)}`
-                              : 'no cabe ni vaciando el día'}
-                          </span>
-                        </div>
+                      {/* Una fila sin capacidad es una persona que el equipo tiene y que hoy no tiene
+                          plan: el backend publica la capacidad de todo plan vigente, aunque no tenga
+                          tramos. Se dice «Sin plan» y no «0 tramos» para no afirmar que se miró un
+                          plan que no existe. */}
+                      {resource.capacity.length === 0 ? (
+                        <Badge variant="secondary" data-slot="timeline-no-plan">
+                          Sin plan
+                        </Badge>
                       ) : (
-                        <CapacityStrip capacity={capacityOn(resource, day)} />
+                        countOf(resourceItems.length, 'tramo', 'tramos')
                       )}
+                      {waiting > 0 && (
+                        <PendingChip
+                          count={waiting}
+                          name={names?.[resource.developerId] ?? resource.developerId}
+                          to={pendingLinks?.[resource.developerId]}
+                          onSelect={
+                            onPendingSelect
+                              ? () => onPendingSelect(resource.developerId)
+                              : undefined
+                          }
+                        />
+                      )}
+                      {recovering > 0 && (
+                        <span data-slot="timeline-recoverable" className="text-[10px]">
+                          {countOf(recovering, 'recuperable', 'recuperables')}
+                        </span>
+                      )}
+                    </span>
+                  </div>
 
-                      <div className="relative border-t border-border" style={{ height: bodyHeight }}>
-                        {hourMarks.map((mark) => (
+                  {/*
+                    La escala horaria en su propia columna: antes vivía dentro del primer día y los
+                    tramos la tapaban. Es fija al desplazar a lo ancho —igual que los nombres— y se
+                    repite por fila, así que cada persona se lee contra su propia escala.
+                  */}
+                  <div
+                    data-slot="timeline-hour-rail"
+                    aria-hidden="true"
+                    className="sticky left-44 z-10 w-10 shrink-0 border-r border-border bg-card"
+                  >
+                    <div className="h-10" />
+                    <div className="relative border-t border-border" style={{ height: bodyHeight }}>
+                      {hourMarks.map((mark) => (
+                        <span
+                          key={mark}
+                          className="absolute right-1 text-[10px] leading-none tabular-nums text-muted-foreground"
+                          style={{ top: ((mark - axis.startMinutes) / 60) * hourHeight + 2 }}
+                        >
+                          {clockLabel(mark)}
+                        </span>
+                      ))}
+                      {/*
+                        La hora en la que cierra el eje también se rotula, sobre el borde inferior:
+                        sin ella la escala parecía acabar una hora antes de donde acaban los tramos.
+                        La jornada oficial cierra a las 17:30, media hora después de la última
+                        marca, y esa media hora también hay que poder leerla.
+                      */}
+                      <span
+                        className="absolute right-1 text-[10px] leading-none tabular-nums text-muted-foreground"
+                        style={{ bottom: 1 }}
+                      >
+                        {clockLabel(axis.endMinutes)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {days.map((day) => {
+                    // El día del incidente simulado, solo en la fila de la persona elegida. La franja de
+                    // capacidad es de alto fijo, así que sustituirla por el aviso no desalinea las
+                    // horas de esta celda con las de las demás.
+                    const demoHere =
+                      simulation?.developerId === resource.developerId && simulation.date === day
+                    // La jornada es de la persona, no del equipo: cada celda dice lo suyo.
+                    const capacity = capacityOn(resource, day)
+                    const closedHere =
+                      capacity !== undefined &&
+                      capacity.availableHours === 0 &&
+                      capacity.occupiedHours === 0
+
+                    return (
+                      <div
+                        key={day}
+                        data-slot="timeline-cell"
+                        data-working={
+                          capacity === undefined ? 'unknown' : closedHere ? 'false' : 'true'
+                        }
+                        data-demo={demoHere ? 'true' : undefined}
+                        style={{ width: dayWidth }}
+                        className={cn(
+                          'shrink-0 border-r border-border last:border-r-0',
+                          closedHere && 'bg-muted/40',
+                          demoHere && 'bg-red-50/50',
+                        )}
+                      >
+                        {demoHere && simulation ? (
                           <div
-                            key={mark}
-                            className="absolute inset-x-0 border-t border-border/60"
-                            style={{ top: ((mark - axis.startMinutes) / 60) * hourHeight }}
+                            data-slot="timeline-demo-incident"
+                            className="flex h-10 flex-wrap content-center items-center gap-1 bg-red-100 px-2 py-1 text-[10px] font-semibold text-red-900"
                           >
-                            {dayIndex === 0 && (
-                              <span className="absolute left-1 top-0.5 text-[10px] tabular-nums text-muted-foreground/70">
-                                {String(mark / 60).padStart(2, '0')}:00
-                              </span>
+                            <span className="rounded-xs bg-red-600 px-1 py-0.5 text-white">DEMO</span>
+                            <span>
+                              incidente {formatHours(simulation.hours)} h · {simulation.severity}
+                            </span>
+                            {/* La capacidad ya consumida se ve en el sitio donde se consume: lo que
+                                queda después del incidente, no la capacidad intacta del plan. */}
+                            <span
+                              className="font-normal"
+                              data-slot="timeline-demo-capacity"
+                            >
+                              {simulation.remainingAfter >= 0
+                                ? `quedan ${formatHours(simulation.remainingAfter)} h de ${formatHours(simulation.availableHours)}`
+                                : 'no cabe ni vaciando el día'}
+                            </span>
+                          </div>
+                        ) : (
+                          <CapacityStrip capacity={capacity} />
+                        )}
+
+                        {/*
+                          La franja de los tickets que no caben en el eje del tiempo: tienen un día
+                          y no tienen horas, así que no ocupan jornada. Va entre la capacidad y la
+                          escala —fuera del área de los tramos— porque dibujarlos dentro del eje
+                          afirmaría unas horas que nadie declaró.
+                        */}
+                        {hasGhosts && (
+                          <div
+                            data-slot="timeline-unscheduled-band"
+                            className="flex h-5 items-center gap-1 overflow-hidden border-t border-dashed border-border/60 px-1.5"
+                          >
+                            {(ghostsByCell.get(`${resource.developerId}|${day}`) ?? []).map(
+                              (ghost) => (
+                                <span
+                                  key={ghost.workItemId}
+                                  data-slot="timeline-unscheduled"
+                                  data-work-item={ghost.workItemId}
+                                  title={`Ticket ${ghost.workItemId}: tiene día en GLPI y no ocupa jornada. ${ghost.cause}: requiere una estimación de horas.`}
+                                  className="flex min-w-0 items-center gap-1 rounded-xs border border-dashed border-slate-400 bg-slate-50 px-1 text-[10px] leading-none text-slate-700"
+                                >
+                                  <HelpCircle className="size-3 shrink-0" aria-hidden="true" />
+                                  <span className="truncate">
+                                    {ghost.workItemId} · {ghost.cause}
+                                  </span>
+                                </span>
+                              ),
                             )}
                           </div>
-                        ))}
+                        )}
 
-                        {(resourceByDate.get(day) ?? []).map((item) => (
-                          <Block
-                            key={`${item.workItemId}-${item.startsAt}`}
-                            item={item}
-                            axis={axis}
-                            hourHeight={hourHeight}
-                            onSelect={onSelect}
-                            selected={selected === `${item.workItemId}@${item.startsAt}`}
-                            displacedTo={
-                              demoHere
-                                ? simulation?.displaced.get(`${item.workItemId}@${item.startsAt}`)
-                                : undefined
-                            }
-                          />
-                        ))}
+                        <div className="relative border-t border-border" style={{ height: bodyHeight }}>
+                          {/* La hora se lee en el rail; aquí la línea marca el límite, más fuerte
+                              que la de media hora, que solo aparece cuando hay alto para verla. */}
+                          {hourMarks.map((mark) => (
+                            <div
+                              key={mark}
+                              className="absolute inset-x-0 border-t border-border"
+                              style={{ top: ((mark - axis.startMinutes) / 60) * hourHeight }}
+                            />
+                          ))}
+                          {halfMarks.map((mark) => (
+                            <div
+                              key={mark}
+                              className="absolute inset-x-0 border-t border-border/40"
+                              style={{ top: ((mark - axis.startMinutes) / 60) * hourHeight }}
+                            />
+                          ))}
+
+                          {(resourceByDate.get(day) ?? []).map((item) => (
+                            <Block
+                              key={`${item.workItemId}-${item.startsAt}`}
+                              item={item}
+                              axis={axis}
+                              hourHeight={hourHeight}
+                              state={blockState(item, states)}
+                              position={positions.get(`${item.workItemId}@${item.startsAt}`)}
+                              onSelect={onSelect}
+                              selected={selected === `${item.workItemId}@${item.startsAt}`}
+                              displacedTo={
+                                demoHere
+                                  ? simulation?.displaced.get(`${item.workItemId}@${item.startsAt}`)
+                                  : undefined
+                              }
+                            />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
     </div>

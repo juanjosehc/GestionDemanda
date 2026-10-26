@@ -33,6 +33,8 @@ const fetchMock = vi.fn()
 const TEAM_URL = '/api/team'
 const DECLARATIONS_PREFIX = '/api/planning-metadata/declarations/'
 const CREATE_URL = '/api/planning-metadata'
+const TEAM_TIMELINE_URL = '/api/planning/team/timeline'
+const RENEGOTIATIONS_URL = '/api/renegotiations'
 
 /**
  * La política de caché de producción, declarada aquí a propósito.
@@ -78,11 +80,13 @@ function pendiente(workItemId: string): DeclarationItem {
         reason: 'no hay planificacion declarada para este elemento',
       },
       {
-        code: 'SIN_COMPROMISO_DECLARADO',
-        reason: 'no hay planificacion declarada para este elemento',
+        code: 'SIN_FECHA_EN_GLPI',
+        reason: 'GLPI no trae ni internal_time_to_resolve ni time_to_resolve',
       },
     ],
     declaration: null,
+    operationalDate: null,
+    operationalDateSource: null,
   })
 }
 
@@ -116,6 +120,27 @@ function serve({ work, people = PEOPLE }: { work: Record<string, DeclarationItem
 
     if (url === TEAM_URL) {
       return Promise.resolve(okResponse(teamCatalogFixture({ people: [...people] })))
+    }
+
+    // Las dos lecturas que Incidentes comparte con el Timeline para las columnas Plan y Acuerdo.
+    // Se sirven vacías: este flujo mide la declaración, no el plan, y una tabla sin tramos ni
+    // acuerdos deja esas dos columnas en su hueco sin inventar filas.
+    if (url === TEAM_TIMELINE_URL) {
+      return Promise.resolve(
+        okResponse({ from: null, to: null, resources: [], items: [], plans: [], conflicts: [] }),
+      )
+    }
+
+    if (url === RENEGOTIATIONS_URL) {
+      return Promise.resolve(
+        okResponse({
+          source: 'plan_snapshot',
+          scope: 'vigente',
+          generatedAt: '2026-10-07T15:00:00Z',
+          summary: { displaced: 0, pending: 0, agreed: 0 },
+          items: [],
+        }),
+      )
     }
 
     if (url.startsWith(DECLARATIONS_PREFIX)) {
@@ -215,7 +240,8 @@ async function declararDesde(container: HTMLElement, workItemId: string, personN
 
 /** La vuelta, que es la única salida que la pantalla de declaración ofrece. */
 async function volverAIncidentes() {
-  fireEvent.click(screen.getByRole('link', { name: 'Volver a Incidentes' }))
+  // El rótulo sale del menú, que desde la Fase 61 nombra esa pantalla «Tickets».
+  fireEvent.click(screen.getByRole('link', { name: 'Volver a Tickets' }))
 
   await listaDeTrabajo()
 }
@@ -340,6 +366,8 @@ describe('de Incidentes a la declaración y de vuelta', () => {
     // pantallas comparten la misma entrada de caché, y el atajo no estrena lectura—.
     expect(order()).toEqual([
       `GET ${TEAM_URL}`,
+      `GET ${TEAM_TIMELINE_URL}`,
+      `GET ${RENEGOTIATIONS_URL}`,
       `GET ${DECLARATIONS_PREFIX}${ANA}`,
       `POST ${CREATE_URL}`,
       `GET ${DECLARATIONS_PREFIX}${ANA}`,

@@ -14,9 +14,10 @@ import co.com.coltefinanciera.gestiondemanda.domain.model.Renegotiation;
  * desplazamiento, que vive en la auditoria del plan y que la lectura consolidada devuelve junto a
  * esto. Mezclarlos aqui daria dos sitios donde leer la misma causa, que es como acaban discrepando.
  *
- * <p>Lo que si lleva es {@code source}: de donde vino el acuerdo. Hoy solo puede ser {@code HTTP}
- * —lo registra una persona por la API—, y la columna existe porque la procedencia es parte de la
- * auditoria y no porque haya un segundo origen previsto.
+ * <p>Lo que si lleva es {@code source}: de donde vino el acuerdo. {@code HTTP} es una persona por la
+ * API y {@code GLPI} es la conciliacion automatica de la Fase 64, que copia el TTR del ticket. El
+ * origen describe <strong>el ultimo cambio</strong>: un acuerdo conciliado que despues se corrige a
+ * mano llega como {@code HTTP}, porque quien lo cambio fue una persona.
  *
  * @param workItemId   el requerimiento, el identificador del ticket en GLPI como texto.
  * @param agreedDate   la fecha nueva que se acordó con quien pidio el requerimiento.

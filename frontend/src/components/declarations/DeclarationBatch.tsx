@@ -199,7 +199,7 @@ export function DeclarationBatch({ items, developerName, onSaved }: DeclarationB
                               {initialOf(item).hours === ''
                                 ? 'sin estimación'
                                 : `${initialOf(item).hours} h`}{' '}
-                              · {item.declaration.committedDate ?? 'sin compromiso'}
+                              · {item.operationalDate ?? 'sin fecha en GLPI'}
                             </span>
                           )}
                         </td>

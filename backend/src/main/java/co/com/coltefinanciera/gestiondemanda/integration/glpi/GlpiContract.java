@@ -104,7 +104,7 @@ public record GlpiContract(
     }
 
     /**
-     * El contrato del API REST de GLPI tal como lo usa hoy el adaptador {@code glpi-rest-3}.
+     * El contrato del API REST de GLPI tal como lo usa hoy el adaptador {@code glpi-rest-4}.
      *
      * <p>Las tablas de estados son las mismas que estaban en {@link GlpiTicketMapper}, sin cambiar
      * ningun valor. {@code date} se declara opcional aunque el adaptador lo necesite para una
@@ -133,9 +133,16 @@ public record GlpiContract(
      * {@code /search/Ticket} por la opcion de busqueda 5. Lo que el adaptador lee de un ticket esta
      * declarado aqui; <em>como</em> se pregunta por quien lo tiene asignado no cabe en este mapa,
      * porque no es un campo de la respuesta.
+     *
+     * <p><strong>{@code internal_time_to_resolve} entra como opcional en la Fase 66b.</strong> La
+     * auditoria encontro que es la fecha con la que el negocio compromete la resolucion —la de la OLA,
+     * frente a {@code time_to_resolve}, que es la del SLA—, y desde entonces es la fecha operativa de
+     * un requerimiento. Es opcional de verdad: 71 de los 85 tickets activos del equipo con SLA no
+     * tienen OLA, y GLPI devuelve el campo vacio para ellos. El numero de opcion es el 180, que es el
+     * que publica {@code /listSearchOptions/Ticket} en la instancia real.
      */
     public static final GlpiContract REST_V1 = new GlpiContract(
-            "glpi-contract-1",
+            "glpi-contract-2",
             Set.of(GlpiTicket.TYPE_INCIDENT),
             Set.of(GlpiTicket.TYPE_REQUEST),
             Map.of(
@@ -165,5 +172,6 @@ public record GlpiContract(
                     Map.entry("urgency", Field.optional(Field.INTEGER)),
                     Map.entry("actiontime", Field.required(Field.INTEGER)),
                     Map.entry("date", Field.optional(Field.STRING)),
-                    Map.entry("time_to_resolve", Field.optional(Field.STRING))));
+                    Map.entry("time_to_resolve", Field.optional(Field.STRING)),
+                    Map.entry("internal_time_to_resolve", Field.optional(Field.STRING))));
 }

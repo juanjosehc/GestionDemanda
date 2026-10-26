@@ -39,8 +39,14 @@ export interface Renegotiation {
   agreedReason: string | null
   /** Cuando se registro. Lo sella el servidor; la vista no lo compara con nada. */
   agreedAt: string
-  /** De donde vino el acuerdo: `HTTP` mientras solo lo registre una persona por la API. */
-  source: string
+  /**
+   * De donde vino el acuerdo.
+   *
+   * `GLPI` lo concilio el sistema desde el TTR del ticket (Fase 64) y `HTTP` lo registro una
+   * persona por la API. Un acuerdo conciliado que despues se corrige a mano pasa a `HTTP`: el
+   * origen describe el ultimo cambio, no el primero.
+   */
+  source: 'HTTP' | 'GLPI'
 }
 
 /**

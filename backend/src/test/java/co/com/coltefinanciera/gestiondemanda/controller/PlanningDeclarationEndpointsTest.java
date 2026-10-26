@@ -61,7 +61,11 @@ class PlanningDeclarationEndpointsTest {
 
     private static final String DEVELOPER = "dev-1";
 
-    private static final String FECHA_COMPROMISO = "2026-10-20";
+    /**
+     * Un compromiso futuro. Era una fecha literal, y la suite empezo a fallar el dia que esa fecha
+     * quedó atras: lo que se afirma aqui es que el compromiso no esta vencido, y eso depende de hoy.
+     */
+    private static final String FECHA_COMPROMISO = LocalDate.now().plusDays(30).toString();
 
     @Autowired
     private MockMvc mockMvc;
@@ -175,16 +179,36 @@ class PlanningDeclarationEndpointsTest {
     }
 
     @Test
-    @DisplayName("Sin fecha compromiso el ticket dice que le falta el compromiso")
-    void sinCompromiso() throws Exception {
-        declarar("501", "6", null);
-        glpiResponde(incidencia(501));
+    @DisplayName("Una peticion que GLPI no ubica en el tiempo dice que le falta la fecha")
+    void sinFechaEnGlpi() throws Exception {
+        declarar("502", "6", null);
+        glpiResponde(peticion(502));
 
         mockMvc.perform(get(RUTA + "/{developerId}", DEVELOPER))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].declarationStatus").value("SIN_COMPROMISO"))
                 .andExpect(jsonPath("$.items[0].discards[0].code")
-                        .value("SIN_COMPROMISO_DECLARADO"));
+                        .value("SIN_FECHA_EN_GLPI"))
+                .andExpect(jsonPath("$.items[0].operationalDate").doesNotExist())
+                .andExpect(jsonPath("$.items[0].operationalDateSource").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("La fecha operativa de GLPI viaja en el elemento, con el campo del que salio")
+    void laFechaOperativaVieneDeGlpi() throws Exception {
+        // La declaracion trae otra fecha: es contraste, no ubica el requerimiento.
+        declarar("502", "4", FECHA_COMPROMISO);
+        GlpiTicket conOla = new GlpiTicket(502, "Ajuste de reporte 502", 1,
+                GlpiTicket.TYPE_REQUEST, 3, null, null, 14400L, "2026-10-20 17:00:00",
+                "2026-11-19 17:30:00", "2026-10-01 08:00:00");
+        glpiResponde(conOla);
+
+        mockMvc.perform(get(RUTA + "/{developerId}", DEVELOPER))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].declarationStatus").value("PLANIFICABLE"))
+                .andExpect(jsonPath("$.items[0].operationalDate").value("2026-11-19"))
+                .andExpect(jsonPath("$.items[0].operationalDateSource")
+                        .value("internal_time_to_resolve"));
     }
 
     @Test
@@ -199,7 +223,7 @@ class PlanningDeclarationEndpointsTest {
                 .andExpect(jsonPath("$.items[0].discards[0].code")
                         .value("SIN_ESTIMACION_DECLARADA"))
                 .andExpect(jsonPath("$.items[0].discards[1].code")
-                        .value("SIN_COMPROMISO_DECLARADO"))
+                        .value("SIN_FECHA_EN_GLPI"))
                 // No hay fila, y la respuesta lo dice con un nulo en vez de inventar un objeto vacio.
                 .andExpect(jsonPath("$.items[0].declaration").doesNotExist());
     }

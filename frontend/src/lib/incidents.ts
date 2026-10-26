@@ -1,6 +1,8 @@
 import type { DeclarationItem } from '@/types/declarations'
 import type { DeveloperDeclarationsResponse } from '@/types/declarations'
+import type { RenegotiationsResponse, RenegotiationStatus } from '@/types/renegotiations'
 import type { TeamPerson } from '@/types/team'
+import type { TimelineItem, TimelineItemStatus } from '@/types/timeline'
 
 /**
  * Los estados del dominio que significan que el ticket ya no es carga.
@@ -39,7 +41,31 @@ export interface IncidentRow {
   personName: string
   /** El ticket, ya clasificado por el backend. */
   item: DeclarationItem
+  /** Lo que el plan y la renegociación dicen de este ticket, sin recalcular nada. */
+  facts: IncidentFacts
 }
+
+/**
+ * Lo que el plan y la renegociación dicen de un ticket.
+ *
+ * **Son dos lecturas distintas y por eso no se funden.** `planStatus` sale de los tramos del plan
+ * vigente —lo que el motor colocó— y `agreement` de la renegociación —el estado que el backend ya
+ * calculó—. Un ticket desplazado sin acuerdo es `DESPLAZADO` + `PENDIENTE_DE_ACUERDO`, y esas dos
+ * columnas son las que dejan ver qué está colocado y qué espera una fecha.
+ *
+ * **`undefined` no es `null`.** `null` es un hecho —el ticket no tiene tramo en el plan, o no tiene
+ * acuerdo registrado—; `undefined` es que la lectura todavía no llegó o falló. Pintar «Sin plan» sin
+ * haber leído el plan sería afirmarlo, y la tabla dice `—` en ese caso.
+ */
+export interface IncidentFacts {
+  planStatus: TimelineItemStatus | null | undefined
+  agreement: RenegotiationStatus | null | undefined
+}
+
+/** Los hechos de un ticket, tal como los entrega quien ya leyó el plan y la renegociación. */
+export type IncidentFactsOf = (developerId: string, workItemId: string) => IncidentFacts
+
+const NO_FACTS: IncidentFacts = { planStatus: undefined, agreement: undefined }
 
 /**
  * Las filas del equipo: los tickets activos de cada persona, con su dueño al lado.
@@ -55,6 +81,7 @@ export interface IncidentRow {
 export function toIncidentRows(
   people: readonly TeamPerson[],
   declarations: readonly (DeveloperDeclarationsResponse | undefined)[],
+  factsOf: IncidentFactsOf = () => NO_FACTS,
 ): IncidentRow[] {
   const rows: IncidentRow[] = []
 
@@ -71,6 +98,7 @@ export function toIncidentRows(
           developerId: person.developerId,
           personName: person.name ?? person.developerId,
           item,
+          facts: factsOf(person.developerId, item.workItemId),
         })
       }
     }
@@ -150,11 +178,30 @@ export const ANY = ''
 export const DECLARED = 'DECLARADO'
 export const PENDING = 'PENDIENTE'
 
+/**
+ * Los valores del filtro de planificación, en una sola escala.
+ *
+ * **`CON_PLAN` y `SIN_PLAN` no son un estado más: son la pregunta de pertenencia**, y por eso
+ * comparten el mismo control con `PLANIFICADO` y `DESPLAZADO` —que sí son los dos estados del
+ * tramo—. Así el gestor elige una cosa a la vez y no puede pedir «con plan» y «sin plan» juntos,
+ * que es la clase de combinación que solo produce una tabla vacía.
+ */
+export const WITH_PLAN = 'CON_PLAN'
+export const WITHOUT_PLAN = 'SIN_PLAN'
+export const PLANNED = 'PLANIFICADO'
+export const DISPLACED = 'DESPLAZADO'
+
+/** Los dos valores del estado de renegociación, tal como los publica el backend. */
+export const PENDING_AGREEMENT = 'PENDIENTE_DE_ACUERDO'
+export const AGREED = 'ACORDADA'
+
 export interface IncidentFilters {
   person: string
   type: string
   status: string
   declaration: string
+  planning: string
+  renegotiation: string
 }
 
 export const NO_FILTERS: IncidentFilters = {
@@ -162,6 +209,8 @@ export const NO_FILTERS: IncidentFilters = {
   type: ANY,
   status: ANY,
   declaration: ANY,
+  planning: ANY,
+  renegotiation: ANY,
 }
 
 /**
@@ -184,6 +233,8 @@ const PARAM_OF: Readonly<Record<keyof IncidentFilters, string>> = {
   type: 'tipo',
   status: 'estado',
   declaration: 'declaracion',
+  planning: 'planificacion',
+  renegotiation: 'renegociacion',
 }
 
 const MODE_PARAM = 'modo'
@@ -200,12 +251,13 @@ const ALL_TEAM: TeamViewMode = 'todos'
  * antes de que lleguen.
  */
 export function filtersFromParams(params: URLSearchParams): IncidentFilters {
-  return {
-    person: params.get(PARAM_OF.person) ?? ANY,
-    type: params.get(PARAM_OF.type) ?? ANY,
-    status: params.get(PARAM_OF.status) ?? ANY,
-    declaration: params.get(PARAM_OF.declaration) ?? ANY,
+  const filters = { ...NO_FILTERS }
+
+  for (const field of Object.keys(PARAM_OF) as (keyof IncidentFilters)[]) {
+    filters[field] = params.get(PARAM_OF[field]) ?? ANY
   }
+
+  return filters
 }
 
 /** El modo que trae una dirección. Cualquier cosa que no sea «todos» es el de por defecto. */
@@ -238,17 +290,10 @@ export function modeQuery(mode: TeamViewMode): string {
 export function incidentsQuery(filters: IncidentFilters, mode: TeamViewMode): string {
   const params = new URLSearchParams()
 
-  if (filters.person !== ANY) {
-    params.set(PARAM_OF.person, filters.person)
-  }
-  if (filters.type !== ANY) {
-    params.set(PARAM_OF.type, filters.type)
-  }
-  if (filters.status !== ANY) {
-    params.set(PARAM_OF.status, filters.status)
-  }
-  if (filters.declaration !== ANY) {
-    params.set(PARAM_OF.declaration, filters.declaration)
+  for (const field of Object.keys(PARAM_OF) as (keyof IncidentFilters)[]) {
+    if (filters[field] !== ANY) {
+      params.set(PARAM_OF[field], filters[field])
+    }
   }
   if (mode !== 'operativo') {
     params.set(MODE_PARAM, mode)
@@ -288,8 +333,72 @@ export function filterIncidents(
       (filters.person === ANY || row.developerId === filters.person) &&
       (filters.type === ANY || row.item.type === filters.type) &&
       (filters.status === ANY || row.item.status === filters.status) &&
-      (filters.declaration === ANY || declarationSideOf(row.item) === filters.declaration),
+      (filters.declaration === ANY || declarationSideOf(row.item) === filters.declaration) &&
+      matchesPlanning(row.facts, filters.planning) &&
+      (filters.renegotiation === ANY || row.facts.agreement === filters.renegotiation),
   )
+}
+
+/**
+ * El filtro de planificación, con la diferencia entre «sin plan» y «no se sabe».
+ *
+ * **`SIN_PLAN` exige `null`, no «falsy».** Mientras el plan no se ha leído, `planStatus` es
+ * `undefined`; tratarlo como «sin plan» afirmaría un hecho que no se ha comprobado y haría que la
+ * tabla cambiara de contenido al llegar la lectura. Un estado desconocido solo pasa el filtro vacío.
+ */
+function matchesPlanning(facts: IncidentFacts, value: string): boolean {
+  if (value === ANY) {
+    return true
+  }
+
+  if (value === WITH_PLAN) {
+    return facts.planStatus === PLANNED || facts.planStatus === DISPLACED
+  }
+
+  if (value === WITHOUT_PLAN) {
+    return facts.planStatus === null
+  }
+
+  return facts.planStatus === value
+}
+
+/**
+ * Lo que el plan y la renegociación dicen de cada ticket, indexado para la tabla.
+ *
+ * **Las dos lecturas se pasan como llegaron, y `undefined` significa «no llegó».** No hay una
+ * segunda consulta ni un recálculo: los tramos ya vienen del plan vigente y el estado de cada
+ * acuerdo ya lo calculó el backend. Lo único que se decide aquí es **el estado del tramo cuando el
+ * ticket tiene varios**: si alguno se desplazó, el ticket es `DESPLAZADO`, porque el plan lo movió y
+ * eso es lo que hay que ver aunque otro tramo siga en su fecha.
+ */
+export function factsReader(
+  items: readonly TimelineItem[] | undefined,
+  renegotiations: RenegotiationsResponse | undefined,
+): IncidentFactsOf {
+  const plans = items === undefined ? undefined : new Map<string, TimelineItemStatus>()
+
+  for (const item of items ?? []) {
+    const key = `${item.developerId}|${item.workItemId}`
+    const current = plans?.get(key)
+
+    if (current === 'DESPLAZADO') {
+      continue
+    }
+
+    plans?.set(key, item.planningStatus)
+  }
+
+  // El acuerdo es del ticket y no de la persona: un ticket compartido se acuerda una vez.
+  const agreements =
+    renegotiations === undefined
+      ? undefined
+      : new Map(renegotiations.items.map((item) => [item.workItemId, item.status]))
+
+  return (developerId, workItemId) => ({
+    planStatus:
+      plans === undefined ? undefined : (plans.get(`${developerId}|${workItemId}`) ?? null),
+    agreement: agreements === undefined ? undefined : (agreements.get(workItemId) ?? null),
+  })
 }
 
 /**

@@ -35,8 +35,9 @@ export function Sidebar({ collapsed, mobileOpen, onNavigate }: SidebarProps) {
         </div>
       </div>
 
-      {/* Navegacion. Son cuatro entradas desde la Fase 50; el resto de pantallas se abre desde el
-          Timeline en el momento en que hace falta, no desde aqui. */}
+      {/* Navegacion. Son cinco entradas desde la Fase 61 —Tickets se suma a las cuatro de la Fase
+          50—; el resto de pantallas se sigue abriendo desde el Timeline en el momento en que hace
+          falta, no desde aqui. */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
         {MENU_ITEMS.map((item) => (
           <NavLink

@@ -49,6 +49,7 @@ public class GlpiPlanningService {
     private final GlpiPlanningSource glpiPlanningSource;
     private final GlpiPlanningRequestFactory requestFactory;
     private final PlanningService planningService;
+    private final SlaReconciliationService reconciliation;
     private final PlanningProperties planningProperties;
     private final Clock clock;
 
@@ -75,11 +76,18 @@ public class GlpiPlanningService {
 
         PlanningPlanResponse plan = planningService.plan(built.request(), provenance);
 
+        // La conciliacion va aqui y no en una lectura: es el unico punto donde estan a la vez el
+        // TTR de los tickets que GLPI acaba de devolver y los desplazamientos que el motor acaba de
+        // calcular. No hace una llamada extra a GLPI y no convierte un GET en una escritura.
+        List<String> reconciled = reconciliation.reconcile(tickets, plan.plan().rescheduleEvents());
+
         // Descartes, no tickets: un elemento sin planificacion declarada produce dos, uno por cada
         // persona que tiene que actuar. El detalle de a cuantos tickets corresponden lo deja el
         // registro de la traduccion.
-        log.info("Plan {} calculado desde GLPI para {}: {} tickets, {} descartes",
-                plan.planId(), developerId, tickets.size(), built.discarded().size());
+        log.info("Plan {} calculado desde GLPI para {}: {} tickets, {} descartes, {} acuerdos "
+                        + "conciliados",
+                plan.planId(), developerId, tickets.size(), built.discarded().size(),
+                reconciled.size());
 
         return new PlanningFromGlpiResponse(
                 plan.planId(), plan.createdAt(), plan.plan(), discards(built));

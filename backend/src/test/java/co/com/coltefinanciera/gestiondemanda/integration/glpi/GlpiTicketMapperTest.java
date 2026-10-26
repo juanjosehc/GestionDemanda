@@ -212,15 +212,15 @@ class GlpiTicketMapperTest {
         @Test
         @DisplayName("time_to_resolve se sigue traduciendo a una fecha")
         void timeToResolveSeTraduce() {
-            assertThat(mapper.plannedDate(request(1, 1, 3600L, "2026-10-20 17:00:00")))
+            assertThat(mapper.timeToResolve(request(1, 1, 3600L, "2026-10-20 17:00:00")))
                     .contains(LocalDate.of(2026, 10, 20));
         }
 
         @Test
         @DisplayName("Un time_to_resolve ausente o ilegible no traduce a fecha")
         void timeToResolveSinValorNoTraduce() {
-            assertThat(mapper.plannedDate(request(1, 1, 3600L, null))).isEmpty();
-            assertThat(mapper.plannedDate(request(2, 1, 3600L, "no es fecha"))).isEmpty();
+            assertThat(mapper.timeToResolve(request(1, 1, 3600L, null))).isEmpty();
+            assertThat(mapper.timeToResolve(request(2, 1, 3600L, "no es fecha"))).isEmpty();
         }
     }
 }

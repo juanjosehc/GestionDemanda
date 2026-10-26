@@ -141,12 +141,15 @@ public class GlpiTicketMapper {
     /**
      * El requerimiento del dominio, vacio si el ticket no es una peticion o le falta algo.
      *
-     * <p>Las horas y la fecha compromiso entran como parametros por el mismo motivo que en
-     * {@link #toIncident}: las dos las declara el negocio. {@code time_to_resolve} dejo de ser la
-     * fecha comprometida del dominio, y {@code internal_time_to_resolve} nunca lo fue.
+     * <p><strong>Las horas las declara el negocio; la fecha la trae GLPI.</strong> Desde la Fase 66b
+     * el parametro {@code plannedDate} sale de {@link #operationalDate}: es la fecha con la que el
+     * negocio ubica el requerimiento, y no la que alguien escribio en una declaracion de validacion.
+     * Las horas siguen entrando como parametro porque GLPI sigue sin tenerlas —{@code actiontime} vale
+     * cero—. Sigue siendo una traduccion pura: el mapeador no consulta nada ni elige entre fechas, solo
+     * construye el requerimiento con lo que recibe.
      */
     public Optional<Requirement> toRequirement(GlpiTicket ticket, BigDecimal estimatedHours,
-            LocalDate committedDate) {
+            LocalDate plannedDate) {
         if (!isRequirement(ticket)) {
             return Optional.empty();
         }
@@ -158,7 +161,7 @@ public class GlpiTicketMapper {
                 String.valueOf(ticket.id()),
                 ticket.name(),
                 estimatedHours,
-                committedDate,
+                plannedDate,
                 status.get()));
     }
 
@@ -188,14 +191,67 @@ public class GlpiTicketMapper {
     /**
      * {@code time_to_resolve}, la fecha de SLA, reducida a su dia.
      *
-     * <p><strong>Ya no alimenta la peticion</strong>, por el mismo motivo y con la misma salvedad que
-     * {@link #estimatedHours}: se conserva para poder contrastar, y reconectarla seria deshacer la
-     * decision 124.2. Queda dicho tambien aqui, y no solo alli, porque este metodo se llamaba
-     * {@code plannedDate} y el nombre invita a creer que sigue siendo la fecha comprometida del
-     * dominio. Ya no lo es: la del dominio es la que declara el gestor de demanda.
+     * <p><strong>Desde la Fase 66b vuelve a alimentar la peticion, como respaldo.</strong> La fecha
+     * operativa de un requerimiento es {@link #operationalDate}, que prefiere el Internal TTR; esta
+     * entra cuando GLPI no trae el otro. El metodo se sigue llamando por lo que es —TTR— y no por lo
+     * que alguna vez se creyo que era: es la fecha del SLA, la promesa al cliente, y solo vale como
+     * fecha de planificacion cuando no hay promesa del area que resuelve.
+     *
+     * <p><strong>Desde la Fase 64 tiene ademas un uso de negocio: la conciliacion.</strong> Cuando el
+     * gestor cambia el TTR en GLPI, ese valor es la prueba de que renegocio con el usuario, y
+     * {@code SlaReconciliationService} lo lee por aqui. No entra al motor: se compara con la fecha
+     * original del desplazamiento y, si la supera, se registra como acuerdo de origen {@code GLPI}.
+     * El metodo es publico porque esa lectura ocurre fuera de esta capa, y se llama por lo que es
+     * —TTR— y no por lo que alguna vez se creyo que era.
      */
-    Optional<LocalDate> plannedDate(GlpiTicket ticket) {
+    public Optional<LocalDate> timeToResolve(GlpiTicket ticket) {
         return parseDateTime(ticket.timeToResolve()).map(LocalDateTime::toLocalDate);
+    }
+
+    /** {@code internal_time_to_resolve}, la fecha de OLA, reducida a su dia. */
+    public Optional<LocalDate> internalTimeToResolve(GlpiTicket ticket) {
+        return parseDateTime(ticket.internalTimeToResolve()).map(LocalDateTime::toLocalDate);
+    }
+
+    /**
+     * La fecha con la que el negocio ubica un requerimiento en el tiempo.
+     *
+     * <p><strong>Es Internal TTR, y el TTR es el respaldo.</strong> La decision de la Fase 66b es que la
+     * fecha operativa es la de la OLA: la promesa del area que resuelve, no la del SLA hacia el
+     * cliente. Pero GLPI solo la trae cuando el ticket tiene OLA —71 de los 85 activos del equipo no
+     * la tienen—, y dejar sin fecha a esos siete de cada diez sacaria del timeline trabajo que si
+     * tiene una. El respaldo es {@code time_to_resolve} por una razon medida, no por comodidad: es el
+     * unico campo de fecha con cobertura practicamente total (99 %) y el que el SLA mantiene.
+     *
+     * <p><strong>Devuelve tambien de donde salio.</strong> Una fecha sin su origen no se puede
+     * contrastar: 2026-11-19 es una promesa de la OLA o es el SLA, y son dos cosas distintas cuando
+     * alguien pregunta por que un ticket esta donde esta. El origen viaja hasta la pantalla.
+     *
+     * <p><strong>Vacio si no hay ninguna de las dos.</strong> No se inventa una fecha: un requerimiento
+     * sin fecha en GLPI no se planifica, y el descarte dice por que. Es la misma regla de siempre —no
+     * rellenar huecos con valores que parecen datos— aplicada al campo que ahora si importa.
+     */
+    public Optional<OperationalDate> operationalDate(GlpiTicket ticket) {
+        Optional<LocalDate> internal = internalTimeToResolve(ticket);
+        if (internal.isPresent()) {
+            return internal.map(date -> new OperationalDate(date, OperationalDate.INTERNAL_TTR));
+        }
+        return timeToResolve(ticket)
+                .map(date -> new OperationalDate(date, OperationalDate.TTR));
+    }
+
+    /**
+     * Una fecha operativa de GLPI, con el campo del que salio.
+     *
+     * @param source {@link #INTERNAL_TTR} o {@link #TTR}; nunca vacio cuando hay fecha
+     */
+    public record OperationalDate(LocalDate date, String source) {
+
+        /** La fecha de OLA, que es la fuente principal. */
+        public static final String INTERNAL_TTR = "internal_time_to_resolve";
+
+        /** La fecha de SLA, que es el respaldo. */
+        public static final String TTR = "time_to_resolve";
     }
 
     /**

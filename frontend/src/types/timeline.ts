@@ -12,6 +12,50 @@ export type WorkItemType = 'INCIDENTE' | 'REQUERIMIENTO'
 /** Estado del tramo dentro del plan. Valores del enum TimelineItemStatus del backend. */
 export type TimelineItemStatus = 'PLANIFICADO' | 'DESPLAZADO'
 
+/**
+ * Los seis estados con los que la rejilla pinta un elemento del Timeline.
+ *
+ * **No es el mismo vocabulario que {@link TimelineItemStatus} y no lo sustituye.** El estado del
+ * tramo es un hecho del plan —el motor lo colocó o lo movió—; estos seis son lo que la pantalla
+ * necesita enseñar, y los dos últimos hechos vienen de otras dos lecturas que el plan no guarda: el
+ * acuerdo lo publica `GET /api/renegotiations` y la falta de estimación la publica la declaración.
+ *
+ * Se resuelve con `blockState` en `lib/timeline.ts` y nunca se recalcula en el componente: que la
+ * rejilla y la tabla de Tickets coincidan es lo que impide que el mismo ticket tenga dos colores.
+ */
+export type TimelineState =
+  /** Tiene fecha en GLPI y no tiene horas: no entra al plan y se enseña igual, sin ocupar jornada. */
+  | 'SIN_ESTIMACION'
+  /** Está en el plan, en su fecha. */
+  | 'PLANIFICADO'
+  /** El motor lo movió de fecha y la renegociación no dice nada de él. */
+  | 'DESPLAZADO'
+  /** El motor lo movió y alguien tiene que acordar una fecha nueva. */
+  | 'PENDIENTE_DE_ACUERDO'
+  /** Desplazado y conciliado por el sistema desde el TTR de GLPI. */
+  | 'ACORDADO_GLPI'
+  /** Desplazado y acordado por una persona por la API. */
+  | 'ACORDADO_MANUAL'
+
+/**
+ * Un ticket que tiene día en GLPI pero no tiene tramo, y que hay que enseñar en ese día.
+ *
+ * **No es un {@link TimelineItem} y no se puede fabricar uno.** Un tramo ocupa jornada y este no
+ * ocupa nada: no tiene horas, no suma capacidad y no está en ningún plan. Convertirlo en un tramo de
+ * cero horas lo haría entrar en los filtros, en las sumas y en el detalle como si estuviera
+ * planificado, que es justo lo que no es.
+ */
+export interface UnscheduledItem {
+  workItemId: string
+  /** Nulo si GLPI no publicó un tipo traducible. */
+  workItemType: WorkItemType | null
+  developerId: string
+  /** El día en que GLPI lo ubica (Internal TTR), en formato ISO. */
+  date: string
+  /** La causa que publicó el backend, en palabras: lo que le falta al ticket. */
+  cause: string
+}
+
 /** Severidad de un incidente. Valores del enum IncidentSeverity del backend. */
 export type IncidentSeverity = 'ALTO' | 'MEDIO' | 'BAJO'
 

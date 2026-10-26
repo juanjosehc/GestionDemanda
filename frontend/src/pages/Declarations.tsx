@@ -253,8 +253,9 @@ export function Declarations() {
   }
 
   // A dónde se vuelve, y cómo se llama ese sitio. El rótulo sale del menú y no de un literal: el
-  // enlace decía «Volver a Incidentes» incluso a quien había entrado desde Recursos, que es nombrar
-  // mal el destino. Sin `volver` el respaldo sigue siendo Incidentes, que es donde empieza el flujo.
+  // enlace decía el nombre del origen aunque se hubiera entrado desde otra pantalla, que es nombrar
+  // mal el destino. Sin `volver` el respaldo sigue siendo la lista de trabajo —hoy «Tickets»—, que
+  // es donde empieza el flujo.
   const back = seed.from ?? ROUTES.incidents
   const backLabel = `Volver a ${navItemFor(back).label}`
 

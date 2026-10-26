@@ -104,8 +104,12 @@ public class RenegotiationService {
         Renegotiation before = repository.findByWorkItemIdForUpdate(workItemId)
                 .orElseThrow(() -> new RenegotiationNotFoundException(workItemId));
 
+        // Un cambio hecho por una persona convierte el acuerdo en manual, aunque haya nacido
+        // conciliado desde GLPI: el origen describe quien hizo el ultimo cambio, y una correccion
+        // humana es la razon por la que la conciliacion automatica deja de tocarlo.
         Renegotiation after = before.agreedWith(
-                request.agreedDate(), request.agreedReason(), request.agreedBy(), now);
+                request.agreedDate(), request.agreedReason(), request.agreedBy(), now,
+                InputSource.HTTP);
         repository.update(after, after.changesFrom(before, request.agreedBy(), now));
 
         return RenegotiationResponse.of(after);
@@ -211,7 +215,7 @@ public class RenegotiationService {
      * tiene un evento que lo justifique, y los dos salen del mismo {@code rescheduleEvents} del
      * plan— pero el dia que ocurriera, la respuesta honesta es «pendiente».
      */
-    private static boolean cubre(
+    static boolean cubre(
             Renegotiation acuerdo, List<PlanningSimulationResponse.RescheduleEventView> events) {
 
         return acuerdo != null

@@ -3,16 +3,24 @@ import { Button } from '@/components/ui/button'
 import { DECLARATION_VARIANTS } from '@/lib/declarations'
 import { formatInstant } from '@/lib/format'
 import { formatHours } from '@/lib/timeline'
-import type { DeclarationItem, PlanningMetadata } from '@/types/declarations'
+import type { DeclarationItem } from '@/types/declarations'
 
 /** Lo que hay que enseñar cuando GLPI no pudo dar el dato. Un hueco declarado, no un cero. */
 const MISSING = '—'
 
-/** Lo declarado hoy, en una linea: las horas y el compromiso, con lo que falte en su sitio. */
-function declarationSummary(declaration: PlanningMetadata): string {
+/**
+ * Lo que ubica al ticket, en una linea: las horas declaradas y la fecha de GLPI.
+ *
+ * **La fecha ya no es la declarada.** Desde la Fase 66b el requerimiento se planifica en su fecha
+ * operativa de GLPI, asi que `committedDate` es contraste y no ubicacion: enseñarlo aqui afirmaria
+ * que el ticket va a ir a un dia al que no va a ir.
+ */
+function declarationSummary(item: DeclarationItem): string {
   const hours =
-    declaration.estimatedHours === null ? 'sin estimación' : `${formatHours(declaration.estimatedHours)} h`
-  const date = declaration.committedDate ?? 'sin compromiso'
+    item.declaration?.estimatedHours == null
+      ? 'sin estimación'
+      : `${formatHours(item.declaration.estimatedHours)} h`
+  const date = item.operationalDate ?? 'sin fecha en GLPI'
 
   return `${hours} · ${date}`
 }
@@ -118,9 +126,9 @@ export function DeclarationTable({ items, selected, onSelect }: DeclarationTable
                     {item.declarationStatus}
                   </Badge>
 
-                  {item.declaration && (
+                  {(item.declaration !== null || item.operationalDate !== null) && (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {declarationSummary(item.declaration)}
+                      {declarationSummary(item)}
                     </p>
                   )}
 

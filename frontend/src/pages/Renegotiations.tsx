@@ -121,8 +121,9 @@ export function Renegotiations() {
     )
   }
 
-  // El filtro es una funcion del estado recibido: no vuelve a consultar nada ni recalcula el estado.
-  const visible = data.items.filter((item) => matchesFilter(item.status, filter))
+  // El filtro es una funcion de lo recibido —el estado y el origen ya publicados—: no vuelve a
+  // consultar nada ni recalcula ninguno de los dos.
+  const visible = data.items.filter((item) => matchesFilter(item, filter))
 
   // La fila seleccionada se busca en la lista completa y no en la filtrada: cambiar el filtro no
   // puede cerrar un formulario a medio escribir.
@@ -142,7 +143,7 @@ export function Renegotiations() {
 
       <div className="flex items-center gap-1.5">
         <label htmlFor="filtro-estado" className="text-xs text-muted-foreground">
-          Estado
+          Filtro
         </label>
         <select
           id="filtro-estado"

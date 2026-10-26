@@ -39,7 +39,7 @@ import co.com.coltefinanciera.gestiondemanda.domain.rules.WorkingCalendar;
 @ConfigurationProperties(prefix = "planning")
 public record PlanningProperties(
         @DefaultValue("4") BigDecimal incidentThresholdHours,
-        @DefaultValue("8") BigDecimal workingHoursPerDay,
+        @DefaultValue("10.5") BigDecimal workingHoursPerDay,
         @DefaultValue("10") int planningHorizonDays,
         @DefaultValue Map<IncidentSeverity, IncidentPolicyProperties> incidentPolicies,
         CalendarProperties calendar) {

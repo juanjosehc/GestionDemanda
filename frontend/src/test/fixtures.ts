@@ -453,6 +453,9 @@ export function declarationsFixture(
         declarationStatus: 'PLANIFICABLE',
         discards: [],
         declaration: planningMetadataFixture(),
+        // Una incidencia no se ubica por una promesa, asi que GLPI no le da fecha operativa.
+        operationalDate: null,
+        operationalDateSource: null,
       },
       {
         workItemId: '502',
@@ -475,6 +478,8 @@ export function declarationsFixture(
           estimatedBy: null,
           estimatedAt: null,
         }),
+        operationalDate: null,
+        operationalDateSource: null,
       },
       {
         workItemId: '503',
@@ -486,8 +491,8 @@ export function declarationsFixture(
         declarationStatus: 'SIN_COMPROMISO',
         discards: [
           {
-            code: 'SIN_COMPROMISO_DECLARADO',
-            reason: 'la planificacion declarada no tiene fecha compromiso',
+            code: 'SIN_FECHA_EN_GLPI',
+            reason: 'GLPI no trae ni internal_time_to_resolve ni time_to_resolve',
           },
         ],
         declaration: planningMetadataFixture({
@@ -497,6 +502,8 @@ export function declarationsFixture(
           committedBy: null,
           committedAt: null,
         }),
+        operationalDate: null,
+        operationalDateSource: null,
       },
       {
         workItemId: '504',
@@ -510,9 +517,14 @@ export function declarationsFixture(
         // que actuar, y un campo unico obligaria a callar a una de ellas.
         discards: [
           { code: 'SIN_ESTIMACION_DECLARADA', reason: sinDeclaracion },
-          { code: 'SIN_COMPROMISO_DECLARADO', reason: sinDeclaracion },
+          {
+            code: 'SIN_FECHA_EN_GLPI',
+            reason: 'GLPI no trae ni internal_time_to_resolve ni time_to_resolve',
+          },
         ],
         declaration: null,
+        operationalDate: null,
+        operationalDateSource: null,
       },
       {
         workItemId: '505',
@@ -530,6 +542,8 @@ export function declarationsFixture(
           },
         ],
         declaration: null,
+        operationalDate: null,
+        operationalDateSource: null,
       },
     ],
     ...overrides,
@@ -748,8 +762,8 @@ export function planningFromGlpiFixture(
       },
       {
         ticketId: '504',
-        code: 'SIN_COMPROMISO_DECLARADO',
-        reason: 'la planificacion declarada no tiene fecha compromiso',
+        code: 'SIN_FECHA_EN_GLPI',
+        reason: 'GLPI no trae ni internal_time_to_resolve ni time_to_resolve',
       },
     ],
     ...overrides,

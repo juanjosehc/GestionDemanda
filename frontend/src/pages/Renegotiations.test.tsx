@@ -1,9 +1,11 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { formatDay } from '@/lib/timeline'
 import { Renegotiations } from '@/pages/Renegotiations'
 import {
   ACORDADO_ID,
+  DEVELOPER_ID,
   MOTIVO_ACORDADO,
   MOTIVO_REMOVIDO,
   PENDIENTE_ID,
@@ -132,7 +134,7 @@ function conAcuerdo(
             agreedBy: acuerdo.agreedBy,
             agreedReason: acuerdo.agreedReason ?? MOTIVO_ACORDADO,
             agreedAt: '2026-10-08T10:00:00Z',
-            source: 'HTTP',
+            source: 'HTTP' as const,
           },
         }
       : item,
@@ -230,9 +232,9 @@ async function abrir(container: HTMLElement, workItemId: string, espera = 'Guard
   return screen.findByRole('button', { name: espera })
 }
 
-/** Elige una opcion del filtro de estado, como lo haria una persona. */
+/** Elige una opcion del filtro, como lo haria una persona. */
 function filtrar(value: string) {
-  fireEvent.change(screen.getByLabelText('Estado'), { target: { value } })
+  fireEvent.change(screen.getByLabelText('Filtro'), { target: { value } })
 }
 
 function escribir(label: string, value: string) {
@@ -346,6 +348,85 @@ describe('Renegotiations', () => {
     expect(within(row).getByText(/8 de oct/)).toBeInTheDocument()
     expect(within(row).getByText('ana')).toBeInTheDocument()
     expect(row.querySelector('time[datetime="2026-10-06T09:30:00Z"]')).not.toBeNull()
+  })
+
+  it('dice de donde vino el acuerdo: manual o conciliado desde GLPI', async () => {
+    // Un acuerdo conciliado lo trajo el sistema leyendo el TTR del ticket; uno manual lo registro
+    // una persona. La fila no los confunde, y en el conciliado la fecha acordada es el TTR copiado.
+    const base = renegotiationsFixture()
+    const items = base.items.map((item) =>
+      item.workItemId === ACORDADO_ID && item.renegotiation
+        ? { ...item, renegotiation: { ...item.renegotiation, source: 'GLPI' as const } }
+        : item,
+    )
+    serve({ list: okResponse(renegotiationsFixture({ items })) })
+
+    const { container } = await cargar()
+    filtrar('ACORDADA')
+
+    const conciliado = rowOf(container, ACORDADO_ID)
+    const origen = conciliado.querySelector<HTMLElement>('[data-slot="agreement-origin"]')
+
+    expect(within(conciliado).getByText('Acordada en GLPI')).toBeInTheDocument()
+    expect(origen?.getAttribute('data-source')).toBe('GLPI')
+    // La fecha acordada de un conciliado es el TTR del ticket, y se dice sin abrir nada mas.
+    expect(within(conciliado).getByText('TTR detectado')).toBeInTheDocument()
+    expect(within(conciliado).getByText('Conciliado automáticamente')).toBeInTheDocument()
+
+    // El otro acuerdo con fila en el fixture nacio manual, y se dice con la otra etiqueta.
+    filtrar('TODOS')
+    const manual = rowOf(container, REMOVIDO_ID)
+
+    expect(within(manual).getByText('Acordada manualmente')).toBeInTheDocument()
+    expect(within(manual).queryByText('TTR detectado')).toBeNull()
+  })
+
+  it('separa las acordadas por su origen, sin recalcular ninguno de los dos hechos', async () => {
+    // Una conciliada por GLPI y otra manual, las dos ACORDADA: es el unico juego de filas con el
+    // que los dos filtros nuevos pueden distinguirse.
+    const base = renegotiationsFixture()
+    const items = base.items.map((item) => {
+      if (item.workItemId === ACORDADO_ID && item.renegotiation) {
+        return { ...item, renegotiation: { ...item.renegotiation, source: 'GLPI' as const } }
+      }
+      if (item.workItemId === REMOVIDO_ID) {
+        return { ...item, status: 'ACORDADA' as const }
+      }
+      return item
+    })
+    serve({ list: okResponse(renegotiationsFixture({ items })) })
+
+    const { container } = await cargar()
+
+    // Un pendiente con acuerdo anterior no cae en ninguno de los dos: no esta acordado.
+    filtrar('ACORDADA_GLPI')
+    expect(rows(container)).toHaveLength(1)
+    expect(rowOf(container, ACORDADO_ID).getAttribute('data-status')).toBe('ACORDADA')
+
+    filtrar('ACORDADA_MANUAL')
+    expect(rows(container)).toHaveLength(1)
+    expect(rowOf(container, REMOVIDO_ID).getAttribute('data-status')).toBe('ACORDADA')
+
+    filtrar('PENDIENTE_DE_ACUERDO')
+    expect(rows(container)).toHaveLength(1)
+    expect(rowOf(container, PENDIENTE_ID)).toBeTruthy()
+  })
+
+  it('abre el ticket en el Timeline y en Tickets con las rutas que ya existen', async () => {
+    serve({})
+
+    const { container } = await cargar()
+    const row = rowOf(container, ACORDADO_ID)
+
+    // El Timeline por la persona y con el ticket senalado; Tickets filtrado por ella. No hay una
+    // ruta nueva: son las dos pantallas que ya publica el menu, con el contexto puesto.
+    expect(
+      row.querySelector<HTMLAnchorElement>('[data-slot="ticket-timeline-link"]')?.getAttribute('href'),
+    ).toBe(`/?tecnico=${DEVELOPER_ID}&ticket=${ACORDADO_ID}`)
+
+    expect(
+      row.querySelector<HTMLAnchorElement>('[data-slot="ticket-incidents-link"]')?.getAttribute('href'),
+    ).toBe(`/incidentes?persona=${DEVELOPER_ID}`)
   })
 
   it('crea el acuerdo de un requerimiento que no tenia ninguno', async () => {
@@ -508,6 +589,51 @@ describe('Renegotiations', () => {
       'Incidente de severidad alta sobre la misma jornada',
     )
     expect(desplazamiento?.textContent).not.toContain(MOTIVO_ACORDADO)
+  })
+
+  it('enseña el incidente, la regla, las fechas y el motivo del desplazamiento', async () => {
+    serve({})
+
+    const { container } = await cargar()
+    const evento = renegotiationsFixture().items[0]!.events[0]!
+    const causa = rowOf(container, ACORDADO_ID).querySelector<HTMLElement>(
+      '[data-slot="displacement-cause"]',
+    )
+
+    expect(causa).not.toBeNull()
+    const dentro = within(causa as HTMLElement)
+
+    // Las cinco etiquetas son las mismas que usa el detalle del Timeline, y los cinco valores son
+    // los que auditó el plan: aquí no se deriva ni se resume ninguno.
+    expect(dentro.getByText('Fecha original')).toBeInTheDocument()
+    expect(dentro.getByText(formatDay(evento.originalDate))).toBeInTheDocument()
+    expect(dentro.getByText('Fecha nueva')).toBeInTheDocument()
+    expect(dentro.getByText(formatDay(evento.rescheduledDate))).toBeInTheDocument()
+    expect(dentro.getByText('Regla aplicada')).toBeInTheDocument()
+    expect(dentro.getByText(evento.appliedRule)).toBeInTheDocument()
+    expect(dentro.getByText('Incidente causante')).toBeInTheDocument()
+    expect(causa?.textContent).toContain(evento.incidentId)
+    expect(dentro.getByText('Motivo')).toBeInTheDocument()
+    expect(dentro.getByText(evento.reason)).toBeInTheDocument()
+  })
+
+  it('la tabla y el formulario explican el desplazamiento con el mismo texto', async () => {
+    serve({})
+
+    const { container } = await cargar()
+    const enTabla = rowOf(container, ACORDADO_ID).querySelector(
+      '[data-slot="displacement-cause"]',
+    )?.textContent
+
+    await abrir(container, ACORDADO_ID)
+
+    const enFormulario = document.querySelector(
+      '[data-slot="renegotiation-reason"] [data-slot="displacement-cause"]',
+    )?.textContent
+
+    // No son dos explicaciones parecidas: es el mismo bloque, importado de un solo sitio.
+    expect(enTabla).toBeTruthy()
+    expect(enFormulario).toBe(enTabla)
   })
 
   it('lee un cambio de motivo como tal, y no como un cambio de fecha', async () => {

@@ -22,6 +22,23 @@ export const DECLARATION_VARIANTS: Record<DeclarationStatus, BadgeVariant> = {
   NO_TRADUCIBLE: 'danger',
 }
 
+/**
+ * El mismo estado, en las palabras de la pantalla.
+ *
+ * **No es una traduccion libre: es el nombre de negocio que la fase pide hacer visible.** El codigo
+ * del backend es el que viaja y el que compara; esto solo decide como se lee. `PLANIFICABLE` es el
+ * unico que no tiene nada pendiente, `NO_TRADUCIBLE` el unico que no se arregla declarando, y los
+ * tres que faltan dicen exactamente que falta. El mapa es total sobre el enum para que un estado
+ * nuevo no pueda pintarse sin nombre.
+ */
+export const DECLARATION_LABEL: Record<DeclarationStatus, string> = {
+  PLANIFICABLE: 'Planificable',
+  SIN_ESTIMACION: 'Sin estimación',
+  SIN_COMPROMISO: 'Sin compromiso',
+  SIN_DECLARACION: 'Sin declarar',
+  NO_TRADUCIBLE: 'No planificable',
+}
+
 /** Numero de horas sin ceros de relleno: `6`, no `6.0000`. */
 export function formatDeclaredHours(hours: number): string {
   return String(Number(hours))

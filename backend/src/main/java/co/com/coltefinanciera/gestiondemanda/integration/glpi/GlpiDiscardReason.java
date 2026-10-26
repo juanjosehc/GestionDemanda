@@ -44,8 +44,26 @@ public enum GlpiDiscardReason {
      */
     SIN_ESTIMACION_DECLARADA,
 
-    /** El negocio no ha declarado para cuando se compromete. Mismos dos casos que la estimacion. */
+    /**
+     * La declaracion del negocio no tiene fecha compromiso.
+     *
+     * <p><strong>Desde la Fase 66b no lo emite el validador</strong>: la fecha que ubica un
+     * requerimiento viene de GLPI, y por eso un requerimiento sin fecha se descarta con
+     * {@link #SIN_FECHA_EN_GLPI}. El codigo se conserva porque sigue nombrando una carencia real de
+     * los datos —hay declaraciones sin fecha— y es el que publica la fotografia operativa en su hueco
+     * de compromisos, donde el sujeto es la declaracion y no el ticket.
+     */
     SIN_COMPROMISO_DECLARADO,
+
+    /**
+     * GLPI no trae fecha con la que ubicar el requerimiento.
+     *
+     * <p>Se pide {@code internal_time_to_resolve} y, si no esta, {@code time_to_resolve}: un
+     * requerimiento sin ninguna de las dos no tiene fecha real y no se planifica. El arreglo no es una
+     * declaracion —desde la Fase 66b la fecha no se declara— sino cargar la OLA o el SLA del ticket,
+     * y por eso el codigo nombra a GLPI y no al negocio.
+     */
+    SIN_FECHA_EN_GLPI,
 
     /**
      * El ticket paso la validacion y aun asi no se pudo construir el objeto del dominio.

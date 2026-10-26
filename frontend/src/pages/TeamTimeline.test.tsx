@@ -64,8 +64,17 @@ function noRenegotiations() {
   }
 }
 
-/** Un desplazamiento de `dev-001`, con el estado que el backend le haya calculado al leer. */
-function renegotiationsFor(ticket: string, status: 'PENDIENTE_DE_ACUERDO' | 'ACORDADA') {
+/**
+ * Un desplazamiento de `dev-001`, con el estado que el backend le haya calculado al leer.
+ *
+ * `source` es de donde vino el acuerdo, y solo tiene sentido cuando hay uno: un requerimiento
+ * pendiente no tiene origen porque no tiene acuerdo que lo tenga.
+ */
+function renegotiationsFor(
+  ticket: string,
+  status: 'PENDIENTE_DE_ACUERDO' | 'ACORDADA',
+  source: 'HTTP' | 'GLPI' = 'HTTP',
+) {
   return {
     source: 'plan_snapshot',
     scope: 'vigente',
@@ -90,7 +99,17 @@ function renegotiationsFor(ticket: string, status: 'PENDIENTE_DE_ACUERDO' | 'ACO
             reason: 'Un incidente supero el umbral de horas',
           },
         ],
-        renegotiation: null,
+        renegotiation:
+          status === 'ACORDADA'
+            ? {
+                workItemId: ticket,
+                agreedDate: '2026-10-08',
+                agreedBy: source === 'GLPI' ? 'GLPI' : 'ana',
+                agreedReason: 'Se acordó con quien pidió el requerimiento',
+                agreedAt: '2026-10-07T10:00:00Z',
+                source,
+              }
+            : null,
       },
     ],
   }
@@ -555,9 +574,10 @@ describe('TeamTimeline', () => {
 
     // El miércoles no tiene ningún tramo de Ana, pero sí una columna: la capacidad se mide contra la
     // ventana del equipo y no contra la de su plan, que solo llegaba al martes. Con la fila recortada a
-    // su propio plan esta celda no existiría.
-    const miercoles = fila('Ana Perez').querySelectorAll('[data-slot="timeline-cell"]')
-    expect(miercoles).toHaveLength(3)
+    // su propio plan esta celda no existiría. La semana se pinta entera, de lunes a domingo: siete
+    // columnas, tengan o no capacidad esos días.
+    const dias = fila('Ana Perez').querySelectorAll('[data-slot="timeline-cell"]')
+    expect(dias).toHaveLength(7)
 
     // El día lleno y el día con holgura se distinguen por el número, tal como lo publicó el backend.
     const celda = within(fila('Ana Perez'))
@@ -861,6 +881,9 @@ describe('TeamTimeline', () => {
     expect(within(detalle).getByText(/INC-1/)).toBeDefined()
     expect(within(detalle).getByText(/ocupo la jornada pactada/)).toBeDefined()
 
+    // El bloque de la causa es el mismo componente que usa la Renegociación: una sola explicación.
+    expect(detalle.querySelector('[data-slot="displacement-cause"]')).not.toBeNull()
+
     // Las tres acciones, y cada una a la pantalla que ya existía.
     const declarar = within(detalle).getByRole('link', { name: 'Declarar' })
     expect(declarar.getAttribute('href')).toContain(`tecnico=${DEVELOPER_ID}`)
@@ -874,6 +897,29 @@ describe('TeamTimeline', () => {
       'href',
       `/calendario/${PLAN_ID}`,
     )
+  })
+
+  it('siembra la vista desde la dirección: deja la fila del técnico y abre su ticket', async () => {
+    // Es la acción «Ver el Timeline» de Tickets: se aterriza en la persona y en el tramo, no en la
+    // agenda entera con el gestor buscando a mano. La dirección no lleva la clave del tramo —no la
+    // conoce—, así que la pantalla la resuelve buscando el primero del ticket.
+    serve({ declarations: declarationsForBoth() })
+
+    renderWithClient(<TeamTimeline />, {
+      route: `/?tecnico=${DEVELOPER_ID}&ticket=REQ-1`,
+    })
+
+    await screen.findByText('Ana Perez')
+
+    const filas = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-slot="timeline-resource"]'),
+    )
+
+    expect(filas).toHaveLength(1)
+    expect(filas[0].textContent).toContain('Ana Perez')
+
+    // El detalle se abre solo, con el mismo panel que se abre pulsando el tramo.
+    expect(await screen.findByRole('dialog', { name: /REQ-1/ })).toBeDefined()
   })
 
   it('no ofrece renegociar un tramo que no se movió', async () => {
@@ -1031,6 +1077,63 @@ describe('TeamTimeline', () => {
     )
   })
 
+  it('el chip de pendientes lleva directo al ticket cuando la persona tiene uno solo', async () => {
+    // Ana con un solo pendiente: `502`, que todavía no se puede planificar. Un chip que solo dice
+    // «1 pendiente» deja al gestor buscando el ticket en otra pantalla; enlazado, es el clic que
+    // elimina la búsqueda.
+    serve({
+      declarations: {
+        [DEVELOPER_ID]: declarationsFixture({
+          developer: { id: DEVELOPER_ID, name: 'Ana Perez' },
+          items: [
+            declarationItemFixture({
+              workItemId: '502',
+              title: 'Ajuste de reporte 502',
+              declarationStatus: 'SIN_COMPROMISO',
+            }),
+          ],
+        }),
+        [FULL_DEVELOPER_ID]: declarationsFixture({
+          developer: { id: FULL_DEVELOPER_ID, name: 'Carlos Ruiz' },
+          items: [declarationItemFixture({ workItemId: 'REQ-9', declarationStatus: 'PLANIFICABLE' })],
+        }),
+      },
+    })
+
+    renderWithClient(<TeamTimeline />)
+    await screen.findByText('Ana Perez')
+
+    // El chip aparece cuando llega la declaración, no con la rejilla.
+    const chip = (await within(fila('Ana Perez')).findByText('1 pendiente')).closest(
+      'a',
+    ) as HTMLAnchorElement
+    const destino = chip?.getAttribute('href') ?? ''
+
+    // La misma ruta que usa la fila del panel: técnico, ticket y vuelta al Timeline.
+    expect(chip).not.toBeNull()
+    expect(destino.startsWith('/declaraciones?')).toBe(true)
+    expect(destino).toContain(`tecnico=${DEVELOPER_ID}`)
+    expect(destino).toContain('ticket=502')
+    expect(destino).toContain('volver=%2F')
+  })
+
+  it('el chip con varios pendientes abre el panel filtrado por esa persona', async () => {
+    // Con dos pendientes no hay un ticket único que abrir: el chip lleva al panel donde están los
+    // dos, ya filtrado por Ana, en vez de dejarla perdida entre el resto del equipo.
+    serve({ declarations: declarationsForBoth() })
+
+    renderWithClient(<TeamTimeline />)
+    await screen.findByText('Ana Perez')
+
+    const chip = await within(fila('Ana Perez')).findByRole('button', { name: '2 pendientes' })
+    fireEvent.click(chip)
+
+    const panel = document.querySelector('[data-slot="pending-panel"]') as HTMLElement
+    const aviso = await within(panel).findByText(/Solo los pendientes de/)
+
+    expect(aviso.textContent).toContain('Ana Perez')
+  })
+
   it('enseña los acuerdos pendientes del equipo dentro del Timeline', async () => {
     // La cola de acuerdos era una pantalla que se abría para descubrir a quién le tocaba. Ahora el
     // Timeline la resume con la misma lectura, y cada fila abre la renegociación con el ticket puesto.
@@ -1134,16 +1237,16 @@ describe('TeamTimeline', () => {
     renderWithClient(<TeamTimeline />)
     await screen.findByText('Ana Perez')
 
-    // Las columnas salen del equipo completo: filtrar no acorta el calendario.
+    // Las columnas salen de la semana visible: filtrar no acorta el calendario.
     const columnas = () =>
       document.querySelectorAll('[data-slot="timeline-day"]').length
-    expect(columnas()).toBe(3)
+    expect(columnas()).toBe(7)
 
     fireEvent.click(screen.getByRole('button', { name: 'Incidentes' }))
     await waitFor(() => expect(fila('Ana Perez')).toBeDefined())
     expect(() => fila('Carlos Ruiz')).toThrow()
     expect(() => fila('Diana Lopez')).toThrow()
-    expect(columnas()).toBe(3)
+    expect(columnas()).toBe(7)
 
     fireEvent.click(screen.getByRole('button', { name: 'Sin plan' }))
     // Incidentes y «sin plan» son un Y: Diana no tiene incidentes, así que no queda nadie.
@@ -1224,8 +1327,13 @@ describe('TeamTimeline', () => {
     expect(simuladas[0].textContent).toContain('causa: incidente DEMO')
     expect(renegociaciones.textContent).toContain('Pendiente de acuerdo · DEMO')
 
-    // La agenda real sigue igual: los tramos no se han movido, solo se marcan.
-    expect(within(fila('Ana Perez')).getAllByRole('button')).toHaveLength(3)
+    // La agenda real sigue igual: los tramos no se han movido, solo se marcan. Se cuentan los
+    // tramos y no todos los botones de la fila: desde la Fase 60 el chip de pendientes también se
+    // pulsa, y sigue ahí sin que la simulación lo toque.
+    const tramos = within(fila('Ana Perez'))
+      .getAllByRole('button')
+      .filter((boton) => boton.dataset.slot === 'timeline-block')
+    expect(tramos).toHaveLength(3)
 
     fireEvent.click(screen.getByRole('button', { name: 'Quitar simulación' }))
     await waitFor(() =>
@@ -1298,6 +1406,43 @@ describe('TeamTimeline', () => {
     // Un solo panel, con el detalle del segundo tramo: no se apila otro ni hay que cerrar el primero.
     expect(await screen.findByRole('dialog', { name: /INC-1/ })).toBeDefined()
     expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  })
+
+  it('distingue en el detalle un acuerdo conciliado de uno manual', async () => {
+    // El gestor no vuelve a teclear lo que ya cambió en GLPI: el acuerdo llega conciliado. Pero
+    // «hay acuerdo» no dice de dónde vino, y la pregunta que se hace al verlo es quién lo acordó.
+    serve({
+      declarations: declarationsForBoth(),
+      timeline: teamTimelineFixture({ items: [DESPLAZADO] }),
+      renegotiations: renegotiationsFor('REQ-1', 'ACORDADA', 'GLPI'),
+    })
+
+    renderWithClient(<TeamTimeline />)
+    await screen.findByText('Ana Perez')
+    fireEvent.click(within(fila('Ana Perez')).getByRole('button', { name: /REQ-1/ }))
+
+    const detalle = await screen.findByRole('dialog', { name: /REQ-1/ })
+    const estado = await within(detalle).findByText('Acordada en GLPI')
+
+    // La etiqueta dice el origen y el atributo lo deja afirmable sin leer el texto.
+    expect(estado.getAttribute('data-source')).toBe('GLPI')
+  })
+
+  it('distingue un acuerdo registrado a mano', async () => {
+    serve({
+      declarations: declarationsForBoth(),
+      timeline: teamTimelineFixture({ items: [DESPLAZADO] }),
+      renegotiations: renegotiationsFor('REQ-1', 'ACORDADA', 'HTTP'),
+    })
+
+    renderWithClient(<TeamTimeline />)
+    await screen.findByText('Ana Perez')
+    fireEvent.click(within(fila('Ana Perez')).getByRole('button', { name: /REQ-1/ }))
+
+    const detalle = await screen.findByRole('dialog', { name: /REQ-1/ })
+    const estado = await within(detalle).findByText('Acordada manualmente')
+
+    expect(estado.getAttribute('data-source')).toBe('HTTP')
   })
 
   it('cierra con el botón y con Escape, y devuelve el foco al tramo', async () => {

@@ -11,7 +11,7 @@ Sistema de planificación de recursos para el equipo de desarrollo. La Fase 1 es
 | Integración GLPI | Sesión, verificación de conectividad y autenticación, y lectura de usuarios y tickets |
 | Motor de planificación | Completo y probado (dominio puro: sin Spring, sin JPA, sin GLPI) |
 | Endpoints de planificación | `POST /api/planning/simulate` (calcula sin guardar), `POST /api/planning/from-glpi` (trae de GLPI y planifica) y `POST /api/planning/plan`, `GET /api/planning/{planId}`, `GET /api/planning/{planId}/blocks`, `GET /api/planning/{planId}/timeline`, `GET /api/planning/{planId}/context`, `GET /api/planning/{planId}/input` |
-| Planificación declarada (metadata) | `POST /api/planning-metadata`, `PUT /api/planning-metadata/{workItemId}`, `GET /api/planning-metadata/{workItemId}`, `GET /api/planning-metadata/{workItemId}/history` y **`GET /api/planning-metadata/declarations?developerId=…`**. Este último devuelve las declaraciones de varias personas en **una sola lectura** —mismo cuerpo por persona, con los identificadores que GLPI no conoce aparte en `unknownDevelopers`—: es la lectura de la capa de pendientes del timeline. El esfuerzo estimado y la fecha compromiso que GLPI no tiene, con la historia de sus cambios. **Es la fuente del plan desde la Fase 14**: la capa anticorrupción la lee, y un ticket al que le falte cualquiera de los dos valores se descarta con su motivo |
+| Planificación declarada (metadata) | `POST /api/planning-metadata`, `PUT /api/planning-metadata/{workItemId}`, `GET /api/planning-metadata/{workItemId}`, `GET /api/planning-metadata/{workItemId}/history` y **`GET /api/planning-metadata/declarations?developerId=…`**. Este último devuelve las declaraciones de varias personas en **una sola lectura** —mismo cuerpo por persona, con los identificadores que GLPI no conoce aparte en `unknownDevelopers`—: es la lectura de la capa de pendientes del timeline. El esfuerzo estimado, con la historia de sus cambios. **Aporta las horas del plan desde la Fase 14; desde la Fase 66b la fecha la pone GLPI** —`internal_time_to_resolve` y, si no hay, `time_to_resolve`—. Un ticket al que le falten las horas o la fecha se descarta con su motivo |
 | Datos de negocio (incidentes, requerimientos, recursos) | Mockeados en el frontend. El backend ya los lee de GLPI para planificar |
 | Dashboard | Completo, con estado GLPI real |
 | Módulo de planificación (timeline) | El contrato de lectura está expuesto: `GET /api/planning/{planId}/timeline` devuelve los tramos y la capacidad del desarrollador día a día, todo leído de lo persistido. Y ya tiene quien lo pinte: la pantalla `/calendario/:planId` (Fase 16) |
@@ -151,10 +151,10 @@ El backend carga ese archivo automáticamente al arrancar (`spring.config.import
 | `TEAM_GROUP_ID` | No | Identificador del grupo de GLPI que **es** el equipo. Por defecto `1` —Desarrollo N2—. Se lee **con sus subgrupos incluidos** |
 | `TEAM_GROUP_NAME` | No | Nombre de ese grupo. Por defecto `Desarrollo N2`. Solo se usa para poder nombrarlo cuando no se puede leer |
 | `PLANNING_INCIDENT_THRESHOLD_HOURS` | No | Dedicación a partir de la cual un incidente obliga a recalcular. **Solo afecta a incidentes sin severidad.** Por defecto `4` |
-| `PLANNING_WORKING_HOURS_PER_DAY` | No | Duración de la jornada. Es la del bloque de calendario cuando no se declara `PLANNING_CALENDAR_END_TIME`. Por defecto `8` |
+| `PLANNING_WORKING_HOURS_PER_DAY` | No | Duración de la jornada. Es la del bloque de calendario cuando no se declara `PLANNING_CALENDAR_END_TIME`. Por defecto `10.5` —la jornada oficial— |
 | `PLANNING_HORIZON_DAYS` | No | Días hacia adelante en que se busca hueco. Por defecto `10` |
-| `PLANNING_CALENDAR_START_TIME` | No | Apertura de la jornada. Por defecto `09:00` |
-| `PLANNING_CALENDAR_END_TIME` | No | Cierre de la jornada. Si se omite, cierra a la apertura más `PLANNING_WORKING_HOURS_PER_DAY`. Declararlo tiene prioridad sobre ella |
+| `PLANNING_CALENDAR_START_TIME` | No | Apertura de la jornada. Por defecto `07:00` |
+| `PLANNING_CALENDAR_END_TIME` | No | Cierre de la jornada, **exclusivo**. Si se omite, cierra a la apertura más `PLANNING_WORKING_HOURS_PER_DAY`. Declararlo tiene prioridad sobre ella. Por defecto `17:30` |
 | `PLANNING_CALENDAR_WEEKEND` | No | Días de la semana nunca laborables. Por defecto `SATURDAY,SUNDAY` |
 | `PLANNING_CALENDAR_HOLIDAYS` | No | Festivos en formato ISO separados por coma, p. ej. `2026-01-01,2026-04-02`. Sin declarar no hay ninguno |
 | `OLA_ALTO_ADQUISICION_MINUTOS` | No | Minutos objetivo para adueñarse de un incidente ALTO. Por defecto `15` |
@@ -163,6 +163,15 @@ El backend carga ese archivo automáticamente al arrancar (`spring.config.import
 | `OLA_MEDIO_RESOLUCION_HORAS` | No | Por defecto `8` |
 | `OLA_BAJO_ADQUISICION_MINUTOS` | No | Igual, para severidad BAJO. Por defecto `15` |
 | `OLA_BAJO_RESOLUCION_HORAS` | No | Por defecto `12` |
+
+> **Horario laboral oficial · Lunes–Viernes · 07:00–17:30.**
+> Es la jornada que usan el motor, el libro de capacidad, los vencimientos de OLA, la rejilla del
+> Timeline y el simulador DEMO: **10,5 horas por día laborable**, con el cierre a las 17:30
+> **exclusivo** —la última hora computable empieza a las 17:00— y sábado y domingo no laborables.
+> Se declara en un solo sitio, `planning.calendar` (`application.properties`), y el eje del
+> Timeline lo replica; si se cambia por entorno, cambian los dos porque el valor se escribe una vez.
+> Los planes **ya guardados** conservan la capacidad con la que se generaron: la jornada nueva
+> llega al regenerarlos. Ver la Fase 63 en `docs/decisiones-arquitectonicas.md`.
 
 **Dónde se obtienen los tokens en GLPI:**
 
@@ -302,6 +311,29 @@ Consume **una sola llamada**, `GET /api/planning/{planId}/timeline`, y no recalc
 **Limitaciones.** Es una vista de **solo lectura**: no hay arrastrar y soltar ni edición, porque el endpoint es una proyección de lectura y no acepta escrituras. Los bloques se rotulan con el `workItemId` porque **el plan no guarda títulos** (riesgo 66). El eje horario se deriva de los tramos observados y no del calendario que el plan obedeció, porque la jornada congelada no viaja en la respuesta (riesgo 67). La fila muestra el `developerId` y no el nombre del desarrollador: resolverlo exigiría una segunda llamada (riesgo 68). La vista sirve **un plan** —consolidar varios se resolvió después, en `/recursos`, pero no aquí: la Fase 21 consolidó **un plan vigente por desarrollador**, con la vigencia que el backend ya resuelve, no varios planes de la misma persona a la vez—. Y la paleta oscura existe en el CSS pero no tiene conmutador.
 
 La Fase 40 le dio un segundo consumidor: **la agenda de todo el equipo en `/`** (`pages/TeamTimeline.tsx`), que usa la misma rejilla con varias filas, nombres del padrón y la capa de pendientes.
+
+### Los seis estados del Timeline, la duración real y los tickets sin estimación
+
+La rejilla no pinta un tramo de un solo color. Cada bloque llega con un **estado visual** que se resuelve en un solo sitio —`blockState` en `lib/timeline.ts`, cruzando el plan con la lectura de renegociaciones— y que la leyenda explica **solo para los estados que están en la semana visible**: una leyenda con seis colores cuando en pantalla hay dos enseñaría cuatro que nadie puede encontrar.
+
+| Estado | Color | Qué dice | De dónde sale |
+|---|---|---|---|
+| **Requiere estimación** | gris, borde punteado | tiene día en GLPI y no tiene horas: no entra al plan | `declarationStatus = SIN_ESTIMACION` |
+| **Planificado** | azul | está en el plan, en su día | `planningStatus = PLANIFICADO` |
+| **Desplazado** | ámbar | el motor lo movió y no hay acuerdo que lo cubra | `planningStatus = DESPLAZADO` sin fila de renegociación |
+| **Pendiente de acuerdo** | violeta | el motor lo movió y alguien tiene que acordar una fecha | `GET /api/renegotiations` con `PENDIENTE_DE_ACUERDO` |
+| **Acordado en GLPI** | verde | desplazado y conciliado con el TTR de GLPI | `ACORDADA` con `source = GLPI` |
+| **Acordado manualmente** | verde azulado | desplazado y acordado por una persona | `ACORDADA` con `source = HTTP` |
+
+**El gris no es un error.** Un ticket sin estimación no está mal, está incompleto: la pantalla pide el dato. El rojo queda para lo único que sí es un error —capacidad ocupada por encima de la disponible—, que ya lo pinta la franja del día.
+
+**Duración multidía.** El plan ya parte un trabajo en **un tramo por jornada**; la vista lo lee como uno solo. `dayPositions` agrupa por persona y ticket, cuenta **fechas distintas** —no tramos: dos franjas del mismo día son un día— y cada bloque dice `día 1 de 2`. El bloque que continúa lleva `›` a la derecha y el que viene de antes `‹` a la izquierda, así que dos bloques seguidos se leen como un trabajo y no como dos tickets.
+
+**Fecha de entrega.** Es **el último día que el trabajo ocupa**, y se marca de tres formas a la vez: la bandera en la cabecera del bloque, la barra inferior y `día N de N · entrega` en el texto de ayuda. Un trabajo de un día es, por definición, su propio día de entrega.
+
+**Capacidad de un trabajo de varios días.** Consume la jornada de **cada día que ocupa**, y la suma de esos tramos es el total del ticket. Medido en vivo con el incidente 68347: 5,23 h el 14 de octubre y 2,77 h el 15 —8 h en total—, con la capacidad de AndrBelt bajando de 10,5 h a 5,27 h y a 7,73 h libres en cada uno. **La fecha que el plan obedeció es la del primer día**: el motor reclama capacidad hacia adelante desde su fecha de ubicación, así que el último día coincide con ella solo cuando el trabajo cabe en una jornada. Nota: la fecha de GLPI no viaja en el tramo; el texto de ayuda muestra el **compromiso declarado**, que es otro dato.
+
+**Sin estimación no desaparece.** Un ticket con fecha y sin horas no está en ningún plan, así que no tiene tramo y mirando solo tramos se esfuma. La vista lo dibuja igual en su día de GLPI, en una franja punteada **entre la capacidad y la escala de horas**: no ocupa jornada, no entra en los filtros de la agenda y no suma capacidad. La franja se reserva en **todas** las columnas de la semana o en ninguna, para que las filas no se desalineen. **Caso testigo: el 68428**, del 19 de noviembre de 2026 —fuera de la ventana del plan, que acaba el 16—: su día entra al eje porque tiene una columna donde estar, y en esa semana la leyenda dice «Requiere estimación».
 
 ### El timeline del equipo y el trabajo de cada módulo
 
@@ -467,7 +499,221 @@ La Fase 40 le dio un segundo consumidor: **la agenda de todo el equipo en `/`** 
 
 **Limitaciones.** Las renegociaciones DEMO no aparecen en `/renegociaciones`: esa pantalla lee el backend y no se tocó. El simulador modela un solo incidente a la vez y usa las reglas de `simulateIncident`, no las del motor real. Si ninguna persona tiene un día donde el incidente por defecto desplace un requerimiento, el día por defecto puede no desplazar nada y el panel lo dice. El auto-centrado mueve el scroller del Timeline una vez por simulación o cambio de zoom, nunca la página.
 
+### La Fase 57: la agenda tiene un solo scroll
+
+**El scroll de más no lo creaba el Timeline, lo creaba una tabla invisible.** La página tenía dos barras verticales —la de `main`, que es la única que debía existir, y otra en el borde de la ventana— y la agenda no era la culpable. El `<caption class="sr-only">` de la tabla de cobertura es `position: absolute`; sin un ancestro posicionado su bloque contenedor es el documento, así que el `overflow: hidden` de `main` no lo recortaba y su posición —el final de una página de casi 4.000 px— alargaba el área desplazable de la página. Medido en el navegador: `documentElement.scrollHeight` 1596 contra un viewport de 577 —**1.019 px de scroll fantasma**— y `window.scrollTo(0, 400)` se movía. Poner `relative` en el contenedor de la tabla lo reduce a 577 y deja la ventana sin desplazamiento. El arreglo es una clase, y el motivo queda escrito en el propio componente: un `sr-only` absoluto necesita un ancestro posicionado.
+
+**La rejilla era, además, un segundo scroller vertical.** Desde la Fase 52 el marco de la agenda tenía `max-h-[70vh] overflow-auto` para que la cabecera de fechas se pegara a su borde; eso convertía la rejilla en su propia ventana de desplazamiento dentro de `main`, con su barra y su rueda. Ahora la rejilla **solo desplaza en horizontal**: quitar la altura máxima devuelve la vertical a la página, y la cabecera de días sale del scroller y se pega a `main` con `sticky -top-6` —el `-top-6` compensa el `py-6` de `main`, sin él la cabecera se queda 24 px por debajo del borde y las filas asoman por encima de las fechas—. El desplazamiento horizontal se mantiene porque la pista de días se traslada con `translateX(-scrollLeft)` y la esquina «Recurso» se contra-traslada, ambas alimentadas por el evento `scroll` del único contenedor horizontal. `overflow-y-hidden` no es decorativo: la especificación hace que `overflow-x: auto` compute `overflow-y: auto`, y sin él aparecía la barra vertical de 15 px. La última marca horaria del día se retiró: se dibujaba justo en el borde de la fila y su hora, con `top-0.5`, colgaba 19 px por debajo —el contenido medía 4500 px donde la caja tenía 4481—.
+
+**Al simular, el tramo se queda a la vista.** Con la página como único scroller, la celda DEMO podía quedar por debajo del pliegue y la demostración se calculaba sin verse. El efecto de centrado horizontal —que ya existía— revela ahora también los primeros 200 px del tramo desplazando `main` lo justo y nunca hacia arriba. En el viewport de 1360×577, el primer clic sobre Abraham Arana Aldana deja en pantalla el panel con las dos renegociaciones (33–241), la cabecera de días (329–377) y el tramo DEMO con `68831`, `44221` y `62110` marcados `→ 21/10`.
+
+**El simulador va encima de la agenda que explica.** Estaba debajo de la rejilla, al final de una pantalla de más de 5.600 px: un panel de control que nadie encuentra. Ahora abre la pantalla, y su resultado queda junto a la cabecera de fechas cuando la página se desplaza para enseñar el tramo.
+
+**Verificado en el navegador.** Un solo scroller vertical (`main`), ventana no desplazable (`scrollHeight` = viewport = 577), rejilla 4481/4481 con `overflow-y: hidden`, cabecera clavada en 64 px con la esquina pegada al scroller en todos los desplazamientos profundos, zoom 132 → 224 → 132, filtro de texto que reduce 18 filas a una, Escape que cierra el panel lateral, y la recarga que deja todo en cero: 0 celdas demo, 0 tramos demo, 0 fila DEMO, 0 renegociaciones simuladas y 71 tramos reales en su sitio.
+
+**Limitaciones.** La cabecera no pertenece al scroller horizontal: lo imita con un `transform` alimentado por su evento `scroll`, así que depende de que todo cambio de `scrollLeft` dispare el evento —el cambio de zoom se relee a mano por eso—. Y el `-top-6` está atado al `py-6` de `main`: otro contenedor de desplazamiento o otro relleno exigen ajustar la clase.
+
+### La Fase 58: una semana a la vez, y el fin de semana es de cada persona
+
+**La agenda deja de ser un horizonte de quince mil píxeles.** Hasta ahora el Timeline pintaba toda la ventana del plan —de julio a noviembre— y la única forma de movernos en el tiempo era arrastrar la barra horizontal. Ahora pinta **una semana**, de lunes a domingo, con su fila de navegación encima: «‹ Semana anterior», «Semana 43 · 19 de oct – 25 de oct», «Semana siguiente ›» y «Volver a hoy». El número de semana es ISO-8601, que es el que usa la gente cuando dice «la semana 43», y la etiqueta lleva las dos fechas para que no haya que traducirlo. Los botones se apagan en los bordes de lo que hay cargado: no se puede navegar a una semana sin datos, porque enseñaría siete columnas vacías que no significan «no hay trabajo» sino «no se miró».
+
+**El scroll horizontal sigue existiendo, pero ya no es el viaje.** Con zoom compacto el contenido de una semana mide 1.100 px; antes, el de todo el plan pasaba de 15.000. Si la semana no cabe a lo ancho —con zoom amplio, o en una pantalla estrecha— se puede desplazar, pero el tiempo se mueve con los botones.
+
+**El «no laborable» de la cabecera era una mentira por omisión.** La rejilla calculaba los días cerrados como aquellos en que **todo el equipo** tenía cero horas disponibles, y los pintaba en la cabecera para todos. La auditoría de esta fase encontró que el resto del sistema ya era por persona: `CapacityBook` publica una fila de capacidad por recurso y día, y el calendario del backend tiene el fin de semana en el contexto de cada plan. Así que el supuesto global se retiró: **la cabecera solo nombra el día y marca hoy**, y cada celda decide con su propia capacidad. Una celda con 0 disponibles y 0 ocupadas dice «no laborable» dentro de su franja y con el fondo atenuado —la leyenda reza «Día sin jornada para esa persona»—; una con capacidad es un día laborable, tenga trabajo o no; y una **sin fila de capacidad** queda «desconocida», que no es lo mismo que cerrada. Sábado y domingo se pintan siempre, completos y al mismo ancho que el resto: no se esconden ni se comprimen.
+
+**Simular fuera de la semana visible ya no deja el resultado invisible.** Si el día elegido en el simulador cae en otra semana, la rejilla se mueve a la semana del incidente en el mismo render —no en un efecto que pintaría una semana y saltaría a otra— y la celda DEMO aparece centrada. «Volver a hoy» sigue funcionando con una simulación viva: el ajuste no se repite.
+
+**Verificado en el navegador** (viewport 1360×577): abre en la semana 43 con «Volver a hoy» apagado; siguiente lleva a la 44 y devuelve el desplazamiento horizontal a 0; anterior vuelve a la 43 y de nuevo a la 42; el final de la ventana se detiene en la 46 con el botón apagado; sábado y domingo se ven completos y 20 celdas de fin de semana llevan su marca propia sin que la cabecera diga nada; el filtro «Incidentes» deja 6 filas y 14 tramos en las mismas siete columnas; el panel lateral, los desplazamientos y el simulador siguen funcionando igual; y simular el 3 de noviembre desde otra semana lleva la etiqueta a «Semana 45 · 2 de nov – 8 de nov».
+
+**Limitaciones.** En los datos vivos que se revisaron ninguna persona del padrón tiene capacidad de sábado o domingo, así que el fin de semana laborable solo se prueba con fixtures; y con zoom compacto todavía quedan 77 px de scroll horizontal para ver el domingo entero en una ventana de 1360 px.
+
+### La Fase 59: las horas del Timeline se leen, y lo que dura se ve
+
+**La escala horaria sale de debajo de los tramos.** Existía —una etiqueta por hora y por fila— pero vivía dentro de la primera columna de día, y el primer bloque de la mañana la tapaba: un día con trabajo desde las 09:00 se leía sin saber a qué hora empezaba nada. Ahora hay una **columna de horas propia**, a la izquierda de los días, pegada junto a los nombres como la de recursos y repetida en cada fila, para que cada persona se lea contra su propia escala. Se queda fija cuando se desplaza a lo ancho y ya no hay nada que la cubra. El eje es ahora una **jornada fija, de 08:00 a 18:00**, en lugar de derivarse de los tramos: antes, un día con un solo tramo de 09:00 a 10:00 borraba las otras horas y el mismo bloque cambiaba de alto según la carga de la semana. Si algo cae fuera de esa ventana, el eje se estira lo justo para no esconderlo, y el rail rotula también su hora de cierre.
+
+**Las líneas de hora se ven, y la media hora también cuando hay alto.** Los separadores pasan de `border-border/60` a `border-border`, la misma línea que separa los días; con Normal, Amplia y Detalle aparece además la media hora, y en Compacta no, porque una línea cada 13 px es ruido. El texto del tramo deja de centrarse en vertical: arranca en el borde superior, que es su hora de inicio. (El `<button>` centraba su contenido por defecto; con un bloque de cuatro horas y el zoom detallado el identificador flotaba a media altura.)
+
+**Ningún tramo se queda mudo.** Hasta ahora, por debajo de 34 px de alto el bloque ocultaba su línea de horas: menos de 78 minutos en Compacta. Ahora las horas se mudan a la primera línea, junto al identificador: `62110  16:32–17:00`. Si el alto mínimo estira el bloque por encima de lo que dura de verdad, el borde inferior se pinta discontinuo y queda constancia —el recorte se ve, no se disimula—. El `title` y el drawer siguen dando el horario completo con la duración y el compromiso.
+
+**Y un zoom nuevo que prioriza leer, no abarcar.** «Detalle» da 120 px por hora: una hora cabe en una tarjeta, media hora en 60 px y un tramo de quince minutos se dibuja de 30 sin recortarse. Compacta, Normal y Amplia siguen sirviendo para ver el día entero; Detalle es para leer uno.
+
+**Verificado en el navegador** (viewport 1360×577): con Compacta el rail pinta 08:00–18:00 cada 26 px en cada una de las 18 filas y los dos tramos que antes se quedaban sin hora dicen `16:32–17:00`; con Normal el eje mide 440 px, aparecen las diez medias horas y no queda ningún tramo recortado; con Detalle el eje mide 1.200 px, el bloque más bajo mide 56 px y ninguno se recorta; al desplazar a lo ancho el rail queda alineado con su celda de cabecera (465 px con 465 px) mientras los días pasan por debajo; el filtro «Incidentes» deja 7 filas, 14 tramos y 7 rails; y la navegación semanal sigue llevando de la 43 a la 44 y de vuelta con el desplazamiento horizontal a cero.
+
+**Limitaciones.** El rail ocupa 40 px, así que con Compacta el domingo entero queda a 117 px de scroll horizontal en una ventana de 1360 (eran 77). Y «Detalle» estira cada fila a 1.200 px: es una vista de lectura de un día, no un panorama del equipo.
+
+### La Fase 60: el chip de pendientes lleva al pendiente
+
+**El número deja de ser solo un aviso.** La fila de cada persona dice cuántos pendientes tiene, y hasta ahora eso era todo: para actuar había que bajar al panel, encontrar a la persona, localizar el ticket y pulsarlo. Ahora el chip **es** la acción, y se comporta distinto según lo que haya detrás.
+
+**Con un solo pendiente, es un enlace.** Lleva al sitio donde ese pendiente se resuelve —declaración, renegociación o planificación, según su causa— con el técnico ya elegido y el ticket ya cargado. En vivo, el chip de Andres Felipe Gonzalez abre la declaración con `68972` en estado `SIN_DECLARACION` y los campos de estimación y fecha vacíos: lo único que falta escribir. Desaparecen los dos desplegables que había que recorrer.
+
+**Con varios, filtra el panel y lleva la vista hasta él.** No hay un ticket que abrir, así que el chip reutiliza el foco que ya usaba la cobertura: el panel queda en «Solo los pendientes de …» con todos los tickets de esa persona, y la página se desplaza hasta él —en vivo, `main` de 0 a 7.572 px, el panel a 167 px del borde en una ventana de 577—. Se limpia con «Ver todo el equipo», sin releer nada.
+
+**Una sola regla para las rutas.** `pendingPath` en `lib/pending.ts` comparte la ruta por causa entre el panel y el chip: lo desplazado sin acuerdo va a Renegociación, lo que no entró al plan va a Planificación y el resto a Declaración. Y en el calendario de un plan, donde no hay panel al que llevar, el chip sigue siendo un distintivo: la rejilla no inventa navegación.
+
+**Verificado en el navegador** (viewport 1360×577): de 11 personas con pendientes, 4 tienen un enlace y 7 un botón; el enlace de Andres Felipe Gonzalez abre `/declaraciones?tecnico=AndrGonza&ticket=68972&volver=%2F` con técnico, ticket y campos listos; el botón de Andres Steven Beltran deja el panel filtrado con sus 8 tickets y lo trae a pantalla; el único pendiente de Abraham Arana enlaza a Planificación, porque es trabajo ya declarado; el drawer de un tramo sigue abriendo y cerrándose con Escape sin tocar los chips; y con el filtro «Con pendientes» puesto, 11 filas y 11 chips siguen funcionando y el filtro sigue activo.
+
+**Limitaciones.** El chip es un distintivo de 10 px: el atajo es pequeño, y la fila del panel sigue siendo el camino cómodo. Y con varios pendientes el chip no elige uno: filtra y posiciona, pero el gestor sigue decidiendo cuál abrir.
+
+### La Fase 61: Tickets, el inventario completo del trabajo activo
+
+**El módulo deja de llamarse Incidentes.** La tabla pinta incidentes y requerimientos, así que el rótulo describía una mitad; pasa a **Tickets**, la palabra que ya usan el contrato, la copia de la aplicación y el backend. La dirección `/incidentes` no cambia: hay enlaces guardados y el enlace de vuelta de la declaración se compone con ella. El módulo recupera su puerta en el menú, que queda en **Timeline del equipo, Tickets, Declaración, Renegociación, Configuración**: primero cuándo y quién, después qué hay y en qué estado, y después dónde se resuelve.
+
+**Lo que el Timeline no puede contar.** El Timeline contesta *cuándo y quién*: pinta tramos por persona y semana, pero el tipo `TimelineItem` no lleva título, estado de GLPI, prioridad ni fecha de creación, y lo no planificado vive en otro panel y en otro formato. Tickets contesta *qué existe y en qué estado está*: todos los tickets activos —planificados, desplazados, sin plan y compartidos— en una tabla con su registro de GLPI, su trazabilidad de declaración y sus estados.
+
+**Siete estados de negocio, sin recalcular nada.** La declaración se lee en palabras (Sin declarar, Sin estimación, Sin compromiso, Planificable, No planificable) y se suman dos columnas más: **Plan** —Planificado, Desplazado o Sin plan— y **Acuerdo** —Pendiente de acuerdo o Acordado—. No son una escala sino tres preguntas independientes: un ticket puede estar Planificado y pendiente de acuerdo a la vez, así que se muestran en tres insignias y no se inventa una precedencia. Si la lectura del plan falla, la celda dice «—» en vez de «Sin plan»: no haber leído no es no tener.
+
+**Seis filtros y tres salidas.** Persona, Tipo, Estado GLPI, Declaración, Planificación —Con plan, Sin plan, Planificado, Desplazado— y Renegociación, todos en memoria y con su parámetro de dirección. Cada fila ofrece Declarar cuando falta algo, Timeline siempre y Renegociar cuando el acuerdo está pendiente; el enlace al Timeline lleva persona y ticket (`/?tecnico=…&ticket=…`) y la agenda abre el drawer de ese tramo, que es la lectura contextual sin una pantalla nueva.
+
+**Verificado en el navegador** (viewport 1360×577): 90 tickets activos, 16 incidentes y 74 requerimientos; 59 planificables y 31 pendientes; 59 con plan (49 planificados y 10 desplazados) y 31 sin plan; 4 pendientes de acuerdo y 7 acordados; el enlace de Timeline abre `/?tecnico=CesaGira&ticket=65126` con una sola fila y el drawer abierto; Declarar abre `/declaraciones?tecnico=AndrBelt&ticket=66594&volver=%2Fincidentes` con «Volver a Tickets»; y Renegociar abre `/renegociaciones?ticket=66913` con el formulario de ese acuerdo.
+
+**Limitaciones.** La tabla tiene once columnas y desplaza en horizontal por debajo de 88 rem: es una pantalla de escritorio. Con varios tramos por ticket se enseña un solo estado de plan y gana Desplazado; el resto se lee en el Timeline. Y con la lectura del plan caída, el filtro «Sin plan» deja la tabla vacía en vez de inventar la ausencia.
+
+### La Fase 62: la renegociación explica por qué se movió el requerimiento
+
+**La pregunta que faltaba.** Renegociación enseñaba el estado del acuerdo, la fecha acordada, quién lo acordó y por qué —el motivo del acuerdo, que es otra cosa—, pero no por qué el motor había movido el requerimiento. La causa ya viajaba en `GET /api/renegotiations`, en `events[]`: incidente, regla aplicada, fecha original, fecha nueva, severidad y motivo. La pantalla la tenía y no la pintaba.
+
+**Una sola explicación en toda la aplicación.** El bloque que el Timeline ya enseñaba en el drawer del tramo se extrajo a `DisplacementCause` y lo importan los tres sitios que explican un desplazamiento: el Timeline, la tabla de Renegociación y el modal del acuerdo. El componente no calcula nada: pinta los seis valores del contrato. Así no pueden existir dos explicaciones del mismo movimiento, y una prueba compara el texto de la tabla y del modal carácter por carácter. El motivo no se reescribe en el frontend: lo redacta el motor en `PlanningService.reason(AppliedRule)` y es el mismo texto que publica el Timeline, por construcción.
+
+**La tabla contesta la pregunta sin abrir nada.** La columna «Fecha desplazada» pasa a «Desplazamiento» y muestra la causa completa bajo las etiquetas Fecha original, Fecha nueva, Regla aplicada, Incidente causante —con su severidad— y Motivo. Un requerimiento con varios eventos pinta cada uno: resumirlos escondería el desplazamiento posterior, que es el que obliga a volver a acordar. Cuando el incidente es nulo —`CAPACIDAD_DIARIA_EXCEDIDA`— el bloque escribe «Ocupación previa de la jornada», porque la ausencia de incidente es una causa y no un hueco de lectura. El modal repite el bloque con el mismo componente, bajo «Por qué se desplazó (lo publica el plan)», para que quien redacta el acuerdo vea la causa mientras lo escribe.
+
+**Verificado en el navegador.** El requerimiento **66913** de Abraham Arana enseña en Renegociación `vie, 23 de oct → lun, 26 de oct`, `CAPACIDAD_COMPROMETIDA`, incidente `57469` de severidad MEDIO y el motivo «El incidente comprometio la capacidad de la jornada pactada»; el drawer del mismo tramo en el Timeline enseña el bloque idéntico, y el texto de la fila, del modal y del drawer coincide carácter por carácter. El requerimiento **68253**, sin incidente, enseña «Ocupación previa de la jornada» con `CAPACIDAD_DIARIA_EXCEDIDA`.
+
+**Limitaciones.** La columna de la causa ocupa más alto que la pareja de fechas que reemplaza: es el precio de leer la explicación donde antes había un resumen. Y la tabla sigue siendo de escritorio: con muchas columnas desplaza en horizontal. Nada de esto se resolvió tocando el motor, las reglas, la persistencia o el backend: la fase es de visualización.
+
+### La Fase 64: la renegociación hecha en GLPI ya no se teclea dos veces
+
+**El doble trabajo, y por qué existía.** Cuando un incidente desplaza un requerimiento, el gestor habla con quien lo pidió y cambia la fecha. Esa fecha se escribe en GLPI como `time_to_resolve` —el **TTR**, el compromiso con el usuario— y hasta ahora había que volver a teclearla aquí para que el Timeline dejara de decir `PENDIENTE_DE_ACUERDO`. La auditoría de la fase encontró que las dos mitades ya estaban hechas y nadie las había juntado: `GlpiTicket` y `GlpiTicketMapper` leían `time_to_resolve` desde la Fase 1 sin ningún consumidor, y `RenegotiationEntity` guardaba `source` con el valor `GLPI` desde la Fase 25 sin haberlo usado nunca. **No hubo migración**: se conectó lo que ya existía.
+
+**Dos tiempos en GLPI, y solo uno se negocia.**
+
+| Tiempo | Qué es | Participa en la renegociación | Alimenta el motor |
+|---|---|---|---|
+| `time_to_own` (**TTO**) | Cuánto tarda alguien en tomar el ticket: atención inicial | **No.** No se negocia con el usuario y no se lee | No |
+| `time_to_resolve` (**TTR**) | La fecha de compromiso con quien pidió el trabajo | **Sí: es la única fuente de la conciliación** | No: el trabajo y las horas se declaran aquí (decisión 124.2) |
+
+El TTR no es una entrada de planificación y no se convirtió en una: **su único uso de negocio es conciliar**. El motor sigue entregando cuando su capacidad se lo permite, no cuando GLPI promete, y por eso el acuerdo y el desplazamiento son dos hechos distintos que conviven sin igualarse.
+
+**Esto cambió en la Fase 66b.** El motor sigue entregando cuando su capacidad se lo permite, pero desde la Fase 66b **el requerimiento se ubica en la fecha de GLPI** —el `internal_time_to_resolve` y, si no hay, el `time_to_resolve`— y se planifica desde ahí. Con ello la cuarta condición de la conciliación no puede cumplirse y ningún desplazamiento se convierte en acuerdo por sí solo: la fecha la acuerda una persona (decisión 408).
+
+**No todo TTR es un acuerdo.** GLPI publica un TTR por defecto en casi todos los tickets —es el vencimiento del SLA—, así que tratar cualquier fecha como renegociación inventaría un acuerdo por ticket. `SlaReconciliationService` exige cinco condiciones, en este orden:
+
+1. **Existe un desplazamiento activo** en el plan que se acaba de calcular.
+2. **Existe una renegociación pendiente**: el acuerdo vigente, si lo hay, no cubre ese desplazamiento.
+3. **GLPI publica un TTR** para el ticket.
+4. **El TTR es posterior a la fecha original del desplazamiento.** Un TTR anterior es el SLA histórico, no una fecha nueva.
+5. **No existe un acuerdo manual.** Un acuerdo que escribió una persona manda siempre y nunca se sobrescribe desde GLPI.
+
+**Dónde corre, y por qué ahí.** La conciliación se ejecuta dentro de `GlpiPlanningService`, justo después de planificar, porque es el único punto donde están a la vez en memoria el TTR de los tickets que GLPI acaba de devolver y los desplazamientos que el motor acaba de calcular: no hace falta una llamada extra a GLPI ni una lectura con efectos secundarios. El precio está dicho: un cambio de TTR se detecta en la **siguiente generación del plan de ese técnico**, no en el instante en que se escribe en GLPI. `POST /api/planning/simulate` no concilia: el simulador no consulta GLPI y no tiene TTR.
+
+**El acuerdo conciliado es un acuerdo normal, con origen `GLPI`.** Se guarda en `renegotiation` con `agreedBy = "GLPI"`, el motivo «Conciliado automaticamente desde el TTR de GLPI» y su fila de historial, igual que uno manual. Por eso todo lo demás —la lectura consolidada, el estado derivado, la pantalla de `/renegociaciones`— funciona sin cambios. **El origen es lo único que cambia**, y es lo que distingue los dos casos en la interfaz:
+
+| `source` | Historial | Insignia |
+|---|---|---|
+| `GLPI` | «Conciliado automáticamente» | «Acordada en GLPI» |
+| `HTTP` | «Acordado manualmente» | «Acordada manualmente» |
+
+La pantalla no deduce el origen de los datos: lo lee de `source`, y `agreementOrigin` trata cualquier valor desconocido como manual —un acuerdo que no se puede atribuir se atribuye a una persona—.
+
+**La trazabilidad sigue completa, y ahora contesta una pregunta más.** La fila de `GET /api/renegotiations` dice, además de lo que ya decía, **de dónde salió el acuerdo**: fecha original del desplazamiento, fecha desplazada, TTR detectado, origen, autor y fecha de conciliación. La historia queda en `renegotiation_history`, con una entrada por cada cambio de TTR. Un TTR nuevo después de un desplazamiento nuevo actualiza el acuerdo de GLPI y lo anota; un TTR nuevo sobre un acuerdo manual no hace nada.
+
+**La idempotencia obligó a arreglar algo más viejo.** Al probarla apareció un fallo de fases anteriores: el motor solo publicaba un `RescheduleEvent` si el registro de idempotencia lo daba por nuevo, así que **la segunda corrida del mismo escenario borraba el desplazamiento del plan nuevo** —y con él, el hecho que el acuerdo cubría—. Se corrigió el contrato: `RescheduleLedger.claim` devuelve el instante de auditoría en vez de un booleano, el primer reclamo gana y los siguientes reciben el original, y el motor **siempre** publica el evento con ese instante. Reclamar no es publicar: el reclamo es único —para no auditar dos veces el mismo desplazamiento— y la publicación es por plan, porque cada plan guarda solo sus propios eventos. Repetir la petición deja el mismo evento con la misma marca y el mismo acuerdo con el mismo sello.
+
+**Limitaciones.** La conciliación no tiene disparador propio: llega con la siguiente planificación desde GLPI (riesgo 367 en el documento de decisiones). Y un gestor que cambie el TTR por la razón del SLA y no por una renegociación, después del desplazamiento, no se puede distinguir de una renegociación real: se registra como acuerdo, se ve con su origen `GLPI` y se corrige editándolo (riesgo 368).
+
 ---
+
+### La Fase 65: la renegociación cuenta su historia entera en una pantalla
+
+**La pregunta que faltaba contestar.** `/renegociaciones` decía qué se renegoció y a qué fecha, pero para saber **por qué** había que volver al Timeline. La Fase 62 ya había llevado la causa del desplazamiento a la tabla —incidente, regla, fecha original, fecha nueva y motivo—; lo que faltaba era contarlo completo y con su origen, sin obligar a comparar pantallas.
+
+**Todo estaba en el contrato.** La auditoría buscó los siete datos del brief —requerimiento, incidente causante, regla, fecha original, fecha desplazada, fecha acordada y origen— en la respuesta de `GET /api/renegotiations` y los encontró todos: `workItemId`, `events[].incidentId`, `events[].appliedRule`, `events[].originalDate`, `events[].rescheduledDate`, `renegotiation.agreedDate` y `renegotiation.source`. **No se creó un DTO, ni un endpoint, ni una consulta.** La fase es de lectura, visualización y navegación: ni una línea del motor, de la capacidad, de las reglas, de la conciliación, de GLPI ni de la persistencia.
+
+**La historia completa, en una fila.**
+
+| El brief pide | De dónde sale | Dónde se ve |
+|---|---|---|
+| Requerimiento | `workItemId` | Primera columna |
+| Incidente causante | `events[].incidentId` | Columna «Desplazamiento» |
+| Regla aplicada | `events[].appliedRule` | Columna «Desplazamiento» |
+| Fecha original | `events[].originalDate` | Columna «Desplazamiento» |
+| Fecha desplazada | `events[].rescheduledDate` | Columna «Desplazamiento» |
+| Fecha acordada | `renegotiation.agreedDate` | Columna «Fecha acordada» |
+| Origen | `renegotiation.source` | Insignia del estado |
+| Estado | `status` | Insignia del estado |
+
+**Manual y GLPI se distinguen por el campo, no por el aspecto.** La insignia sale de `source` con la misma regla que ya usaba el Timeline —`GLPI` es «Acordada en GLPI» y cualquier otra cosa, «Acordada manualmente»—, y la auditoría encontró que la tabla usaba una etiqueta distinta: decía «Conciliado automáticamente» donde el Timeline decía «Acordada en GLPI». Se unificó en la insignia corta, y desde entonces las dos pantallas dicen exactamente lo mismo. En un acuerdo conciliado, debajo de la fecha, se lee **«TTR detectado · Conciliado automáticamente»**: la fecha de un conciliado *es* el TTR del ticket, y se dice sin abrir el historial.
+
+**La explicación es una sola pieza.** La columna «Desplazamiento» de la tabla, el modal del acuerdo y el detalle del Timeline renderizan el mismo componente, `DisplacementCause`, con los mismos campos. La consistencia que el brief exige no es el resultado de dos textos que hoy coinciden: es que no hay dos textos.
+
+**Cinco filtros.** A «Todas», «Pendientes» y «Acordadas» se suman **«Acordadas manualmente»** y **«Acordadas en GLPI»**. No son estados nuevos del backend: son la combinación de `status` con el origen, calculada en el cliente sobre la lista que ya se recibió —cambiar de filtro no dispara ninguna petición y por eso no puede discrepar de los números que contó el backend—. Un requerimiento que se movió después de haberse acordado vuelve a «Pendientes» aunque tenga un acuerdo: el estado lo decide el backend.
+
+**Saliendo de la pantalla sin pantallas nuevas.** Cada fila enlaza con **«Ver en el Timeline»** —las dos pantallas que ya existían, con la persona y el ticket puestos— y con **«Ver en Tickets»** —el inventario filtrado por esa persona—. No hay rutas nuevas; el enlace a Tickets filtra por persona porque esa vista no tiene filtro por ticket, y es la limitación que queda dicha (riesgo 377).
+
+**Resultado.** Backend **407 pruebas, 0 fallos, 3 omitidas** —sin cambios, ejecutadas para probar compatibilidad—; frontend **395 pruebas en 23 archivos**, `tsc` y oxlint limpios; Playwright con las once comprobaciones del brief sobre la app real: pendiente, manual y conciliado a la vez en la misma pantalla, incidente y regla en las tres filas, las dos fechas, el acuerdo, el origen, y la navegación al Timeline y a Tickets con la explicación coincidiendo en las dos pantallas.
+
+### La Fase 66: transición a producción y saneamiento de los datos de prueba
+
+**Lo que había no era negocio.** La base operativa tenía **14 acuerdos de renegociación, y los 14 eran de prueba**: once con autor `verificacion-fase-48`, dos con autor `verificacion-fase-38` y uno suelto. Ninguno tenía `source = GLPI`. A su alrededor había 19 planes de demostración —`demo-f38`, `demo-f39`, `demo-f39b` y cuatro desarrolladores numéricos—, 13 parejas de idempotencia con identificadores inventados y 15 entradas de historial. El trabajo de la fase fue quitarlos y dejar que el sistema reconstruyera su estado leyendo solo GLPI.
+
+**Primero el respaldo, después el borrado.** Se guardó un `pg_dump -Fc` completo de `GestionDemandaDB` —verificado con `pg_restore -l`, 15 tablas— y un volcado aparte de `renegotiation` y `renegotiation_history` para poder reponer un acuerdo sin arrastrar los planes de prueba. Después, en una sola transacción: los 14 acuerdos, sus 15 entradas de historial y los 19 planes con todas sus filas hijas. **Nada con `source = GLPI` se tocó** —no había ninguno—. El resultado: cero acuerdos, cero historial, 26 planes reales.
+
+**La regeneración destapó un fallo de despliegue, no de datos.** Al pedir el plan de los ocho desarrolladores reales desde GLPI, el motor devolvió **cero desplazamientos**. La base decía que los mismos tickets seguían activos y los planes anteriores conservaban sus 21 eventos. La causa: el backend que atendía en `:8080` **había arrancado antes del arreglo de idempotencia de la Fase 64** —12:07 del 22 de octubre, con las clases del arreglo compiladas a las 17:04—, y el binario viejo no publica un evento cuando la pareja ya estaba reclamada. Reiniciado el proceso, la misma petición devolvió **7 desplazamientos**. Un despliegue no está hecho hasta reiniciar el servicio; queda como riesgo 388.
+
+**Siete desplazamientos reales y cero acuerdos de GLPI: ese es el estado correcto.** Los siete requerimientos desplazados hoy —67923, 62110 y 66560 de AbraAran; 54528 y 68548 de CesaGira; 33219 y 66337 de MaurMarm— están `PENDIENTE_DE_ACUERDO`. La conciliación automática los revisó todos y no registró ninguno, porque en los siete **el TTR de GLPI es anterior a la fecha original del desplazamiento**: es el SLA histórico del ticket, no una fecha renegociada, y la cuarta condición de la Fase 64 lo rechaza. El sistema no inventa acuerdos para llegar a un número distinto: la fecha la acuerda una persona o un TTR nuevo en GLPI.
+
+| Requerimiento | Fecha original | TTR en GLPI | Resultado |
+|---|---|---|---|
+| 67923 | 2026-10-17 | 2026-10-14 | Pendiente: TTR anterior |
+| 62110 | 2026-10-20 | 2026-08-07 | Pendiente: TTR anterior |
+| 66560 | 2026-10-20 | 2026-10-09 | Pendiente: TTR anterior |
+| 54528 | 2026-11-04 | 2026-06-03 | Pendiente: TTR anterior |
+| 68548 | 2026-11-06 | 2026-10-21 | Pendiente: TTR anterior |
+| 33219 | 2026-10-24 | 2026-02-11 | Pendiente: TTR anterior |
+| 66337 | 2026-10-30 | 2026-09-24 | Pendiente: TTR anterior |
+
+**Los planes del binario viejo se retiraron.** La primera regeneración había dejado ocho planes sin desplazamientos —el insumo era real, el código no—; se borraron con sus hijos y quedaron los ocho de la segunda corrida. Dos versiones del mismo hecho a la misma hora hacen que «comparar planes» mienta: la diferencia no habría sido del negocio, sino del binario.
+
+**Lo que se conserva, y por qué.** Quedan **73 declaraciones** en `planning_metadata` —horas y fechas de compromiso de tickets reales, la mayoría con autor de validación—. Son datos de negocio, no acuerdos, y sin ellas el motor descarta cada requerimiento con `SIN_ESTIMACION_DECLARADA` y el plan queda vacío; borrarlas no habría limpiado el sistema, lo habría dejado sin poder planificar. Pero se dice: **las declaró una validación, no el gestor en producción**, y conviene rehacerlas con el flujo normal antes de operar (riesgo 387). Otra limitación, la 389: de los siete desplazamientos, cinco se deben a duración mayor que la jornada o a caer en día no laborable, y el incidente que la pantalla muestra es la atribución de respaldo del motor —el hecho es real, el culpable puede no serlo—.
+
+**Resultado.** Backend **407 pruebas, 0 fallos, 3 omitidas**; frontend **395 pruebas**, `tsc` y oxlint limpios; sin una línea de código cambiada, porque la fase es de datos. Playwright sobre la aplicación real con cinco comprobaciones: Renegociación con las siete filas pendientes y ningún dato de prueba, el filtro «Acordadas en GLPI» vacío, el Timeline con el 67923 desplazado y su causa, Tickets con los tickets reales y su estado de plan, y el Timeline del equipo con las ocho personas reales. Capturas en `.probe/f66-01…05`.
+
+### La Fase 66b: la fecha del plan es la de GLPI, y las fechas de validación se retiraron
+
+**La decisión de negocio, dicha una vez.** El **Internal TTR** —el tiempo interno para resolver que GLPI publica— **es la fecha objetivo del negocio**. Las fechas comprometidas que había en `planning_metadata` eran, en su mayoría, valores escritos por validaciones: nadie las había acordado con quien pidió el trabajo. Desde esta fase, si un requerimiento aparece en el Timeline, su posición temporal corresponde a una fecha que existe en GLPI.
+
+**Dos fuentes, cada una con lo que sabe.**
+
+| Dato | De dónde sale | Si falta |
+|---|---|---|
+| Horas del requerimiento | Declaración del gestor (`planning_metadata.estimated_hours`) | `SIN_ESTIMACION_DECLARADA` |
+| Fecha del requerimiento | GLPI: `internal_time_to_resolve` (opción **180**); si no hay, `time_to_resolve` (opción **18**) | `SIN_FECHA_EN_GLPI` |
+| Fecha de la incidencia | GLPI: la fecha de alta del ticket | — |
+
+`committedDate` se sigue guardando y se sigue enseñando como **contraste**, pero ya no ubica el plan. El adaptador sube a `glpi-rest-4`, y sus planes se distinguen de los `glpi-rest-3` por la marca que ya se guardaba en `planning_input`.
+
+**Se borraron 59 declaraciones y se conservaron las 14 reales.** Antes de tocar nada se hizo un respaldo completo y restaurable en `.probe/f66b-backup/`: un `pg_dump -Fc`, un volcado `data-only` con los 73 y los 153 `INSERT`, y el esquema aparte. Después, en una transacción, se borraron las 59 filas de autor de validación y de demostración heredada. **No se tocó ninguna renegociación, ningún historial ni ningún dato de GLPI**, y `planning_metadata_history` queda intacto —153 entradas— sin clave foránea que lo arrastre.
+
+**El caso testigo, 68428.** Antes salía con una declaración de `verificacion-fase-48` de 4 horas y fecha **2026-10-27**. Esa fecha la escribió una prueba. GLPI fecha el ticket el **2026-11-19** por su Internal TTR, y ahí es donde ahora aparece: sin horas declaradas sale como `SIN_ESTIMACION`, la pantalla dice `sin estimación · 2026-11-19` y el 2026-10-27 desaparece. El ticket no se inventa otra fecha para no quedar sin línea.
+
+**La conciliación ya no puede inventar acuerdos, y eso está bien.** `SlaReconciliationService` exige que el TTR de GLPI sea posterior a la fecha original del desplazamiento. Como la fecha original **es** ahora la de GLPI, la condición no se cumple por construcción y ningún desplazamiento se registra como «Acordada en GLPI». Un desplazamiento significa que el motor no pudo entregar en la fecha de GLPI, y el acuerdo lo toma una persona.
+
+**Lo que cuesta.** De las 45 declaraciones activas del equipo, solo 11 eran reales: las otras 34 se borraron, así que sus tickets salen como `SIN_ESTIMACION` hasta que alguien declare horas —las fechas ya no hacen falta, las pone GLPI—. Y una fecha de GLPI fuera del horizonte deja el requerimiento sin ubicar y el motor lo reporta como conflicto (riesgo 412).
+
+**La regeneración, hecha.** Los nueve desarrolladores se planificaron desde GLPI el 2026-10-26. Los ocho planes vigentes eran `glpi-rest-3`; los nuevos son **`glpi-rest-4`** y no ubican nada por una declaración.
+
+| Antes de regenerar | Después |
+|---|---|
+| 8 planes vigentes, todos `glpi-rest-3` | **9 planes `glpi-rest-4`** —se suma AndrBelt, que no tenía plan— |
+| 35 requerimientos ubicados en la foto de los planes | **7** |
+| Fechas declaradas, algunas de validación | **Todas de GLPI**, ninguno `SIN_FECHA_EN_GLPI` |
+| Descartes mezclando falta de fecha y de horas | 49 descartes, **los 49 por horas** |
+
+Los siete requerimientos ubicados son 44221 (2026-10-23), 62110 (2026-11-06), 66560 (2026-10-23), 67113 (2026-11-02) y 67923 (2026-11-10) de AbraAran, y 68712 (2026-10-23) y 68016 (2026-11-16) de AndrBelt. El Timeline del equipo queda con **14 tramos** entre el 2026-06-23 y el 2026-11-16, y **cero desplazamientos**: con la fecha real todo cabe, así que la cola de renegociaciones queda vacía y `renegotiation` conserva sus 0 filas.
+
+**Un tramo en el pasado es un dato real, no un error.** El incidente 57469 sigue activo desde junio y se ubica el 2026-06-23: el motor no lo inventa, lo lee. Cerrarlo o renegociarlo es una decisión de operación, no una regla de planificación.
+
+**Resultado.** Backend **414 pruebas, 0 fallos, 3 omitidas**; frontend **395 pruebas en 23 archivos**, `tsc` y oxlint limpios. El detalle está en las decisiones 402 a 416, que sustituyen la recomendación de la auditoría (396). Las capturas de la validación están en `.probe/f66b-pw-01…05`.
 
 ## Verificación
 
@@ -773,16 +1019,20 @@ curl http://localhost:8080/api/planning-metadata/declarations/296
       "title": "Falla en produccion",
       "declarationStatus": "PLANIFICABLE",
       "discards": [],
-      "declaration": { "estimatedHours": 6.0000, "committedDate": "2026-10-20", "…": "…" }
+      "declaration": { "estimatedHours": 6.0000, "committedDate": "2026-10-20", "…": "…" },
+      "operationalDate": "2026-11-19",
+      "operationalDateSource": "internal_time_to_resolve"
     },
     {
       "workItemId": "502",
       "declarationStatus": "SIN_DECLARACION",
       "discards": [
         { "code": "SIN_ESTIMACION_DECLARADA", "reason": "no hay planificacion declarada para este elemento" },
-        { "code": "SIN_COMPROMISO_DECLARADO", "reason": "no hay planificacion declarada para este elemento" }
+        { "code": "SIN_FECHA_EN_GLPI", "reason": "GLPI no trae ni internal_time_to_resolve ni time_to_resolve" }
       ],
-      "declaration": null
+      "declaration": null,
+      "operationalDate": null,
+      "operationalDateSource": null
     }
   ],
   "source": { "glpi": "…", "declaration": "…" }
@@ -1234,7 +1484,7 @@ Las veintisiete fases anteriores sabían leer un plan, declararlo y renegociarlo
 
 **Los tres números son de esta ejecución y no del plan vigente.** El rótulo del desplazamiento lo dice —«los de esta corrida, no los del plan vigente»— porque el tablero publica el desplazamiento del plan vigente de cada técnico, y las dos cifras solo coinciden cuando este plan **es** el vigente.
 
-**Un descarte es una causa y no un ticket, y la lista lo dice.** Un ticket sin ninguna declaración produce **dos** entradas con el mismo `ticketId` —`SIN_ESTIMACION_DECLARADA` y `SIN_COMPROMISO_DECLARADO`—, porque cada una nombra a una persona distinta que tiene que actuar (decisión 124.1). Agrupar por ticket en la vista daría 1 donde el backend publica 2, así que se pintan las dos filas y se explica.
+**Un descarte es una causa y no un ticket, y la lista lo dice.** Un requerimiento sin nada produce **dos** entradas con el mismo `ticketId` —`SIN_ESTIMACION_DECLARADA` y `SIN_FECHA_EN_GLPI`—, porque cada una nombra a un sistema distinto que tiene que actuar: las horas las declara el gestor, la fecha la pone GLPI (decisión 124.1, corregida en la 403). Agrupar por ticket en la vista daría 1 donde el backend publica 2, así que se pintan las dos filas y se explica.
 
 **Cuántos tickets entregó GLPI no se enseña, y la pantalla dice por qué.** Ese número no viaja en la respuesta —el contrato publica el plan y los descartes, no el total consultado— y **no se deduce**: sumar asignaciones, desplazados, conflictos y descartes no da el total, y los descartes cuentan causas. Se prefiere no enseñar una cifra que nadie publicó antes que enseñar una que parece del backend y no lo es (riesgo 122).
 
@@ -1356,6 +1606,29 @@ nginx sirve el bundle estático y redirige `/api` al backend, por lo que tampoco
 **Fase 47 · La declaración: ¿un acuerdo o un formulario?** — auditoría, completada **sin implementar nada**: no se tocó `PlanningEngine`, ni capacidad, ni desplazamientos, ni renegociaciones, ni el modelo, ni GLPI. La pregunta era si Declaración representa el proceso real —*Ticket → el desarrollo estima → el usuario negocia la fecha → el gestor registra → el motor planifica → el Timeline ejecuta*— o solo guarda datos. **La respuesta, medida en vivo con Playwright sobre la instancia real, es que guarda el resultado del acuerdo, no el acuerdo**: un único `changedBy` firma la estimación y el compromiso, así que el historial no puede distinguir quién dijo qué, y el desarrollo y el usuario no existen como actores. **El hallazgo central es que declarar no sube la cobertura.** Se declaró el ticket `33219` (8 h, 2026-10-24) para Maury: pasó a `PLANIFICABLE`, pero la cobertura siguió en **2 de 86 (2,3 %)** porque el ticket cayó en P4 «No incluido en el último plan»; al regenerar el plan el motor lo desplazó al 26 por `CAPACIDAD_DIARIA_EXCEDIDA` y quedó en P3 «Sin acuerdo»; solo tras registrar el acuerdo subió a **3 de 86 (3,5 %)**. **Una declaración real son tres pantallas** —Declaración → Planificación → Renegociación—, y la cobertura potencial **bajó** de 85 a 83 durante el ciclo porque `potential = covered + P1` no suma P4: la métrica castiga el acto que quiere premiar (riesgo 233). Los 84 bloqueados son **todos P1 y ninguno por capacidad**: el cuello de botella no es el registro sino la adquisición del dato, y nada en el sistema dice a quién se le pidió, cuándo, ni qué pasa si no llega. **Tres cambios operativos subirían más rápido la cobertura**: (1) declaración en lote por persona desde el Timeline con los endpoints existentes; (2) encadenar «Generar plan» y «Registrar acuerdo» al guardar, prellenados; (3) prellenar y recordar «Quién declara» (hoy se teclea 81 veces) y prellenar el técnico en `/planificar`, que todavía pide el login GLPI a mano. **La pantalla se queda** como espacio de trabajo de una persona —el 10-de-10 de Maury se cierra mejor en una lista que en diez clics—, y el Timeline gana una acción contextual de una pieza para mover la cifra sin perder la cobertura a la vista: la regla es el tamaño de la unidad de trabajo. Cambiar el modelo a dos firmas y un estado de negociación queda documentado como propuesta (decisiones 230–232, riesgos 233–236) porque es contrato y decisión de negocio, no observabilidad. La validación escribió datos reales (metadata de `33219`, plan `d5e66ce6…`, acuerdo del 2026-10-26) y se declara como residuo: no existe endpoint `DELETE` (riesgo 158).
 
 
+
+
+**Fase 57 · Un solo scroll en el Timeline y la demo a la vista** — completada. La agenda deja de ser un scroller vertical: la cabecera de fechas se pega a `main` y la rejilla solo desplaza en horizontal. El scroll externo que sobraba lo creaba un `<caption>` `sr-only` absoluto que alargaba el documento 1.019 px. La simulación DEMO desplaza requerimientos, genera renegociaciones simuladas y desaparece al recargar; al simular, el tramo se revela en pantalla. Backend, motor, capacidad, GLPI, persistencia y snapshots intactos.
+
+**Fase 58 · El Timeline navega por semanas y la jornada es de cada persona** — completada. La agenda pinta una semana (lunes a domingo) y se mueve con «Semana anterior», «Semana siguiente» y «Volver a hoy», numerada en ISO-8601 y limitada a la ventana cargada; el scroll horizontal deja de ser el mecanismo de viaje en el tiempo. Desaparece el supuesto global de fin de semana: la cabecera ya no declara días cerrados y cada celda decide con su fila de capacidad —«no laborable» para esa persona, «desconocida» si no hay dato—. Sábado y domingo se pintan siempre. Simular en otra semana lleva la vista a esa semana. Backend, motor, capacidad, GLPI, persistencia, snapshots, desplazamientos, renegociaciones, filtros, drawer y declaraciones intactos.
+
+**Fase 59 · Las horas del Timeline se leen y lo que dura se ve** — completada. La escala horaria deja de vivir debajo de los tramos: una columna fija por fila, alineada al desplazar, con separadores sólidos y media hora cuando hay alto. Ningún tramo se queda sin decir su horario: los bajos llevan las horas en la primera línea y los que se recortan por el alto mínimo lo marcan con borde discontinuo. Nuevo zoom «Detalle» (120 px/hora) para leer un día. Backend, motor, capacidad, GLPI, persistencia, snapshots, desplazamientos, renegociaciones, filtros, drawer, simulador y declaraciones intactos. 
+
+**Fase 60 · El chip de pendientes lleva al pendiente** — completada. El distintivo «N pendientes» de cada fila deja de ser un aviso: con un solo pendiente es un enlace que abre su declaración —o su renegociación o su planificación, según la causa— con técnico y ticket ya puestos; con varios, filtra el panel de trabajo pendiente por esa persona y lleva la vista hasta él. La ruta por causa vive en un solo sitio (`pendingPath`) y la comparten el panel y el chip. Backend, motor, capacidad, GLPI, persistencia, snapshots, desplazamientos, renegociaciones, filtros, drawer, simulador y declaraciones intactos.
+
+**Fase 61 · Tickets, el inventario completo del trabajo activo** — completada. El módulo que se llamaba Incidentes pasa a **Tickets** y vuelve al menú principal, entre el Timeline y Declaración, sin cambiar su ruta `/incidentes`. La tabla reúne todos los tickets activos con su registro de GLPI, su trazabilidad de declaración y dos dimensiones nuevas leídas de lo que el Timeline ya carga: **Plan** (Planificado, Desplazado o Sin plan) y **Acuerdo** (Pendiente de acuerdo o Acordado). Seis filtros —Persona, Tipo, Estado GLPI, Declaración, Planificación y Renegociación— y tres salidas por fila: Declarar, Timeline (que abre la agenda con la persona y el ticket ya puestos) y Renegociar. Ninguna regla recalculada y ninguna consulta nueva: comparte claves de caché con el Timeline. Backend, motor, capacidad, GLPI, persistencia, snapshots, desplazamientos y declaraciones intactos.
+
+**Fase 62 · La renegociación explica por qué se movió el requerimiento** — completada. La tabla de Renegociación gana la causa del desplazamiento —incidente causante con su severidad, regla aplicada, fecha original, fecha nueva y el motivo que redactó el motor— en la columna «Desplazamiento», y el modal del acuerdo la repite bajo «Por qué se desplazó (lo publica el plan)». Los cinco datos ya venían en `GET /api/renegotiations`; no hay lectura nueva ni cálculo nuevo. La explicación vive en un solo componente, `DisplacementCause`, compartido con el Timeline, y una prueba exige que el texto de la tabla y el del modal sean idénticos. Backend, motor, capacidad, GLPI, persistencia, snapshots, reglas de desplazamiento y de renegociación intactos.
+
+**Fase 63 · Horario laboral oficial: lunes a viernes, de 07:00 a 17:30** — completada. La auditoría encontró que el motor y el Timeline **no usaban la misma jornada**: el backend planificaba sobre un día de **08:00 a 16:00** —`WorkingCalendar.DEFAULT_START` a las 08:00 y `working-hours-per-day=8`, sin bloque de calendario declarado— mientras la rejilla del frontend dibujaba **08:00 a 17:00**, nueve horas de eje para una jornada de ocho. El simulador DEMO no tenía jornada propia: heredaba la del motor y la pintaba sobre la del eje. La jornada oficial pasa a declararse una sola vez, en `planning.calendar` (`07:00`, `17:30`, sábado y domingo no laborables) y `working-hours-per-day=10.5`; el cierre es **exclusivo**, así que 07:00–17:30 son 10 h 30 min. `WorkingCalendar.DEFAULT_START`, `PlanningRules.DEFAULT_WORKING_HOURS_PER_DAY`, `@DefaultValue("10.5")` y el `DEFAULT_AXIS` del Timeline (420–1050) quedan alineados, y `TimelineGrid` gana `clockLabel` porque el cierre ya no cae en hora exacta: el rail escribe **07:00, 08:00, …, 17:00, 17:30**. No se añadió lógica: cambiaron valores, configuración y una etiqueta; prioridades, renegociaciones, desplazamientos y GLPI no tienen una línea de diferencia. Las pruebas de mecánica que dependían de un día de ocho horas recibieron un **fixture explícito** de 09:00–17:00 —dicho como fixture, no como jornada— y las de dominio se reescribieron a la jornada oficial; la regla se prueba aparte, en `PlanningPropertiesTest` y `PlanningEngineTest.laJornadaOficialEsLaQueAplicaElMotor`. **Riesgo documentado:** los planes ya guardados conservan 8 h por día, porque la capacidad se lee de la fotografía del plan y no de la configuración viva; se comprobó regenerando el plan de AbraAran con `POST /api/planning/from-glpi`, que ya paga **10,5 h**. Backend **396 pruebas, 0 fallos** —incluido un fallo preexistente ajeno a la fase que se corrigió: una fecha literal vencida en `PlanningDeclarationEndpointsTest`—; frontend **390 pruebas**, TypeScript y lint limpios; siete comprobaciones Playwright sobre la app real con el eje de 07:00 a 17:30, la capacidad diaria cuadrando, la vista semanal intacta, el simulador DEMO moviendo dos requerimientos y el desplazamiento explicado. Capturas en `.probe/f63-01…07`.
+
+**Fase 64 · Conciliación automática GLPI ↔ Gestión de Demanda** — completada. Cuando el gestor cambia el TTR de un ticket en GLPI, el acuerdo deja de teclearse aquí: al planificar desde GLPI, `SlaReconciliationService` exige las cinco condiciones del brief —desplazamiento activo, renegociación pendiente, TTR publicado, TTR posterior a la fecha original y ningún acuerdo manual— y registra el acuerdo con `source = GLPI`, su autor `GLPI`, su motivo y su historial, así que el Timeline y `/renegociaciones` lo leen «Conciliado automáticamente» / «Acordada en GLPI» sin cambiar nada. El **TTO no participa** —no se negocia con el usuario— y el **TTR tampoco alimenta el motor**: su único uso de negocio es conciliar. La operación es idempotente, y para conseguirlo se corrigió un fallo anterior: repetir el mismo plan republicaba nada y **borraba el desplazamiento del plan nuevo**; ahora el registro devuelve el instante original y el motor siempre publica el evento con él. Backend **407 pruebas, 0 fallos, 3 omitidas**; frontend **393 pruebas**, `tsc` y oxlint limpios; Playwright con las ocho comprobaciones sobre la app real.
+
+**Fase 65 · La renegociación cuenta su historia entera en una pantalla** — completada. `/renegociaciones` contesta «¿por qué se renegoció este requerimiento?» sin volver al Timeline: cada fila enseña el requerimiento, el incidente causante, la regla aplicada, la fecha original, la desplazada, la acordada, el origen del acuerdo y el estado, todo con datos que `GET /api/renegotiations` ya publicaba —ningún DTO, endpoint ni consulta nuevos, y ni una línea de backend—. El origen se lee de `source`: «Acordada en GLPI» o «Acordada manualmente», la misma insignia que usa el Timeline (la auditoría encontró que la tabla usaba otra etiqueta y se unificó), y un conciliado muestra «TTR detectado · Conciliado automáticamente» bajo su fecha. La explicación del desplazamiento es el mismo `DisplacementCause` en tabla, modal y Timeline, así que no puede discrepar. Se añaden dos filtros —«Acordadas manualmente» y «Acordadas en GLPI»— calculados en cliente sobre `status` y `source`, y dos salidas por fila con rutas existentes: «Ver en el Timeline» (`?tecnico=…&ticket=…`) y «Ver en Tickets» (`/incidentes?persona=…`). Backend **407 pruebas, 0 fallos, 3 omitidas**; frontend **395 pruebas**, `tsc` y oxlint limpios; Playwright con las once comprobaciones sobre la app real, con pendiente, manual y conciliado conviviendo en la misma pantalla.
+
+**Fase 66 · Transición a producción y saneamiento de los datos de prueba** — completada. La base operativa tenía 14 acuerdos de renegociación y **los 14 eran de prueba** (autores `verificacion-fase-38`/`-48`, ninguno con `source = GLPI`), más 19 planes de demostración, 13 parejas de idempotencia inventadas y 15 entradas de historial. Tras un `pg_dump -Fc` completo verificado y un volcado aparte de las dos tablas, una sola transacción borró acuerdos, historial y planes de prueba —**nada con `source = GLPI` se tocó**— y el estado se reconstruyó con el flujo existente: lecturas reales de GLPI, conciliación automática y ocho planes nuevos. La regeneración destapó un **fallo de despliegue**: el backend de `:8080` llevaba desde antes del arreglo de idempotencia de la Fase 64 y devolvía cero desplazamientos; reiniciado, la misma petición devolvió **7**. El resultado es el estado real de hoy: **7 desplazamientos pendientes y 0 acuerdos**, porque en los siete el TTR de GLPI es **anterior** a la fecha original —el SLA histórico, no una renegociación— y la conciliación lo rechaza por diseño. Quedan 73 declaraciones de tickets reales que se conservan y se señalan como valores de validación (riesgo 387). Backend **407 pruebas, 0 fallos, 3 omitidas**; frontend **395 pruebas**, `tsc` y oxlint limpios; Playwright con cinco comprobaciones sobre la app real y capturas en `.probe/f66-01…05`.
+
+**Fase 68 · Auditoría del Internal TTR: el ticket no perdía el campo, nunca se pedía** — completada. La inconsistencia reportada desde producción se demostró con una causa única y anterior al mapeo: **el código desplegado (`HEAD`, `c95c79d`) no incluye el campo 180 en `forcedisplay` ni lo lee del ticket**, así que el Internal TTR no se degrada en la normalización de fechas ni en el DTO — **no entra al sistema**. Sobre el caso testigo **66222** —GLPI 18 = `2026-10-22`, **180 = `2026-12-03`**— la versión en el repositorio devuelve `SIN_DECLARACION` con los descartes `SIN_ESTIMACION_DECLARADA` **y `SIN_COMPROMISO_DECLARADO`**, mientras que el árbol de trabajo devuelve `SIN_ESTIMACION` con `operationalDate = 2026-12-03` y origen `internal_time_to_resolve`. Los cuatro conteos sobre las **17 personas operativas**: **82 asignaciones activas (81 tickets, el 66913 compartido) y las 82 con campo 180**; el backend recibe fecha para **82 de 82**, todas del Internal TTR; el frontend la enseña —Tickets pinta `4 h · 2026-11-10` para el 67923 y el Timeline lo ubica el martes 10 de noviembre de 07:00 a 11:00 con marcador de día de entrega—; y **ningún ticket con Internal TTR real sale `SIN_FECHA_EN_GLPI`** (0), frente a los **71 `SIN_COMPROMISO_DECLARADO`** de la versión desplegada. La higiene del dato queda descartada como causa: las **594 apariciones del campo 180 son cadenas** con `yyyy-MM-dd HH:mm:ss`, el patrón exacto del mapeador, y el 18 solo tiene **9 `null`**. La fase **no toca una línea de código**: la corrección es la decisión 403 —fecha operativa desde GLPI, declaración solo de horas— y ya está completa en el árbol de trabajo desde la Fase 66b, **sin commitear (304 ficheros con diferencias)**, que es lo que explica la brecha con producción. Lo que sigue sin verse en el Timeline se declara y no se disimula: **13 de 82** tienen fecha posterior al final de la ventana (15 de noviembre) y no hay columna donde ponerlas —el dato está en Tickets y en «Trabajo pendiente»—; **193** de los 245 activos con 180 del grupo Desarrollo N2 están asignados a técnicos fuera del padrón y **3 no tienen técnico**; y **2.136** resueltos o cerrados quedan fuera por `ACTIVE_STATUSES`. El caso «ticket sin Internal TTR» **no tiene testigo vivo** —el respaldo al TTR no se activó ni una vez en las 82 asignaciones—, así que se cubre por prueba unitaria y se dice así en vez de fabricar una captura. Pruebas: backend **414, 0 fallos**; frontend **415 en 24 archivos**; `tsc -b --noEmit` y oxlint limpios. Evidencia de Playwright en `.probe/f68-pw-01…06`; decisiones 428 a 433 y riesgos 434 a 437 en `docs/decisiones-arquitectonicas.md`.
 
 
 Consultar `docs/decisiones-arquitectonicas.md` para el detalle de las decisiones tomadas, las mejoras previstas y los riesgos identificados.

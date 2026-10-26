@@ -24,14 +24,14 @@ import co.com.coltefinanciera.gestiondemanda.domain.rules.WorkingCalendar;
 /**
  * Pruebas del calculo de tiempo habil.
  *
- * <p>El calendario por defecto es el de la oficina: de lunes a viernes, de 09:00 a 17:00, sin
- * festivos. Los casos estan escritos con horas y fechas literales a proposito: son la unica forma de
- * verificar que el resultado coincide con lo que el negocio espera leer.
+ * <p>El calendario es el oficial: de lunes a viernes, de 07:00 a 17:30, sin festivos. Los casos
+ * estan escritos con horas y fechas literales a proposito: son la unica forma de verificar que el
+ * resultado coincide con lo que el negocio espera leer.
  */
 class BusinessTimeCalculatorTest {
 
-    private static final LocalTime APERTURA = LocalTime.of(9, 0);
-    private static final LocalTime CIERRE = LocalTime.of(17, 0);
+    private static final LocalTime APERTURA = LocalTime.of(7, 0);
+    private static final LocalTime CIERRE = LocalTime.of(17, 30);
 
     private static final LocalDate VIERNES = LocalDate.of(2026, 10, 9);
     private static final LocalDate SABADO = LocalDate.of(2026, 10, 10);
@@ -42,7 +42,7 @@ class BusinessTimeCalculatorTest {
     private static final BusinessTimeCalculator CALCULATOR = new BusinessTimeCalculator(OFICINA, ZoneOffset.UTC);
 
     @Test
-    @DisplayName("Ejemplo 1 - OLA de 4 horas pedida un viernes a las 16:30: 30 minutos el viernes, 3h30 el lunes")
+    @DisplayName("Ejemplo 1 - OLA de 4 horas pedida un viernes a las 16:30: una hora el viernes, tres el lunes")
     void ejemplo1ViernesTardeReparteLaOlaEntreViernesYLunes() {
         List<BusinessSegment> tramos = CALCULATOR.segments(instante(VIERNES, LocalTime.of(16, 30)), new BigDecimal("4"));
 
@@ -52,13 +52,13 @@ class BusinessTimeCalculatorTest {
         assertThat(viernes.date()).isEqualTo(VIERNES);
         assertThat(viernes.start().toLocalTime()).isEqualTo(LocalTime.of(16, 30));
         assertThat(viernes.end().toLocalTime()).isEqualTo(CIERRE);
-        assertThat(viernes.hours()).isEqualByComparingTo("0.5");
+        assertThat(viernes.hours()).isEqualByComparingTo("1");
 
         BusinessSegment lunes = tramos.get(1);
         assertThat(lunes.date()).isEqualTo(LUNES);
         assertThat(lunes.start().toLocalTime()).isEqualTo(APERTURA);
-        assertThat(lunes.end().toLocalTime()).isEqualTo(LocalTime.of(12, 30));
-        assertThat(lunes.hours()).isEqualByComparingTo("3.5");
+        assertThat(lunes.end().toLocalTime()).isEqualTo(LocalTime.of(10, 0));
+        assertThat(lunes.hours()).isEqualByComparingTo("3");
 
         // El fin de semana no aparece: no consume OLA porque no es tiempo habil.
         assertThat(tramos).noneMatch(tramo -> tramo.date().equals(SABADO));
@@ -70,7 +70,7 @@ class BusinessTimeCalculatorTest {
         Instant vencimiento =
                 CALCULATOR.dueAt(instante(VIERNES, LocalTime.of(16, 30)), new BigDecimal("4"));
 
-        assertThat(vencimiento).isEqualTo(instante(LUNES, LocalTime.of(12, 30)));
+        assertThat(vencimiento).isEqualTo(instante(LUNES, LocalTime.of(10, 0)));
     }
 
     @Test
@@ -81,7 +81,7 @@ class BusinessTimeCalculatorTest {
         assertThat(tramos).singleElement().satisfies(tramo -> {
             assertThat(tramo.date()).isEqualTo(LUNES);
             assertThat(tramo.start().toLocalTime()).isEqualTo(APERTURA);
-            assertThat(tramo.end().toLocalTime()).isEqualTo(LocalTime.of(11, 0));
+            assertThat(tramo.end().toLocalTime()).isEqualTo(LocalTime.of(9, 0));
         });
     }
 
@@ -94,7 +94,7 @@ class BusinessTimeCalculatorTest {
         assertThat(tramos).singleElement().satisfies(tramo -> {
             assertThat(tramo.date()).isEqualTo(VIERNES);
             assertThat(tramo.start().toLocalTime()).isEqualTo(APERTURA);
-            assertThat(tramo.end().toLocalTime()).isEqualTo(LocalTime.of(11, 0));
+            assertThat(tramo.end().toLocalTime()).isEqualTo(LocalTime.of(9, 0));
         });
     }
 
@@ -110,12 +110,12 @@ class BusinessTimeCalculatorTest {
 
         assertThat(tramos).hasSize(2);
         assertThat(tramos.get(0).date()).isEqualTo(VIERNES);
-        assertThat(tramos.get(0).hours()).isEqualByComparingTo("0.5");
+        assertThat(tramos.get(0).hours()).isEqualByComparingTo("1");
         assertThat(tramos.get(1).date()).isEqualTo(MARTES);
-        assertThat(tramos.get(1).end().toLocalTime()).isEqualTo(LocalTime.of(12, 30));
+        assertThat(tramos.get(1).end().toLocalTime()).isEqualTo(LocalTime.of(10, 0));
 
         assertThat(calculator.dueAt(instante(VIERNES, LocalTime.of(16, 30)), new BigDecimal("4")))
-                .isEqualTo(instante(MARTES, LocalTime.of(12, 30)));
+                .isEqualTo(instante(MARTES, LocalTime.of(10, 0)));
     }
 
     @Test
@@ -124,14 +124,13 @@ class BusinessTimeCalculatorTest {
         List<BusinessSegment> tramos =
                 CALCULATOR.segments(instante(LUNES, APERTURA), new BigDecimal("20"));
 
-        assertThat(tramos).hasSize(3);
+        assertThat(tramos).hasSize(2);
         assertThat(tramos.get(0).end().toLocalTime()).isEqualTo(CIERRE);
-        assertThat(tramos.get(0).hours()).isEqualByComparingTo("8");
+        assertThat(tramos.get(0).hours()).isEqualByComparingTo("10.5");
+        // Las nueve horas y media que faltan caben el martes: no hace falta un tercer dia.
         assertThat(tramos.get(1).date()).isEqualTo(MARTES);
-        assertThat(tramos.get(1).hours()).isEqualByComparingTo("8");
-        // Los ultimos cuatro caben el miercoles, que es el tercer dia laborable de la semana.
-        assertThat(tramos.get(2).date()).isEqualTo(LocalDate.of(2026, 10, 14));
-        assertThat(tramos.get(2).end().toLocalTime()).isEqualTo(LocalTime.of(13, 0));
+        assertThat(tramos.get(1).hours()).isEqualByComparingTo("9.5");
+        assertThat(tramos.get(1).end().toLocalTime()).isEqualTo(LocalTime.of(16, 30));
     }
 
     @Test
@@ -145,7 +144,7 @@ class BusinessTimeCalculatorTest {
 
         assertThat(tramos).hasSize(2);
         assertThat(tramos.get(0).hours()).isEqualByComparingTo("4");
-        assertThat(tramos.get(0).end().toLocalTime()).isEqualTo(LocalTime.of(13, 0));
+        assertThat(tramos.get(0).end().toLocalTime()).isEqualTo(LocalTime.of(11, 0));
         assertThat(tramos.get(1).hours()).isEqualByComparingTo("2");
     }
 

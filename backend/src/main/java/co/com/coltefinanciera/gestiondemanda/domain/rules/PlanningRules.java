@@ -46,7 +46,8 @@ public record PlanningRules(
         WorkingCalendar workingCalendar) {
 
     public static final BigDecimal DEFAULT_INCIDENT_THRESHOLD_HOURS = new BigDecimal("4");
-    public static final BigDecimal DEFAULT_WORKING_HOURS_PER_DAY = new BigDecimal("8");
+    /** Jornada laboral oficial: lunes a viernes, 07:00-17:30. */
+    public static final BigDecimal DEFAULT_WORKING_HOURS_PER_DAY = new BigDecimal("10.5");
     public static final int DEFAULT_PLANNING_HORIZON_DAYS = 10;
 
     public PlanningRules {

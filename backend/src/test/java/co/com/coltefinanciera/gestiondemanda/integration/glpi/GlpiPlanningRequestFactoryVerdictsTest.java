@@ -70,6 +70,12 @@ class GlpiPlanningRequestFactoryVerdictsTest {
                 21600L, null, "2026-10-05 09:00:00");
     }
 
+    /** Una peticion sin fechas en GLPI: ni OLA ni SLA cargados, que es el caso que descarta. */
+    private static GlpiTicket peticion(int id) {
+        return new GlpiTicket(id, "Peticion " + id, 1, GlpiTicket.TYPE_REQUEST, 5, null, null,
+                14400L, null, "2026-10-05 09:00:00");
+    }
+
     /** Declara lo que se le pase: horas, fecha, o las dos. */
     private static PlanningMetadata declaracion(int ticketId, String horas, String fecha) {
         return PlanningMetadata.declared(String.valueOf(ticketId),
@@ -116,31 +122,41 @@ class GlpiPlanningRequestFactoryVerdictsTest {
     }
 
     @Test
-    @DisplayName("Con horas y sin compromiso le falta la fecha, que la debe el gestor")
-    void sinCompromiso() {
+    @DisplayName("Con horas y sin fecha en GLPI le falta la fecha, que la debe GLPI")
+    void sinFechaEnGlpi() {
         declaradas(declaracion(1, "6", null));
 
-        GlpiPlanningRequestFactory.Verdict verdict = factory.verdicts(List.of(incidencia(1))).get(0);
+        GlpiPlanningRequestFactory.Verdict verdict = factory.verdicts(List.of(peticion(1))).get(0);
 
         assertThat(verdict.status()).isEqualTo(DeclarationStatus.SIN_COMPROMISO);
         assertThat(verdict.discards()).singleElement()
                 .extracting(GlpiDiscardedItem::code)
-                .isEqualTo(GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
+                .isEqualTo(GlpiDiscardReason.SIN_FECHA_EN_GLPI);
     }
 
     @Test
-    @DisplayName("Sin declaracion ninguna le faltan las dos cosas, y se informan las dos")
+    @DisplayName("Sin declaracion y sin fechas le faltan las dos cosas, y se informan las dos")
     void sinDeclaracion() {
-        GlpiPlanningRequestFactory.Verdict verdict = factory.verdicts(List.of(incidencia(1))).get(0);
+        GlpiPlanningRequestFactory.Verdict verdict = factory.verdicts(List.of(peticion(1))).get(0);
 
         assertThat(verdict.status()).isEqualTo(DeclarationStatus.SIN_DECLARACION);
         assertThat(verdict.discards())
                 .extracting(GlpiDiscardedItem::code)
                 .containsExactly(GlpiDiscardReason.SIN_ESTIMACION_DECLARADA,
-                        GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
+                        GlpiDiscardReason.SIN_FECHA_EN_GLPI);
         // El texto distingue «nadie declaro» de «alguien retiro lo que habia», que el codigo junta.
-        assertThat(verdict.discards()).allSatisfy(discard ->
-                assertThat(discard.reason()).isEqualTo("no hay planificacion declarada para este elemento"));
+        assertThat(verdict.discards())
+                .filteredOn(discard -> discard.code() == GlpiDiscardReason.SIN_ESTIMACION_DECLARADA)
+                .singleElement()
+                .extracting(GlpiDiscardedItem::reason)
+                .isEqualTo("no hay planificacion declarada para este elemento");
+        // Y el otro nombra a GLPI, que es quien tiene que cargar la OLA o el SLA.
+        assertThat(verdict.discards())
+                .filteredOn(discard -> discard.code() == GlpiDiscardReason.SIN_FECHA_EN_GLPI)
+                .singleElement()
+                .extracting(GlpiDiscardedItem::reason)
+                .asString()
+                .contains("internal_time_to_resolve");
     }
 
     @Test
@@ -185,7 +201,8 @@ class GlpiPlanningRequestFactoryVerdictsTest {
 
         GlpiPlanningRequestFactory.Verdict verdict = factory.verdicts(List.of(incidencia(1))).get(0);
 
-        assertThat(verdict.status()).isEqualTo(DeclarationStatus.SIN_DECLARACION);
+        // Es una incidencia, asi que la unica falta es la estimacion; el texto es el que cambia.
+        assertThat(verdict.status()).isEqualTo(DeclarationStatus.SIN_ESTIMACION);
         // Pero el texto si distingue los dos casos: aqui alguien paso y retiro lo que habia.
         assertThat(verdict.discards()).allSatisfy(discard ->
                 assertThat(discard.reason()).startsWith("la planificacion declarada"));
@@ -212,7 +229,7 @@ class GlpiPlanningRequestFactoryVerdictsTest {
         // Un ticket de cada cosa, para que la comparacion cubra los cinco estados de una vez.
         GlpiTicket planificable = incidencia(1);
         GlpiTicket sinEstimacion = incidencia(2);
-        GlpiTicket sinCompromiso = incidencia(3);
+        GlpiTicket sinCompromiso = peticion(3);
         GlpiTicket sinDeclaracion = incidencia(4);
         GlpiTicket intraducible = new GlpiTicket(5, "Ticket raro", 1, 99, 5, null, null, 3600L, null,
                 "2026-10-05 09:00:00");
@@ -243,7 +260,7 @@ class GlpiPlanningRequestFactoryVerdictsTest {
         for (GlpiPlanningRequestFactory.Verdict verdict : verdicts) {
             List<GlpiDiscardedItem> esperados = validator.rejection(verdict.ticket())
                     .map(List::of)
-                    .orElseGet(() -> validator.missingDeclaration(verdict.ticket(),
+                    .orElseGet(() -> validator.missingInputs(verdict.ticket(),
                             verdict.declaration()));
             assertThat(verdict.discards()).containsExactlyElementsOf(esperados);
         }

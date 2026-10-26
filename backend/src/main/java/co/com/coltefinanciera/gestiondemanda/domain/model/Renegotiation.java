@@ -81,9 +81,27 @@ public record Renegotiation(
     public Renegotiation agreedWith(
             LocalDate nuevaFecha, String nuevaRazon, String changedBy, Instant changedAt) {
 
+        return agreedWith(nuevaFecha, nuevaRazon, changedBy, changedAt, source);
+    }
+
+    /**
+     * El acuerdo que resulta de cambiarlo, con un origen explicito.
+     *
+     * <p><strong>Existe por la Fase 64.</strong> Un acuerdo puede nacer conciliado desde GLPI y
+     * despues corregirse a mano; el origen tiene que decir quien hizo el ultimo cambio, no quien
+     * trajo la fecha la primera vez. La renegociacion manual pasa {@link InputSource#HTTP} y la
+     * conciliacion automatica conserva {@link InputSource#GLPI}.
+     *
+     * <p>El origen solo cambia si el acuerdo cambia. Reenviar la misma fecha y el mismo motivo no
+     * convierte un acuerdo de GLPI en manual ni al reves: no hubo cambio que atribuir.
+     */
+    public Renegotiation agreedWith(LocalDate nuevaFecha, String nuevaRazon, String changedBy,
+            Instant changedAt, InputSource nuevoOrigen) {
+
         DomainPreconditions.requireText(changedBy, "changedBy");
         Objects.requireNonNull(changedAt, "changedAt es obligatorio");
         Objects.requireNonNull(nuevaFecha, "nuevaFecha es obligatoria");
+        Objects.requireNonNull(nuevoOrigen, "nuevoOrigen es obligatorio");
 
         boolean cambia = !Objects.equals(agreedDate, nuevaFecha)
                 || !Objects.equals(agreedReason, nuevaRazon);
@@ -94,7 +112,7 @@ public record Renegotiation(
                 cambia ? changedBy : agreedBy,
                 cambia ? nuevaRazon : agreedReason,
                 cambia ? changedAt : agreedAt,
-                source);
+                cambia ? nuevoOrigen : source);
     }
 
     /**

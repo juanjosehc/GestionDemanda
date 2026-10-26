@@ -33,8 +33,8 @@ public record WorkingCalendar(
         Set<DayOfWeek> weekend,
         Set<LocalDate> holidays) {
 
-    /** Apertura por defecto. Con la jornada estandar, el cierre es a las 17:00. */
-    public static final LocalTime DEFAULT_START = LocalTime.of(9, 0);
+    /** Apertura por defecto. Con la jornada estandar, el cierre es a las 17:30. */
+    public static final LocalTime DEFAULT_START = LocalTime.of(7, 0);
 
     public static final Set<DayOfWeek> DEFAULT_WEEKEND = Set.of(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY);
 

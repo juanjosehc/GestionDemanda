@@ -1,11 +1,13 @@
 import { AlertTriangle, ClipboardCheck, History } from 'lucide-react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useRenegotiationHistory } from '@/hooks/useRenegotiations'
 import { formatInstant } from '@/lib/format'
+import { AGREEMENT_ORIGIN_LABEL, agreementOrigin } from '@/lib/renegotiations'
 import { formatDay } from '@/lib/timeline'
 import type { RenegotiationItem } from '@/types/renegotiations'
 
@@ -52,6 +54,29 @@ export function RenegotiationHistory({ item }: RenegotiationHistoryProps) {
       </CardHeader>
 
       <CardContent>
+        {/*
+          El origen del acuerdo vigente. El historial guarda quien hizo cada cambio —`changedBy`—,
+          pero no el origen de cada fila; el del acuerdo actual es el que explica si su primera
+          entrada la trajo GLPI o una persona.
+        */}
+        {item.renegotiation && (
+          <p
+            data-slot="agreement-origin"
+            data-source={item.renegotiation.source}
+            className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+          >
+            <Badge variant={agreementOrigin(item.renegotiation.source) === 'GLPI' ? 'info' : 'secondary'}>
+              {AGREEMENT_ORIGIN_LABEL[agreementOrigin(item.renegotiation.source)]}
+            </Badge>
+            <span>
+              registrado el{' '}
+              <time dateTime={item.renegotiation.agreedAt}>
+                {formatInstant(item.renegotiation.agreedAt)}
+              </time>
+            </span>
+          </p>
+        )}
+
         {!hasAgreement ? (
           <EmptyState
             icon={ClipboardCheck}

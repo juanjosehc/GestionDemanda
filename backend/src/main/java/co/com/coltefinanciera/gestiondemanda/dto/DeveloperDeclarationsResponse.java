@@ -1,6 +1,7 @@
 package co.com.coltefinanciera.gestiondemanda.dto;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 import co.com.coltefinanciera.gestiondemanda.domain.enums.WorkItemType;
@@ -70,8 +71,8 @@ public record DeveloperDeclarationsResponse(
      *
      * <p><strong>{@code discards} es una lista y no un campo suelto.</strong> Un elemento al que le
      * falta la declaracion entera produce dos: le falta la estimacion, que la debe el desarrollador, y
-     * el compromiso, que lo debe el gestor. Son dos personas distintas y un campo unico obligaria a
-     * elegir cual de las dos se calla. Cuando el ticket es planificable la lista va vacia.
+     * la fecha operativa, que desde la Fase 66b la debe GLPI. Son dos sitios distintos y un campo unico
+     * obligaria a elegir cual de los dos se calla. Cuando el ticket es planificable la lista va vacia.
      *
      * @param workItemId        identificador del ticket en GLPI, que es la clave de su declaracion.
      *                          Vale {@code "(sin id)"} cuando GLPI no lo dio, que es la misma
@@ -87,6 +88,13 @@ public record DeveloperDeclarationsResponse(
      * @param declaration       lo declarado hoy, o {@code null} si nadie ha declarado nada. Es el
      *                          mismo recurso que sirve {@code GET /{workItemId}}, para que quien vaya a
      *                          modificarlo tenga ya delante lo que hay.
+     * @param operationalDate   la fecha con la que GLPI ubica el requerimiento: {@code
+     *                          internal_time_to_resolve} o, si no existe, {@code time_to_resolve}. Es
+     *                          la fecha que usa el plan desde la Fase 66b. Nula en una incidencia
+     *                          —que no se ubica por una promesa— y en un ticket sin ninguna de las dos.
+     * @param operationalDateSource de cual de los dos campos salio. Viaja al lado de la fecha porque
+     *                          2026-11-19 es la promesa de la OLA o la del SLA, y sin el origen no se
+     *                          puede contrastar.
      */
     public record DeclarationItem(
             String workItemId,
@@ -97,7 +105,9 @@ public record DeveloperDeclarationsResponse(
             String title,
             DeclarationStatus declarationStatus,
             List<DiscardView> discards,
-            PlanningMetadataResponse declaration) {
+            PlanningMetadataResponse declaration,
+            LocalDate operationalDate,
+            String operationalDateSource) {
 
         public DeclarationItem {
             discards = discards == null ? List.of() : List.copyOf(discards);
@@ -127,10 +137,12 @@ public record DeveloperDeclarationsResponse(
 
         /** Lo que el ticket dice de si mismo, que es lo unico que aporta el sistema ajeno. */
         public static final String GLPI = "/search/Ticket por criterio de tecnico (opcion 5): "
-                + "workItemId, type, status, priority, createdAt y title";
+                + "workItemId, type, status, priority, createdAt, title y la fecha operativa "
+                + "(internal_time_to_resolve, opcion 180; si no hay, time_to_resolve, opcion 18)";
 
         /** Las horas y el compromiso, que GLPI no guarda y declara el negocio. */
-        public static final String DECLARATION = "planning_metadata por workItemId: estimatedHours y "
-                + "committedDate, con su autor, su sello y lo que falta";
+        public static final String DECLARATION = "planning_metadata por workItemId: estimatedHours, con "
+                + "su autor y su sello. committedDate se conserva como contraste y ya no ubica el "
+                + "requerimiento en el tiempo";
     }
 }

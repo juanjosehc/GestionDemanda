@@ -1,3 +1,5 @@
+import { PENDING_CAUSE_LABEL } from '@/lib/pending'
+import type { DeveloperDeclarationsResponse } from '@/types/declarations'
 import type { TeamPerson } from '@/types/team'
 import type {
   IncidentSeverity,
@@ -6,6 +8,8 @@ import type {
   TimelineItem,
   TimelineItemStatus,
   TimelineResource,
+  TimelineState,
+  UnscheduledItem,
   WorkItemType,
 } from '@/types/timeline'
 
@@ -25,19 +29,28 @@ export const EMPTY_FILTERS: TimelineFilters = {
   planningStatus: 'TODOS',
 }
 
-/** Rango del eje vertical, en minutos desde medianoche. */
+/** Rango del eje vertical, en minutos desde medianoche. La jornada de la vista es fija. */
 export interface HourAxis {
   startMinutes: number
   endMinutes: number
 }
 
-const DEFAULT_AXIS: HourAxis = { startMinutes: 8 * 60, endMinutes: 18 * 60 }
+/**
+ * La jornada laboral oficial: lunes a viernes, 07:00-17:30.
+ *
+ * Es el mismo bloque que declara el backend en `planning.calendar`: si el eje dijera otra cosa, la
+ * rejilla estaría dibujando una jornada que el motor no usa.
+ */
+const DEFAULT_AXIS: HourAxis = { startMinutes: 7 * 60, endMinutes: 17 * 60 + 30 }
 
 const DAY_FORMAT = new Intl.DateTimeFormat('es-CO', {
   weekday: 'short',
   day: 'numeric',
   month: 'short',
 })
+
+/** El extremo de una semana en la etiqueta de navegación: «19 oct». */
+const RANGE_FORMAT = new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short' })
 
 const TIME_FORMAT = new Intl.DateTimeFormat('es-CO', {
   hour: '2-digit',
@@ -210,30 +223,33 @@ export function teamAgenda(
 }
 
 /**
- * Eje horario del que hay datos.
+ * Eje horario: siempre la jornada oficial, de 07:00 a 17:30.
  *
- * La jornada del calendario congelado (09:00-17:00) no viaja en la respuesta, asi que el eje
- * se deriva de los tramos observados y se redondea hacia fuera a la hora entera. Sin tramos se
- * usa 08:00-18:00.
+ * La jornada es fija y no se deriva de los tramos: si el eje fuera del primer inicio al ultimo
+ * fin, un dia con un solo tramo de 09:00 a 10:00 borraria las otras horas y la escala cambiaria
+ * de forma al cambiar de semana, que es justo lo que impide leer dos dias comparando.
+ *
+ * Si algun tramo cae fuera de esa ventana, el eje se estira hacia fuera a la hora entera: la
+ * jornada fija no puede esconder trabajo que existe. Un tramo que termina a las 17:30 —el cierre
+ * oficial— no estira nada: el eje solo crece cuando el trabajo lo rebasa.
  */
 export function hourAxis(items: readonly TimelineItem[]): HourAxis {
-  if (items.length === 0) {
-    return DEFAULT_AXIS
-  }
-
-  let first = Number.POSITIVE_INFINITY
-  let last = Number.NEGATIVE_INFINITY
+  let startMinutes = DEFAULT_AXIS.startMinutes
+  let endMinutes = DEFAULT_AXIS.endMinutes
 
   for (const item of items) {
-    first = Math.min(first, minutesOfDay(item.startsAt))
-    last = Math.max(last, minutesOfDay(item.endsAt))
+    const start = minutesOfDay(item.startsAt)
+    const end = minutesOfDay(item.endsAt)
+
+    if (start < startMinutes) {
+      startMinutes = Math.floor(start / 60) * 60
+    }
+    if (end > endMinutes) {
+      endMinutes = Math.ceil(end / 60) * 60
+    }
   }
 
-  const startMinutes = Math.floor(first / 60) * 60
-  // Un tramo que acaba en punto no necesita una hora mas de eje.
-  const endMinutes = Math.ceil(last / 60) * 60
-
-  return { startMinutes, endMinutes: Math.max(endMinutes, startMinutes + 60) }
+  return { startMinutes, endMinutes }
 }
 
 /** Agrupa los tramos por fecha para pintarlos en su columna sin recorrer la lista por dia. */
@@ -257,6 +273,79 @@ export function itemsByDate(items: readonly TimelineItem[]): Map<string, Timelin
 /** Capacidad de un recurso en una fecha, o indefinida si esa fecha no esta en su ventana. */
 export function capacityOn(resource: TimelineResource, date: string) {
   return resource.capacity.find((capacity) => capacity.date === date)
+}
+
+/** Una fecha del contrato (aaaa-mm-dd) a partir de un Date local. */
+export function isoDate(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** La fecha de hoy en hora local, que es la que habla el contrato. */
+export function localTodayIso(): string {
+  return isoDate(new Date())
+}
+
+/** Suma (o resta) dias a una fecha del contrato sin pasar por zonas horarias. */
+export function addDays(isoDay: string, days: number): string {
+  const date = parseLocalDateTime(isoDay)
+  date.setDate(date.getDate() + days)
+  return isoDate(date)
+}
+
+/**
+ * El lunes de la semana que contiene el dia.
+ *
+ * La semana de trabajo empieza el lunes y termina el domingo; se navega por semanas completas, y
+ * por eso el ancla de la ventana es siempre un lunes.
+ */
+export function weekStartOf(isoDay: string): string {
+  const date = parseLocalDateTime(isoDay)
+  const offset = (date.getDay() + 6) % 7
+  date.setDate(date.getDate() - offset)
+  return isoDate(date)
+}
+
+/** Los siete dias de la semana que empieza en ese lunes, de lunes a domingo. */
+export function weekDaysOf(weekStart: string): string[] {
+  return Array.from({ length: 7 }, (_, index) => addDays(weekStart, index))
+}
+
+/** Numero de semana ISO-8601 del dia. */
+export function isoWeekNumber(isoDay: string): number {
+  const date = parseLocalDateTime(isoDay)
+  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const offset = (target.getUTCDay() + 6) % 7
+  target.setUTCDate(target.getUTCDate() - offset + 3)
+
+  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4))
+  const firstOffset = (firstThursday.getUTCDay() + 6) % 7
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstOffset + 3)
+
+  return 1 + Math.round((target.getTime() - firstThursday.getTime()) / 604_800_000)
+}
+
+/** «Semana 43 · 19 oct – 25 oct»: lo que la navegación dice que se está viendo. */
+export function formatWeek(weekStart: string): string {
+  const end = addDays(weekStart, 6)
+  return `Semana ${isoWeekNumber(weekStart)} · ${RANGE_FORMAT.format(parseLocalDateTime(weekStart))} – ${RANGE_FORMAT.format(parseLocalDateTime(end))}`
+}
+
+/**
+ * La semana con la que abre la agenda: la de hoy si la ventana la contiene, y si no la primera.
+ *
+ * «Hoy» fuera de la ventana cargada no es una semana vacía: es una semana de la que esta vista no
+ * sabe nada y en la que no hay ni una persona con capacidad. Abrir ahí sería enseñar un hueco que
+ * no significa nada, así que se abre en el borde de la ventana y «Volver a hoy» lleva al mismo
+ * sitio.
+ */
+export function weekAnchor(days: readonly string[], today: string): string {
+  const first = days[0] ?? today
+  const last = days[days.length - 1] ?? today
+  const inside = today >= first && today <= last
+  return weekStartOf(inside ? today : first)
 }
 
 /** Aplica los filtros visuales. No genera llamadas: trabaja sobre lo ya recibido. */
@@ -285,4 +374,130 @@ export function formatTime(isoDateTime: string): string {
 /** Horas con un decimal como maximo, sin ceros de relleno. */
 export function formatHours(hours: number): string {
   return HOURS_FORMAT.format(hours)
+}
+
+/**
+ * El puesto de un tramo dentro de los días que su elemento ocupa.
+ *
+ * **El plan ya parte el trabajo en un tramo por día**: quien dura dieciséis horas llega como dos
+ * tramos de ocho, uno por jornada. Lo que la rejilla no sabía era que eran el mismo trabajo, así que
+ * pintaba dos bloques sueltos y ninguno decía cuál era el último. Esto es ese dato, y no se puede
+ * deducir de un tramo aislado: hace falta ver los de su elemento.
+ *
+ * Los días se cuentan **por fecha distinta y no por tramo**: un elemento puede partirse dos veces en
+ * una jornada —la franja libre de la mañana y la de la tarde— y eso es un día, no dos. Contar tramos
+ * diría «día 2 de 3» en un trabajo de dos días.
+ */
+export interface DayPosition {
+  /** Día del elemento, desde 1. */
+  day: number
+  /** Cuántos días ocupa en total. */
+  days: number
+  /** Si este tramo cae en el último día, que es el día de entrega. */
+  delivery: boolean
+}
+
+/** El puesto de cada tramo dentro de su elemento, por `blockKey`. */
+export function dayPositions(items: readonly TimelineItem[]): Map<string, DayPosition> {
+  const daysByItem = new Map<string, Set<string>>()
+
+  for (const item of items) {
+    const key = `${item.developerId}|${item.workItemId}`
+    const days = daysByItem.get(key)
+
+    if (days) {
+      days.add(itemDate(item))
+    } else {
+      daysByItem.set(key, new Set([itemDate(item)]))
+    }
+  }
+
+  // ISO ordena alfabéticamente igual que cronológicamente.
+  const sorted = new Map<string, string[]>()
+  for (const [key, days] of daysByItem) {
+    sorted.set(key, [...days].sort())
+  }
+
+  const positions = new Map<string, DayPosition>()
+  for (const item of items) {
+    const days = sorted.get(`${item.developerId}|${item.workItemId}`) ?? []
+    const index = days.indexOf(itemDate(item))
+
+    positions.set(blockKey(item), {
+      day: index + 1,
+      days: days.length,
+      // Un tramo que no se encontró en su propio grupo no se afirma como entrega: el marcador
+      // tiene que ser cierto o no estar.
+      delivery: index >= 0 && index === days.length - 1,
+    })
+  }
+
+  return positions
+}
+
+/**
+ * El estado visual del tramo.
+ *
+ * **El plan manda en lo que el plan sabe y la renegociación en lo que sabe ella.** Un tramo que el
+ * motor movió está `DESPLAZADO` hasta que la lectura de acuerdos diga otra cosa: `ACORDADO_GLPI`,
+ * `ACORDADO_MANUAL` o `PENDIENTE_DE_ACUERDO`. Cuando no hay lectura de acuerdos —el calendario de un
+ * plan suelto, que no pide la lista— el estado es el del plan y ningún tramo se pinta como acuerdo.
+ */
+export function blockState(
+  item: Pick<TimelineItem, 'workItemId' | 'planningStatus'>,
+  agreed?: Readonly<Record<string, TimelineState>>,
+): TimelineState {
+  return (
+    agreed?.[item.workItemId] ??
+    (item.planningStatus === 'DESPLAZADO' ? 'DESPLAZADO' : 'PLANIFICADO')
+  )
+}
+
+/**
+ * Los tickets que tienen día en GLPI y no tienen tramo porque les faltan las horas.
+ *
+ * **Es el caso que la rejilla escondía.** Un ticket sin estimación no entra al motor, así que no
+ * existe en ningún plan y ningún tramo lo menciona: mirando solo los tramos, desaparece. Pero su
+ * fecha sí existe —la publica GLPI— y el negocio necesita verlo en ese día para acordarse de que hay
+ * que estimarlo. El 68428 es el caso testigo.
+ *
+ * **Se filtra la ventana aquí y no en la rejilla**: fuera de la ventana no hay columna donde
+ * ponerlo, y devolverlo sería pedirle a la vista que decida qué hacer con lo que no cabe.
+ */
+export function unscheduledOf(
+  declarations: Readonly<Record<string, DeveloperDeclarationsResponse>>,
+  plannedIds: ReadonlySet<string>,
+  window: { from: string | null; to: string | null },
+): UnscheduledItem[] {
+  const unscheduled: UnscheduledItem[] = []
+
+  for (const [developerId, declaration] of Object.entries(declarations)) {
+    for (const item of declaration.items) {
+      // `SIN_ESTIMACION` es «tiene fecha y no tiene horas», que es exactamente el caso. Los otros
+      // estados no tienen día (`SIN_DECLARACION` puede no tener ninguna de las dos cosas) o ya
+      // están planificados.
+      if (item.declarationStatus !== 'SIN_ESTIMACION' || item.operationalDate === null) {
+        continue
+      }
+      if (plannedIds.has(item.workItemId)) {
+        continue
+      }
+      if (window.from !== null && item.operationalDate < window.from) {
+        continue
+      }
+      if (window.to !== null && item.operationalDate > window.to) {
+        continue
+      }
+
+      unscheduled.push({
+        workItemId: item.workItemId,
+        workItemType: item.type,
+        developerId,
+        date: item.operationalDate,
+        cause: PENDING_CAUSE_LABEL.SIN_ESTIMACION,
+      })
+    }
+  }
+
+  return unscheduled
 }

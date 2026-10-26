@@ -20,9 +20,9 @@ import co.com.coltefinanciera.gestiondemanda.domain.model.PlanningMetadata;
  *
  * <p>La prueba documenta la politica entera, y la politica son dos puertas. La primera mira el
  * ticket: sin identificador, con un tipo o un estado que el contrato no declara, o con una fecha de
- * creacion ilegible, se descarta y se dice por que; sin prioridad, no. La segunda mira la
- * planificacion declarada: sin estimacion y sin fecha compromiso no hay elemento planificable, y se
- * informa de todo lo que falta.
+ * creacion ilegible, se descarta y se dice por que; sin prioridad, no. La segunda junta las dos
+ * fuentes de la Fase 66b: sin estimacion declarada y sin fecha operativa en GLPI no hay elemento
+ * planificable, y se informa de todo lo que falta.
  *
  * <p>Las dos puertas viven en la misma clase y se aplican en ese orden. Lo que se prueba aqui es
  * cada una por separado, que es como se puede saber cual de las dos descarto un ticket.
@@ -165,52 +165,85 @@ class GlpiTicketValidatorTest {
                 GlpiDiscardReason.SIN_IDENTIFICADOR_TICKET, "sin identificador de ticket");
     }
 
-    @Test
-    @DisplayName("Con estimacion y compromiso declarados no falta nada")
-    void conLaDeclaracionCompletaNoFaltaNada() {
-        assertThat(validator.missingDeclaration(validIncident(),
-                declarada(new BigDecimal("6"), LocalDate.of(2026, 10, 20)))).isEmpty();
-        assertThat(validator.missingDeclaration(validRequest(),
-                declarada(new BigDecimal("6"), LocalDate.of(2026, 10, 20)))).isEmpty();
+    /** Una peticion con SLA y OLA, que es el caso completo. */
+    private static GlpiTicket peticion(String timeToResolve, String internalTimeToResolve) {
+        return new GlpiTicket(1, "Ticket", 1, GlpiTicket.TYPE_REQUEST, 3, null, null, 3600L,
+                timeToResolve, internalTimeToResolve, "2026-10-05 09:00:00");
     }
 
     @Test
-    @DisplayName("Sin planificacion declarada faltan las dos cosas, y se informan las dos")
-    void sinDeclaracionFaltanLasDos() {
-        List<GlpiDiscardedItem> missing = validator.missingDeclaration(validIncident(), null);
+    @DisplayName("Con estimacion declarada y fecha en GLPI no falta nada")
+    void conLaEstimacionYLaFechaDeGlpiNoFaltaNada() {
+        assertThat(validator.missingInputs(validIncident(),
+                declarada(new BigDecimal("6"), LocalDate.of(2026, 10, 20)))).isEmpty();
+        assertThat(validator.missingInputs(validRequest(),
+                declarada(new BigDecimal("6"), LocalDate.of(2026, 10, 20)))).isEmpty();
+        // La declaracion lleva una fecha que ya no se usa; lo que cuenta es la de GLPI.
+        assertThat(validator.missingInputs(validRequest(), declarada(new BigDecimal("6"), null)))
+                .isEmpty();
+    }
 
-        assertThat(missing).extracting(GlpiDiscardedItem::code).containsExactly(
+    /**
+     * La fecha de la declaracion dejo de contar, y esta es la prueba.
+     *
+     * <p>Una peticion cuya declaracion trae fecha pero cuyo ticket no trae ninguna se descarta: la
+     * fecha que ubica un requerimiento sale de GLPI desde la Fase 66b, y una fecha declarada por una
+     * validacion no la sustituye.
+     */
+    @Test
+    @DisplayName("Sin fecha en GLPI la declaracion no la suple")
+    void sinFechaEnGlpiLaDeclaracionNoLaSuple() {
+        GlpiTicket sinFechas = peticion(null, null);
+
+        List<GlpiDiscardedItem> missing = validator.missingInputs(sinFechas,
+                declarada(new BigDecimal("6"), LocalDate.of(2026, 10, 20)));
+
+        assertThat(missing).extracting(GlpiDiscardedItem::code)
+                .containsExactly(GlpiDiscardReason.SIN_FECHA_EN_GLPI);
+        assertThat(missing.get(0).reason())
+                .contains("internal_time_to_resolve", "time_to_resolve");
+    }
+
+    @Test
+    @DisplayName("Una incidencia no necesita fecha: el motor la coloca por su creacion")
+    void unaIncidenciaNoNecesitaFecha() {
+        assertThat(validator.missingInputs(validIncident(), declarada(new BigDecimal("6"), null)))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("Sin planificacion declarada falta la estimacion, y tambien la fecha si GLPI no la trae")
+    void sinDeclaracionFaltaLoQueFalte() {
+        List<GlpiDiscardedItem> peticionSinNada = validator.missingInputs(peticion(null, null), null);
+
+        assertThat(peticionSinNada).extracting(GlpiDiscardedItem::code).containsExactly(
                 GlpiDiscardReason.SIN_ESTIMACION_DECLARADA,
-                GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
-        assertThat(missing).allSatisfy(item -> {
-            assertThat(item.ticketId()).isEqualTo("1");
-            assertThat(item.reason())
-                    .isEqualTo("no hay planificacion declarada para este elemento");
-        });
+                GlpiDiscardReason.SIN_FECHA_EN_GLPI);
+        assertThat(peticionSinNada.get(0).reason())
+                .isEqualTo("no hay planificacion declarada para este elemento");
     }
 
     @Test
-    @DisplayName("Solo con la estimacion declarada falta el compromiso")
-    void soloConLaEstimacionFaltaElCompromiso() {
-        List<GlpiDiscardedItem> missing = validator.missingDeclaration(validIncident(),
+    @DisplayName("Solo con la estimacion declarada falta la fecha, y el motivo nombra GLPI")
+    void soloConLaEstimacionFaltaLaFecha() {
+        List<GlpiDiscardedItem> missing = validator.missingInputs(peticion(null, null),
                 declarada(new BigDecimal("6"), null));
 
         assertThat(missing).extracting(GlpiDiscardedItem::code)
-                .containsExactly(GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
+                .containsExactly(GlpiDiscardReason.SIN_FECHA_EN_GLPI);
         assertThat(missing.get(0).reason())
-                .isEqualTo("la planificacion declarada no tiene fecha compromiso");
+                .isEqualTo("GLPI no trae ni internal_time_to_resolve ni time_to_resolve");
     }
 
     @Test
-    @DisplayName("Solo con el compromiso declarado falta la estimacion")
-    void soloConElCompromisoFaltaLaEstimacion() {
-        List<GlpiDiscardedItem> missing = validator.missingDeclaration(validIncident(),
-                declarada(null, LocalDate.of(2026, 10, 20)));
+    @DisplayName("Solo con fecha en GLPI falta la estimacion")
+    void soloConLaFechaFaltaLaEstimacion() {
+        List<GlpiDiscardedItem> missing = validator.missingInputs(validRequest(), null);
 
         assertThat(missing).extracting(GlpiDiscardedItem::code)
                 .containsExactly(GlpiDiscardReason.SIN_ESTIMACION_DECLARADA);
         assertThat(missing.get(0).reason())
-                .isEqualTo("la planificacion declarada no tiene estimacion");
+                .isEqualTo("no hay planificacion declarada para este elemento");
     }
 
     /**
@@ -221,18 +254,15 @@ class GlpiTicketValidatorTest {
      * habia, y eso se lee en el texto. Es el caso de una estimacion que se declaro y luego se borro.
      */
     @Test
-    @DisplayName("Una declaracion con los dos valores retirados falta entera, y el texto lo distingue")
-    void unaDeclaracionVaciaFaltaEntera() {
-        List<GlpiDiscardedItem> missing = validator.missingDeclaration(validIncident(),
+    @DisplayName("Una declaracion con la estimacion retirada falta, y el texto lo distingue")
+    void unaDeclaracionVaciaFalta() {
+        List<GlpiDiscardedItem> missing = validator.missingInputs(validRequest(),
                 PlanningMetadata.undeclared("1", InputSource.HTTP));
 
-        assertThat(missing).extracting(GlpiDiscardedItem::code).containsExactly(
-                GlpiDiscardReason.SIN_ESTIMACION_DECLARADA,
-                GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
+        assertThat(missing).extracting(GlpiDiscardedItem::code)
+                .containsExactly(GlpiDiscardReason.SIN_ESTIMACION_DECLARADA);
         assertThat(missing.get(0).reason())
                 .isEqualTo("la planificacion declarada no tiene estimacion");
-        assertThat(missing.get(1).reason())
-                .isEqualTo("la planificacion declarada no tiene fecha compromiso");
     }
 
     @Test
@@ -240,7 +270,7 @@ class GlpiTicketValidatorTest {
     void elDescarteLlevaElIdentificador() {
         GlpiTicket sinId = ticket(null, GlpiTicket.TYPE_INCIDENT, 1, 3600L, null, null);
 
-        assertThat(validator.missingDeclaration(ticket(99, GlpiTicket.TYPE_INCIDENT, 1, 3600L,
+        assertThat(validator.missingInputs(ticket(99, GlpiTicket.TYPE_INCIDENT, 1, 3600L,
                 "2026-10-05 09:00:00", null), null)).extracting(GlpiDiscardedItem::ticketId)
                 .containsOnly("99");
         assertThat(validator.rejection(sinId).orElseThrow().ticketId()).isEqualTo("(sin id)");

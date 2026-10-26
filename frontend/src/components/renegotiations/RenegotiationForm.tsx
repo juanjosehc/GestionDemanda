@@ -2,6 +2,7 @@ import { AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 
+import { DisplacementCause } from '@/components/timeline/DisplacementCause'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -168,15 +169,18 @@ function Fields({ item, agreement, onClose }: FieldsProps) {
               data-slot="renegotiation-reason"
               className="border-l-2 border-amber-400 pl-3 text-xs"
             >
-              <p className="flex flex-wrap items-center gap-2">
-                <span className="tabular-nums">
-                  {formatDay(event.originalDate)} → {formatDay(event.rescheduledDate)}
-                </span>
-                <span className="font-mono text-muted-foreground">{event.incidentId}</span>
-                <span className="font-mono text-muted-foreground">{event.appliedRule}</span>
-              </p>
-              {/* El motivo lo redacta el backend desde la regla aplicada; aqui no se re-deriva. */}
-              <p className="mt-0.5">{event.reason}</p>
+              {/*
+                La misma causa, con las mismas etiquetas, que el detalle del Timeline y que la
+                tabla: el motivo lo redacta el backend desde la regla aplicada y aquí no se re-deriva.
+              */}
+              <DisplacementCause
+                originalDate={event.originalDate}
+                newDate={event.rescheduledDate}
+                appliedRule={event.appliedRule}
+                incidentId={event.incidentId}
+                severity={event.severity}
+                reason={event.reason}
+              />
             </li>
           ))}
         </ul>

@@ -3,19 +3,12 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
+import { SEVERITY_VARIANTS } from '@/lib/severity'
 import { formatDay } from '@/lib/timeline'
 import { calendarPath } from '@/routes/navigation'
-import type { BadgeVariant } from '@/components/ui/badge'
-import type { DisplacedRequirement, RescheduleEvent } from '@/types/planningMetrics'
+import type { DisplacedRequirement } from '@/types/planningMetrics'
 
 const INSTANT_FORMAT = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' })
-
-/** Severidad del incidente que provoco el movimiento. Los tres valores los fija el backend. */
-const SEVERITY: Record<RescheduleEvent['severity'], BadgeVariant> = {
-  ALTO: 'danger',
-  MEDIO: 'warning',
-  BAJO: 'secondary',
-}
 
 interface DisplacedRequirementsTableProps {
   items: readonly DisplacedRequirement[]
@@ -76,7 +69,7 @@ export function DisplacedRequirementsTable({ items }: DisplacedRequirementsTable
                 className="border-l-2 border-amber-400 pl-3 text-xs"
               >
                 <p className="flex flex-wrap items-center gap-2">
-                  <Badge variant={SEVERITY[event.severity]}>{event.severity}</Badge>
+                  <Badge variant={SEVERITY_VARIANTS[event.severity]}>{event.severity}</Badge>
 
                   <span className="tabular-nums">
                     {formatDay(event.originalDate)} → {formatDay(event.rescheduledDate)}

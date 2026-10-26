@@ -1,22 +1,21 @@
 import { Link } from 'react-router-dom'
 
+import { DisplacementCause } from '@/components/timeline/DisplacementCause'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { STATUS_VARIANTS } from '@/lib/renegotiations'
+import {
+  AGREEMENT_ORIGIN_BADGE,
+  STATUS_VARIANTS,
+  agreementOrigin,
+} from '@/lib/renegotiations'
 import { formatInstant } from '@/lib/format'
 import { formatDay } from '@/lib/timeline'
-import { calendarPath } from '@/routes/navigation'
+import { NO_FILTERS } from '@/lib/incidents'
+import { calendarPath, incidentsPath, ticketTimelinePath } from '@/routes/navigation'
 import type { RenegotiationItem } from '@/types/renegotiations'
 
 /** Lo que se pinta donde el backend no publico nada. No es un cero: es la ausencia. */
 const MISSING = '—'
-
-/** Severidad del incidente que provoco el movimiento. Los tres valores los fija el backend. */
-const SEVERITY = {
-  ALTO: 'danger',
-  MEDIO: 'warning',
-  BAJO: 'secondary',
-} as const
 
 interface RenegotiationTableProps {
   items: readonly RenegotiationItem[]
@@ -57,7 +56,7 @@ export function RenegotiationTable({ items, selected, onSelect }: RenegotiationT
               Estado
             </th>
             <th scope="col" className="py-2 pr-4 text-left font-medium">
-              Fecha desplazada
+              Desplazamiento
             </th>
             <th scope="col" className="py-2 pr-4 text-left font-medium">
               Fecha acordada
@@ -114,20 +113,59 @@ export function RenegotiationTable({ items, selected, onSelect }: RenegotiationT
                     calculado el{' '}
                     <time dateTime={item.calculatedAt}>{formatInstant(item.calculatedAt)}</time>
                   </p>
+                  {/*
+                    Las dos salidas contextuales, con las rutas que ya existen: el Timeline filtrado
+                    por la persona y con el tramo del ticket abierto, y Tickets filtrado por ella. No
+                    hay pantalla nueva ni una vista de detalle que mantener: son las mismas que el
+                    menu ya publica, con el contexto puesto.
+                  */}
+                  <p className="mt-1 flex items-center gap-3 text-xs">
+                    <Link
+                      data-slot="ticket-timeline-link"
+                      to={ticketTimelinePath(item.developerId, item.workItemId)}
+                      className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                    >
+                      Ver en el Timeline
+                    </Link>
+                    <Link
+                      data-slot="ticket-incidents-link"
+                      to={incidentsPath({ ...NO_FILTERS, person: item.developerId }, 'operativo')}
+                      className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                    >
+                      Ver en Tickets
+                    </Link>
+                  </p>
                 </td>
 
                 <td className="py-3 pr-4">
                   <Badge variant={STATUS_VARIANTS[item.status]}>{item.status}</Badge>
+                  {/*
+                    El origen del acuerdo, debajo del estado y no en una columna nueva: el estado
+                    dice si hay que renegociar y el origen dice quien lo trajo. Son dos preguntas
+                    distintas sobre la misma fila.
+                  */}
+                  {agreement && (
+                    <div className="mt-1">
+                      <Badge
+                        variant={agreementOrigin(agreement.source) === 'GLPI' ? 'info' : 'secondary'}
+                        data-slot="agreement-origin"
+                        data-source={agreement.source}
+                      >
+                        {AGREEMENT_ORIGIN_BADGE[agreementOrigin(agreement.source)]}
+                      </Badge>
+                    </div>
+                  )}
                 </td>
 
                 {/*
-                  Los desplazamientos, uno por linea y en el orden en que los publica el backend. La
-                  pareja «de que fecha a que fecha» es la que el plan audito: no se recalcula ni se
-                  resume en una sola fecha, porque un elemento puede traer varios y resumirlos
-                  escondería el segundo.
+                  Los desplazamientos, uno por linea y en el orden en que los publica el backend, con
+                  su causa entera: incidente, regla, fechas y motivo. Es el mismo bloque que enseña el
+                  detalle del Timeline, importado de un solo sitio, para que las dos pantallas no
+                  expliquen el mismo movimiento con palabras distintas. Un elemento puede traer varios
+                  y se pintan todos: resumirlos escondería el segundo.
                 */}
                 <td className="py-3 pr-4">
-                  <ul className="space-y-1">
+                  <ul className="space-y-2">
                     {item.events.map((event) => (
                       <li
                         key={`${event.timestamp}-${event.incidentId}-${event.originalDate}`}
@@ -135,20 +173,41 @@ export function RenegotiationTable({ items, selected, onSelect }: RenegotiationT
                         // La pareja de fechas auditada, sin formatear, para poder afirmarla.
                         data-original={event.originalDate}
                         data-rescheduled={event.rescheduledDate}
-                        className="flex flex-wrap items-center gap-2 text-xs"
                       >
-                        <Badge variant={SEVERITY[event.severity]}>{event.severity}</Badge>
-                        <span className="tabular-nums">
-                          {formatDay(event.originalDate)} → {formatDay(event.rescheduledDate)}
-                        </span>
-                        <span className="font-mono text-muted-foreground">{event.incidentId}</span>
+                        {/* La misma causa, con las mismas etiquetas, que el detalle del Timeline. */}
+                        <DisplacementCause
+                          originalDate={event.originalDate}
+                          newDate={event.rescheduledDate}
+                          appliedRule={event.appliedRule}
+                          incidentId={event.incidentId}
+                          severity={event.severity}
+                          reason={event.reason}
+                        />
                       </li>
                     ))}
                   </ul>
                 </td>
 
                 <td className="py-3 pr-4 tabular-nums">
-                  {agreement ? formatDay(agreement.agreedDate) : MISSING}
+                  {agreement ? (
+                    <>
+                      {formatDay(agreement.agreedDate)}
+                      {/*
+                        En un acuerdo conciliado, esta fecha ES el TTR del ticket: el sistema la
+                        copio de GLPI, no la tecleo nadie. Decirlo evita que parezca un dato que la
+                        pantalla invento.
+                      */}
+                      {agreementOrigin(agreement.source) === 'GLPI' && (
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          <span data-slot="ttr-detected">TTR detectado</span>
+                          {' · '}
+                          <span>Conciliado automáticamente</span>
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    MISSING
+                  )}
                 </td>
 
                 <td className="py-3 pr-4">{agreement ? agreement.agreedBy : MISSING}</td>

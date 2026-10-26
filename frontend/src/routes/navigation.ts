@@ -152,6 +152,27 @@ export function renegotiationPath(workItemId: string): string {
 }
 
 /**
+ * La agenda del equipo filtrada por una persona y, si se pide, con un ticket señalado.
+ *
+ * Es la acción «Ver en el Timeline» de la ficha de un ticket: el Timeline siembra su filtro de fila
+ * con el técnico y, cuando el ticket tiene tramo, abre su detalle contextual —el mismo panel que se
+ * abre pulsando el tramo—. Sin el ticket lleva solo a la persona, que es lo que sirve cuando el
+ * trabajo no está colocado y no hay tramo que señalar.
+ *
+ * **No lleva la vuelta.** Se llega al puesto de mando, no a un formulario de paso.
+ */
+export function ticketTimelinePath(developerId: string, workItemId?: string): string {
+  const params = new URLSearchParams()
+  params.set('tecnico', developerId)
+
+  if (workItemId) {
+    params.set('ticket', workItemId)
+  }
+
+  return `${ROUTES.teamTimeline}?${params.toString()}`
+}
+
+/**
  * El contexto con el que se abre la declaración de un ticket.
  *
  * Es el único sitio donde se escriben los nombres de estos tres parámetros: quien los pone y quien los
@@ -324,10 +345,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     description: 'La agenda de un plan dia a dia, en el mismo modo que el timeline del equipo',
   },
   {
-    label: 'Incidentes',
+    /**
+     * «Tickets» y no «Incidentes»: la tabla pinta las dos clases de trabajo —incidencias y
+     * requerimientos—, y el rotulo anterior nombraba solo una de ellas. La ruta no cambia, para no
+     * romper los enlaces guardados.
+     */
+    label: 'Tickets',
     to: ROUTES.incidents,
     icon: AlertTriangle,
-    description: 'La cola de trabajo: que esta abierto y que le falta a cada ticket',
+    description: 'El inventario del trabajo activo: cada ticket con su estado, su plan y su acuerdo',
   },
   {
     label: 'Declaración',
@@ -362,19 +388,24 @@ export const NAV_ITEMS: readonly NavItem[] = [
 ]
 
 /**
- * El menu visible: las cuatro entradas que la operacion diaria necesita.
+ * El menu visible: las cinco entradas que la operacion diaria necesita.
  *
  * **Las demas pantallas no desaparecieron; dejaron de tener puerta propia.** El Timeline es el
  * puesto de mando y enlaza a cada una en el momento en que hace falta —declarar desde una persona,
  * planificar desde su fila de cobertura, renegociar desde un tramo o desde la cola de acuerdos—,
- * y el menu se queda con lo que no tiene un contexto unico: la agenda, la accion de declarar, la
- * cola de acuerdos y el diagnostico. Una entrada de menu que solo se usa dentro de otra pantalla es
- * una invitacion a empezar el trabajo por el sitio equivocado.
+ * y el menu se queda con lo que no tiene un contexto unico: la agenda, el inventario de tickets, la
+ * accion de declarar, la cola de acuerdos y el diagnostico.
+ *
+ * **Tickets entra porque es la unica pantalla que contesta «que tickets existen»**, no «cuando»: el
+ * Timeline enseña los tramos y los pendientes dentro de su agenda, pero no el registro de GLPI de
+ * cada ticket —titulo, estado, prioridad, fecha— ni una lista plana que se pueda filtrar por estado
+ * de planificacion o de renegociacion. Eso no se llega a buscar desde ninguna otra pantalla.
  *
  * Se deriva del catalogo para no escribir dos veces el rotulo, el icono y la descripcion.
  */
 const MENU_ROUTES: readonly string[] = [
   ROUTES.teamTimeline,
+  ROUTES.incidents,
   ROUTES.declarations,
   ROUTES.renegotiations,
   ROUTES.settings,

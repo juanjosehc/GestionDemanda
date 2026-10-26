@@ -141,13 +141,14 @@ public class PlanningEngine {
             Incident cause = causingIncidentFor(plannedDate, causingByDay, causingIncidents);
             String causeId = cause == null ? null : cause.id();
 
-            // El desplazamiento ya ocurrio; lo que se evita es auditarlo dos veces.
-            if (!ledger.claim(causeId, requirement.id())) {
-                continue;
-            }
+            // El desplazamiento se audita una sola vez: la segunda corrida del mismo escenario
+            // recupera el instante original y publica el mismo evento. Se publica igual porque cada
+            // plan guarda solo sus propios eventos: si la segunda corrida no publicara nada, el
+            // desplazamiento desapareceria del plan nuevo y con el la renegociacion que lo cubre.
+            Instant auditedAt = ledger.claim(causeId, requirement.id(), Instant.now(clock));
 
             events.add(new RescheduleEvent(
-                    Instant.now(clock),
+                    auditedAt,
                     causeId,
                     requirement.id(),
                     plannedDate,

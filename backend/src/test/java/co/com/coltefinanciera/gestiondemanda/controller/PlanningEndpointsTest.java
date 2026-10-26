@@ -383,25 +383,31 @@ class PlanningEndpointsTest {
     }
 
     @Test
-    @DisplayName("Planificar dos veces el mismo escenario no audita el desplazamiento dos veces")
-    void planificarDosVecesElMismoEscenarioNoAuditaDosVeces() throws Exception {
+    @DisplayName("Planificar dos veces el mismo escenario republica el desplazamiento, no lo audita dos veces")
+    void planificarDosVecesElMismoEscenarioRepublicaElDesplazamiento() throws Exception {
         // El riesgo que la fase cierra, visto desde fuera. La primera ejecucion desplaza el
         // requerimiento y lo audita; la segunda vuelve a desplazarlo, porque el plan se recalcula
-        // entero, pero ya no lo audita: el hecho esta registrado y sigue estandolo aunque la
-        // aplicacion se haya reiniciado entre las dos peticiones.
+        // entero, y lo republica con la misma marca: el hecho esta registrado una sola vez y sigue
+        // estandolo aunque la aplicacion se haya reiniciado entre las dos peticiones. Republicarlo
+        // importa porque cada plan guarda solo sus propios eventos: sin el, el desplazamiento
+        // desaparece del plan nuevo y la conciliacion del TTR se queda sin nada que leer.
         String primero = mockMvc.perform(
                         post("/api/planning/plan").contentType(APPLICATION_JSON).content(ESCENARIO))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.plan.rescheduleEvents.length()").value(1))
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
 
+        String marcaOriginal = JsonPath.read(primero, "$.plan.rescheduleEvents[0].timestamp");
+
         String segundo = mockMvc.perform(
                         post("/api/planning/plan").contentType(APPLICATION_JSON).content(ESCENARIO))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.plan.rescheduleEvents.length()").value(0))
+                .andExpect(jsonPath("$.plan.rescheduleEvents.length()").value(1))
+                .andExpect(jsonPath("$.plan.rescheduleEvents[0].timestamp").value(marcaOriginal))
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
 
-        // El desplazamiento si ocurrio las dos veces: lo que no se repite es la auditoria.
+        // El desplazamiento si ocurrio las dos veces, con la misma agenda: lo que no se repite es
+        // la auditoria, y lo que no se pierde es el hecho.
         assertThat(bloquesEn(segundo, "$.plan.blocks")).isEqualTo(bloquesEn(primero, "$.plan.blocks"));
     }
 

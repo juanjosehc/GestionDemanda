@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 
@@ -24,6 +25,7 @@ import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiDiscardedItem;
 import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiPlanningRequestFactory;
 import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiPlanningSource;
 import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiTicket;
+import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiTicketMapper;
 import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiUser;
 
 /**
@@ -62,6 +64,7 @@ public class PlanningDeclarationService {
 
     private final GlpiPlanningSource glpiPlanningSource;
     private final GlpiPlanningRequestFactory requestFactory;
+    private final GlpiTicketMapper mapper;
     private final Clock clock;
 
     /**
@@ -151,8 +154,12 @@ public class PlanningDeclarationService {
      * propio: quien vaya a modificarla desde la pantalla ya tiene delante lo que hay, sin una segunda
      * lectura ni una segunda traduccion del mismo recurso que pudieran discrepar.
      */
-    private static DeclarationItem item(GlpiPlanningRequestFactory.Verdict verdict, LocalDate today) {
+    private DeclarationItem item(GlpiPlanningRequestFactory.Verdict verdict, LocalDate today) {
         GlpiTicket ticket = verdict.ticket();
+        // La fecha con la que el plan ubica el ticket, traida por el mismo metodo que la usa el motor.
+        // Publicarla aqui no es una segunda lectura de GLPI: es el mismo valor, para que la pantalla
+        // enseñe la fecha que de verdad se aplica en lugar de la que alguien declaro.
+        Optional<GlpiTicketMapper.OperationalDate> operational = mapper.operationalDate(ticket);
         return new DeclarationItem(
                 GlpiDiscardedItem.ticketIdOf(ticket),
                 verdict.reading().type(),
@@ -164,7 +171,9 @@ public class PlanningDeclarationService {
                 verdict.discards().stream()
                         .map(discard -> new DiscardView(discard.code(), discard.reason()))
                         .toList(),
-                declarationOf(verdict.declaration(), today));
+                declarationOf(verdict.declaration(), today),
+                operational.map(GlpiTicketMapper.OperationalDate::date).orElse(null),
+                operational.map(GlpiTicketMapper.OperationalDate::source).orElse(null));
     }
 
     /** La declaracion tal como se sirve en su propio endpoint, o {@code null} si no hay fila. */

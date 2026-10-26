@@ -37,6 +37,8 @@ import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiTicket;
 import co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiUser;
 import co.com.coltefinanciera.gestiondemanda.persistence.PlanningMetadataHistoryJpaRepository;
 import co.com.coltefinanciera.gestiondemanda.persistence.PlanningMetadataJpaRepository;
+import co.com.coltefinanciera.gestiondemanda.persistence.RenegotiationHistoryJpaRepository;
+import co.com.coltefinanciera.gestiondemanda.persistence.RenegotiationJpaRepository;
 import co.com.coltefinanciera.gestiondemanda.persistence.RescheduleClaimJpaRepository;
 import co.com.coltefinanciera.gestiondemanda.service.PlanningMetadataService;
 
@@ -87,12 +89,20 @@ class GlpiPlanningEndpointsTest {
     @Autowired
     private PlanningMetadataHistoryJpaRepository metadataHistory;
 
+    @Autowired
+    private RenegotiationHistoryJpaRepository renegotiationHistory;
+
+    @Autowired
+    private RenegotiationJpaRepository renegotiations;
+
     @MockitoBean
     private GlpiPlanningSource glpiPlanningSource;
 
     @BeforeEach
     void limpiarYDeclarar() {
         claims.deleteAll();
+        renegotiationHistory.deleteAll();
+        renegotiations.deleteAll();
         metadataHistory.deleteAll();
         metadataRows.deleteAll();
         // Las horas y la fecha del escenario, que antes venian del ticket: seis horas de
@@ -159,6 +169,43 @@ class GlpiPlanningEndpointsTest {
                         .value("UMBRAL_INCIDENTE_EXCEDIDO"));
     }
 
+    /**
+     * Un desplazamiento no se convierte en acuerdo cuando GLPI ya ubica ahi el requerimiento.
+     *
+     * <p>Hasta la Fase 66b el requerimiento se planificaba con la fecha declarada y el TTR de GLPI era
+     * una fecha distinta, posterior, que la conciliacion leia como renegociacion. Desde la Fase 66b el
+     * plan ubica el requerimiento en su fecha operativa, asi que la fecha de GLPI y la original del
+     * desplazamiento son la misma por construccion: la condicion 4 de la conciliacion —que la fecha
+     * de GLPI sea posterior— no se cumple y no se escribe ningun acuerdo. Es exactamente lo que se
+     * busca: registrar en {@code renegotiations} lo que el plan ya dice seria inventar un compromiso.
+     *
+     * <p>La prueba exige las dos mitades. Que haya desplazamiento —si no lo hubiera, la ausencia de
+     * acuerdo no diria nada— y que aun asi no haya acuerdo: el pendiente sigue abierto y lo cierra una
+     * persona, no una lectura de GLPI.
+     */
+    @Test
+    @DisplayName("Un desplazamiento no se vuelve acuerdo si GLPI ya ubica ahi el requerimiento")
+    void laFechaDeGlpiNoInventaAcuerdos() throws Exception {
+        glpiResponde(incidencia(501, null), peticion(502, null));
+
+        mockMvc.perform(post("/api/planning/from-glpi")
+                        .contentType(APPLICATION_JSON).content(PETICION))
+                .andExpect(status().isCreated())
+                // El incidente desborda el lunes y el requerimiento se corre: hay desplazamiento.
+                .andExpect(jsonPath("$.plan.rescheduleEvents.length()").value(1))
+                .andExpect(jsonPath("$.plan.rescheduleEvents[0].requirementId").value("502"));
+
+        String body = mockMvc.perform(get("/api/renegotiations"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        // Pero no es una renegociacion: la fecha de GLPI es la que el plan ya uso, no una posterior.
+        // El desplazamiento queda pendiente, que es la verdad —nadie ha acordado una fecha nueva—.
+        assertThat(JsonPath.<List<String>>read(body,
+                "$.items[?(@.workItemId == '502')].status"))
+                .containsExactly("PENDIENTE_DE_ACUERDO");
+    }
+
     @Test
     @DisplayName("from-glpi planifica con los tickets activos y no lee el historico cerrado")
     void planificaSoloConLosTicketsActivos() throws Exception {
@@ -201,7 +248,7 @@ class GlpiPlanningEndpointsTest {
                 .andExpect(jsonPath("$.source").value("GLPI"))
                 // La version 3 es el ultimo corte: la 2 fue el cambio de donde salen las horas y la 3
                 // el cambio de ruta con el que se recuperan los tickets, que antes llegaba vacia.
-                .andExpect(jsonPath("$.adapterVersion").value("glpi-rest-3"))
+                .andExpect(jsonPath("$.adapterVersion").value("glpi-rest-4"))
                 .andExpect(jsonPath("$.extractedAt").isNotEmpty())
                 .andExpect(jsonPath("$.developerId").value(DEVELOPER))
                 .andExpect(jsonPath("$.incidents.length()").value(1))
@@ -247,21 +294,21 @@ class GlpiPlanningEndpointsTest {
     @DisplayName("Los tickets sin planificacion declarada se devuelven con sus motivos")
     void losTicketsSinDeclaracionSeDevuelven() throws Exception {
         GlpiTicket sinDeclaracion = new GlpiTicket(503, "Sin planificacion declarada", 1,
-                GlpiTicket.TYPE_INCIDENT, 3, null, null, 21600L, null, "2026-10-05 09:00:00");
+                GlpiTicket.TYPE_REQUEST, 3, null, null, 21600L, null, null, "2026-10-05 09:00:00");
         glpiResponde(incidencia(501, null), peticion(502, null), sinDeclaracion);
 
         mockMvc.perform(post("/api/planning/from-glpi")
                         .contentType(APPLICATION_JSON).content(PETICION))
                 .andExpect(status().isCreated())
                 // Dos entradas para un solo ticket: le falta la estimacion, que la debe el
-                // desarrollador, y el compromiso, que lo debe el gestor. Son dos personas distintas.
+                // desarrollador, y la fecha operativa, que la debe GLPI. Son dos sistemas distintos.
                 .andExpect(jsonPath("$.discarded.length()").value(2))
                 .andExpect(jsonPath("$.discarded[0].ticketId").value("503"))
                 .andExpect(jsonPath("$.discarded[0].code").value("SIN_ESTIMACION_DECLARADA"))
                 .andExpect(jsonPath("$.discarded[0].reason").value(
                         org.hamcrest.Matchers.containsString("no hay planificacion declarada")))
                 .andExpect(jsonPath("$.discarded[1].ticketId").value("503"))
-                .andExpect(jsonPath("$.discarded[1].code").value("SIN_COMPROMISO_DECLARADO"))
+                .andExpect(jsonPath("$.discarded[1].code").value("SIN_FECHA_EN_GLPI"))
                 // El ticket sin declarar no impide planificar el resto.
                 .andExpect(jsonPath("$.plan.allocations.length()").value(2));
     }

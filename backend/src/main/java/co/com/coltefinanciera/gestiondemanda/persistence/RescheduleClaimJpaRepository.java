@@ -1,5 +1,7 @@
 package co.com.coltefinanciera.gestiondemanda.persistence;
 
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -12,4 +14,8 @@ public interface RescheduleClaimJpaRepository extends JpaRepository<RescheduleCl
 
     /** Indica si la pareja ya fue reclamada, sin reclamarla. */
     boolean existsByIncidentIdAndRequirementId(String incidentId, String requirementId);
+
+    /** La fila reclamada, para leer el instante en que se audito el desplazamiento. */
+    Optional<RescheduleClaimEntity> findByIncidentIdAndRequirementId(
+            String incidentId, String requirementId);
 }

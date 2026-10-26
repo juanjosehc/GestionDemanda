@@ -2,23 +2,73 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { DECLARATION_VARIANTS } from '@/lib/declarations'
+import { DECLARATION_LABEL, DECLARATION_VARIANTS } from '@/lib/declarations'
 import { formatInstant } from '@/lib/format'
-import { PENDING, declarationSideOf } from '@/lib/incidents'
+import { PENDING, PENDING_AGREEMENT, declarationSideOf } from '@/lib/incidents'
+import { STATUS_VARIANTS } from '@/lib/renegotiations'
 import { formatHours } from '@/lib/timeline'
+import type { BadgeVariant } from '@/components/ui/badge'
 import type { IncidentRow } from '@/lib/incidents'
-import type { PlanningMetadata } from '@/types/declarations'
+import type { DeclarationItem } from '@/types/declarations'
+import type { RenegotiationStatus } from '@/types/renegotiations'
+import type { TimelineItemStatus } from '@/types/timeline'
 
 /** Lo que hay que enseñar cuando GLPI no pudo dar el dato. Un hueco declarado, no un cero. */
 const MISSING = '—'
 
-/** Lo declarado hoy, en una linea: las horas y el compromiso, con lo que falte en su sitio. */
-function declarationSummary(declaration: PlanningMetadata): string {
+/**
+ * El estado del tramo, en palabras y con su color.
+ *
+ * **`PLANIFICADO` va en informativo y no en éxito**: estar colocado no significa que no falte nada
+ * —un ticket puede estar en el plan y aun así esperar un acuerdo—, y el verde queda reservado para
+ * «nada pendiente», que es lo que dice el estado de declaración. `DESPLAZADO` advierte porque el plan
+ * lo movió de fecha. La ausencia de tramo no es un estado del tramo: se pinta «Sin plan» en neutro.
+ */
+const PLAN_VARIANTS: Record<TimelineItemStatus, BadgeVariant> = {
+  PLANIFICADO: 'info',
+  DESPLAZADO: 'warning',
+}
+
+const PLAN_LABEL: Record<TimelineItemStatus, string> = {
+  PLANIFICADO: 'Planificado',
+  DESPLAZADO: 'Desplazado',
+}
+
+/** El estado del acuerdo, en las palabras de la pantalla. Los valores son los del backend. */
+const AGREEMENT_LABEL: Record<RenegotiationStatus, string> = {
+  PENDIENTE_DE_ACUERDO: 'Pendiente de acuerdo',
+  ACORDADA: 'Acordado',
+}
+
+/** Un distintivo del plan, o el hueco cuando la lectura todavía no llegó. */
+function PlanBadge({ status }: { status: TimelineItemStatus | null | undefined }) {
+  if (status === undefined) {
+    return <>{MISSING}</>
+  }
+
+  if (status === null) {
+    return <Badge variant="secondary">Sin plan</Badge>
+  }
+
+  return <Badge variant={PLAN_VARIANTS[status]}>{PLAN_LABEL[status]}</Badge>
+}
+
+/** Un distintivo del acuerdo, o el hueco cuando no hay acuerdo registrado o no se pudo leer. */
+function AgreementBadge({ status }: { status: RenegotiationStatus | null | undefined }) {
+  if (status === undefined || status === null) {
+    return <>{MISSING}</>
+  }
+
+  return <Badge variant={STATUS_VARIANTS[status]}>{AGREEMENT_LABEL[status]}</Badge>
+}
+
+/** Lo que ubica al ticket, en una linea: las horas declaradas y la fecha de GLPI. */
+function declarationSummary(item: DeclarationItem): string {
   const hours =
-    declaration.estimatedHours === null
+    item.declaration?.estimatedHours == null
       ? 'sin estimación'
-      : `${formatHours(declaration.estimatedHours)} h`
-  const date = declaration.committedDate ?? 'sin compromiso'
+      : `${formatHours(item.declaration.estimatedHours)} h`
+  const date = item.operationalDate ?? 'sin fecha en GLPI'
 
   return `${hours} · ${date}`
 }
@@ -32,6 +82,10 @@ interface IncidentTableProps {
    * obligaría a pasarle el estado de la pantalla entera. Quien la sabe —Incidentes— la entrega hecha.
    */
   declarationHref: (row: IncidentRow) => string
+  /** La agenda del equipo con esta persona —y este ticket— ya filtrados. */
+  timelineHref: (row: IncidentRow) => string
+  /** La renegociación de este ticket, con su fila ya seleccionada. */
+  renegotiationHref: (row: IncidentRow) => string
 }
 
 /**
@@ -52,10 +106,15 @@ interface IncidentTableProps {
  * —aquí un ticket compartido por dos personas necesita además el nombre de quién lo tiene, o las dos
  * filas colisionarían—.
  */
-export function IncidentTable({ rows, declarationHref }: IncidentTableProps) {
+export function IncidentTable({
+  rows,
+  declarationHref,
+  timelineHref,
+  renegotiationHref,
+}: IncidentTableProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[78rem] text-sm">
+      <table className="w-full min-w-[88rem] text-sm">
         <thead>
           <tr className="border-b border-border text-xs text-muted-foreground">
             <th scope="col" className="py-2 pr-4 text-left font-medium">
@@ -80,7 +139,13 @@ export function IncidentTable({ rows, declarationHref }: IncidentTableProps) {
               Fecha publicada por GLPI
             </th>
             <th scope="col" className="py-2 pr-4 text-left font-medium">
-              Estado de declaración
+              Declaración
+            </th>
+            <th scope="col" className="py-2 pr-4 text-left font-medium">
+              Plan
+            </th>
+            <th scope="col" className="py-2 pr-4 text-left font-medium">
+              Acuerdo
             </th>
             <th scope="col" className="py-2 text-left font-medium">
               Acciones
@@ -98,6 +163,8 @@ export function IncidentTable({ rows, declarationHref }: IncidentTableProps) {
               data-type={row.item.type ?? ''}
               data-status={row.item.status ?? ''}
               data-declaration={row.item.declarationStatus}
+              data-plan={row.facts.planStatus ?? ''}
+              data-agreement={row.facts.agreement ?? ''}
               className="border-b border-border/60 align-top last:border-0"
             >
               {/* El tipo y el estado del dominio llegan nulos cuando el ticket no se pudo
@@ -131,13 +198,20 @@ export function IncidentTable({ rows, declarationHref }: IncidentTableProps) {
               </td>
 
               <td className="py-3 pr-4">
-                <Badge variant={DECLARATION_VARIANTS[row.item.declarationStatus]}>
-                  {row.item.declarationStatus}
+                {/* El estado se lee en palabras; el código del backend queda en el `title`, que es
+                    lo que permite contrastarlo con la regla que lo produjo. */}
+                <Badge
+                  variant={DECLARATION_VARIANTS[row.item.declarationStatus]}
+                  title={row.item.declarationStatus}
+                >
+                  {DECLARATION_LABEL[row.item.declarationStatus]}
                 </Badge>
 
-                {row.item.declaration && (
+                {/* La fecha la publica GLPI aunque nadie haya declarado horas, y es la que ubica
+                    el ticket en el plan: se enseña igual, con la estimación que falte. */}
+                {(row.item.declaration !== null || row.item.operationalDate !== null) && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {declarationSummary(row.item.declaration)}
+                    {declarationSummary(row.item)}
                   </p>
                 )}
 
@@ -156,20 +230,55 @@ export function IncidentTable({ rows, declarationHref }: IncidentTableProps) {
                 )}
               </td>
 
-              {/* El atajo, solo donde hay algo que declarar. El nombre accesible lleva el ticket y la
-                  persona porque un ticket compartido produce dos enlaces con el mismo texto y destinos
-                  distintos: sin él, la pantalla tendría dos enlaces indistinguibles. */}
-              <td className="py-3" data-slot="incident-action">
-                {declarationSideOf(row.item) === PENDING && (
-                  <Button asChild variant="outline" size="sm">
+              {/* Dónde está el ticket según el plan vigente. La ausencia de tramo es un hecho
+                  —«Sin plan»—; el hueco es no haber podido leerlo. */}
+              <td className="py-3 pr-4" data-slot="incident-plan">
+                <PlanBadge status={row.facts.planStatus} />
+              </td>
+
+              {/* El acuerdo solo existe para lo que el plan desplazó; sin desplazamiento no hay
+                  nada que acordar y la celda queda vacía en vez de inventar «Sin acuerdo». */}
+              <td className="py-3 pr-4" data-slot="incident-agreement">
+                <AgreementBadge status={row.facts.agreement} />
+              </td>
+
+              {/* Las tres salidas de la fila, cada una a su pantalla de siempre. El nombre
+                  accesible lleva el ticket y la persona porque un ticket compartido produce dos
+                  enlaces con el mismo texto y destinos distintos: sin él, la pantalla tendría dos
+                  enlaces indistinguibles. */}
+              <td className="whitespace-nowrap py-3" data-slot="incident-action">
+                <div className="flex items-center gap-1.5">
+                  {declarationSideOf(row.item) === PENDING && (
+                    <Button asChild variant="outline" size="sm">
+                      <Link
+                        to={declarationHref(row)}
+                        aria-label={`Declarar el ticket ${row.item.workItemId} de ${row.personName}`}
+                      >
+                        Declarar
+                      </Link>
+                    </Button>
+                  )}
+
+                  <Button asChild variant="ghost" size="sm">
                     <Link
-                      to={declarationHref(row)}
-                      aria-label={`Declarar el ticket ${row.item.workItemId} de ${row.personName}`}
+                      to={timelineHref(row)}
+                      aria-label={`Ver el ticket ${row.item.workItemId} de ${row.personName} en el Timeline`}
                     >
-                      Declarar
+                      Timeline
                     </Link>
                   </Button>
-                )}
+
+                  {row.facts.agreement === PENDING_AGREEMENT && (
+                    <Button asChild variant="outline" size="sm">
+                      <Link
+                        to={renegotiationHref(row)}
+                        aria-label={`Renegociar el ticket ${row.item.workItemId} de ${row.personName}`}
+                      >
+                        Renegociar
+                      </Link>
+                    </Button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

@@ -738,7 +738,7 @@ public class PlanningService {
      * y sale igual, porque el frontend necesita la fila para no dejar un hueco en el eje.
      *
      * <p>{@code ponytail:} se da por hecho que un tramo ocupa el dia en que empieza. Hoy se cumple
-     * —la jornada es de 09:00 a 17:00 y el motor parte el trabajo por dia—, y un tramo que cruzara
+     * —la jornada oficial es de 07:00 a 17:30 y el motor parte el trabajo por dia—, y un tramo que cruzara
      * medianoche atribuiria sus horas al dia equivocado. Si el calendario admitiera jornadas que
      * cruzan el dia, habria que repartir las horas entre las dos fechas.
      */

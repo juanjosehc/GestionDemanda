@@ -42,6 +42,7 @@ public record GlpiTicket(
         @JsonProperty("urgency") Integer urgency,
         @JsonProperty("actiontime") Long actiontime,
         @JsonProperty("time_to_resolve") String timeToResolve,
+        @JsonProperty("internal_time_to_resolve") String internalTimeToResolve,
         @JsonProperty("date") String date) {
 
     /** {@code type} de un ticket que GLPI considera una incidencia. */
@@ -49,4 +50,24 @@ public record GlpiTicket(
 
     /** {@code type} de un ticket que GLPI considera una peticion. */
     public static final int TYPE_REQUEST = 2;
+
+    /**
+     * Un ticket sin Internal TTR, para quien no quiera nombrarlo.
+     *
+     * <p>Lo construye asi el codigo de prueba y cualquier lectura anterior a la Fase 66b. La
+     * produccion siempre pasa el valor: lo lee de la opcion de busqueda 180 y no de aqui.
+     */
+    public GlpiTicket(
+            Integer id,
+            String name,
+            Integer status,
+            Integer type,
+            Integer priority,
+            Integer impact,
+            Integer urgency,
+            Long actiontime,
+            String timeToResolve,
+            String date) {
+        this(id, name, status, type, priority, impact, urgency, actiontime, timeToResolve, null, date);
+    }
 }

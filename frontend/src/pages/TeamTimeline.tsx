@@ -1,8 +1,9 @@
 import { ChartGantt } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { DeclarationForm } from '@/components/declarations/DeclarationForm'
+import { DisplacementCause } from '@/components/timeline/DisplacementCause'
 import { IncidentSimulator } from '@/components/timeline/IncidentSimulator'
 import { TimelineGrid } from '@/components/timeline/TimelineGrid'
 import { Badge } from '@/components/ui/badge'
@@ -32,9 +33,11 @@ import {
   pendingAgreements,
   pendingCounts,
   pendingGroups,
+  pendingPath,
   plannedByDeveloper,
   teamPending,
 } from '@/lib/pending'
+import { AGREEMENT_ORIGIN_BADGE, agreementOrigin, agreementStates } from '@/lib/renegotiations'
 import { NO_ROW_FILTERS, filterRows, hasFilters } from '@/lib/timelineFilters'
 import {
   blockKey,
@@ -44,6 +47,7 @@ import {
   formatTime,
   teamAgenda,
   timelineDays,
+  unscheduledOf,
 } from '@/lib/timeline'
 import {
   alertDetailPath,
@@ -193,7 +197,25 @@ export function TeamTimeline() {
   const renegotiations = useRenegotiations()
   const alerts = useAlerts()
 
+  /*
+   * La dirección **siembra** la vista, una sola vez: `tecnico` deja la fila de esa persona y `ticket`
+   * abre su detalle. Es lo que hace que la acción «Ver el Timeline» de Tickets no aterrice en la
+   * agenda entera con el gestor buscando a mano. Como en Incidents, el estado local sigue mandando
+   * después: si la dirección gobernara, cada pulsación sería una navegación.
+   */
+  const [searchParams] = useSearchParams()
+
   const [selected, setSelected] = useState<string | null>(null)
+
+  /*
+   * El ticket señalado por la dirección, si lo hay.
+   *
+   * **El panel se abre por clave de tramo, y la dirección no la conoce**: un ticket puede tener más
+   * de un tramo y la dirección solo lleva su identificador. Se guarda el ticket y se resuelve cuando
+   * la agenda llega —se abre el primero de sus tramos—; cerrar lo limpia, para que el panel no se
+   * vuelva a abrir solo en el siguiente render.
+   */
+  const [ticket, setTicket] = useState<string | null>(() => searchParams.get('ticket'))
 
   /*
    * El detalle dejó de ser una caja debajo de la agenda y pasó a ser un panel fijo a la derecha:
@@ -205,10 +227,12 @@ export function TeamTimeline() {
   const openDetail = useCallback((item: TimelineItem) => {
     openerRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setTicket(null)
     setSelected(blockKey(item))
   }, [])
   const closeDetail = useCallback(() => {
     setSelected(null)
+    setTicket(null)
     openerRef.current?.focus()
   }, [])
 
@@ -239,7 +263,10 @@ export function TeamTimeline() {
    * paneles de abajo siguen contando al equipo completo, porque la pregunta «qué le falta al equipo»
    * no cambia porque uno esté buscando a Ana.
    */
-  const [filters, setFilters] = useState<TeamRowFilters>(NO_ROW_FILTERS)
+  const [filters, setFilters] = useState<TeamRowFilters>(() => ({
+    ...NO_ROW_FILTERS,
+    developerId: searchParams.get('tecnico') ?? NO_ROW_FILTERS.developerId,
+  }))
 
   /**
    * El incidente de demostración, si lo hay.
@@ -314,6 +341,26 @@ export function TeamTimeline() {
     [renegotiations.data],
   )
 
+  // El color de cada bloque: el plan pone el estado y el acuerdo lo matiza. Se calcula una vez para
+  // toda la rejilla, que es lo que impide que dos tramos del mismo ticket salgan de colores distintos.
+  const statesByItem = useMemo(() => agreementStates(renegotiations.data), [renegotiations.data])
+
+  /**
+   * Los tickets que tienen día en GLPI y ningún tramo porque nadie declaró las horas.
+   *
+   * **No salen del plan, porque no están en el plan.** Sale de la declaración, que es la misma
+   * lectura que ya alimenta el panel de pendientes: cruzar aquí las dos evita una petición más y,
+   * sobre todo, evita que la rejilla invente un tramo de cero horas para poder pintarlos.
+   */
+  const plannedTickets = useMemo(
+    () => new Set(agenda.items.map((item) => item.workItemId)),
+    [agenda],
+  )
+  const unscheduled = useMemo(
+    () => unscheduledOf(declarationsById, plannedTickets, { from: null, to: null }),
+    [declarationsById, plannedTickets],
+  )
+
   // El lote indexa por identificador, así que las listas se alinean aquí antes de entrar: `teamPending`
   // sigue emparejando por posición, y una persona que GLPI no conoce deja su hueco vacío en vez de
   // desplazar a las siguientes.
@@ -326,6 +373,20 @@ export function TeamTimeline() {
   )
   const counts = pendingCounts(pending)
   const summary = pendingGroups(pending)
+
+  /**
+   * A dónde lleva el chip «N pendientes» de cada fila.
+   *
+   * Con **un solo** pendiente el chip es un enlace al sitio donde se resuelve, con el ticket ya
+   * puesto: la misma ruta que la fila del panel, para no tener dos formas de llegar al mismo sitio.
+   * Con varios no hay un ticket único que abrir, así que el chip filtra el panel de pendientes por
+   * esa persona (`onPendingSelect`), que es donde están todos con su causa.
+   */
+  const pendingLinks = Object.fromEntries(
+    pending
+      .filter((item) => counts[item.developerId] === 1)
+      .map((item) => [item.developerId, pendingPath(item, ROUTES.teamTimeline)]),
+  )
 
   /**
    * La cobertura del plan, persona a persona.
@@ -503,7 +564,15 @@ export function TeamTimeline() {
    * están todas contadas abajo. Significa que ningún plan vigente aporta una ventana, y sin ventana
    * no hay columnas —inventarlas afirmaría una jornada que nadie publicó—.
    */
-  const days = timelineDays(agenda.resources, agenda.items)
+  /*
+   * Las columnas del eje, con una regla que no se ve: **un ticket sin horas también abre su día.**
+   * Su fecha no está en ninguna capacidad —no hay plan que la cubra—, así que si las columnas
+   * salieran solo de la capacidad y de los tramos, el 68428 caería en una fecha sin columna y
+   * desaparecería de la vista, que es exactamente lo que la Fase 67 viene a impedir.
+   */
+  const days = [
+    ...new Set([...timelineDays(agenda.resources, agenda.items), ...unscheduled.map((item) => item.date)]),
+  ].sort()
   const firstDay = days[0]
   const lastDay = days[days.length - 1]
 
@@ -529,7 +598,16 @@ export function TeamTimeline() {
     }))
     .filter((group) => group.items.length > 0)
 
-  const selectedItem = agenda.items.find((item) => blockKey(item) === selected) ?? null
+  /*
+   * El tramo abierto: el que se pulsó o, si la dirección trajo un ticket, el primero de sus tramos.
+   * Un ticket que el plan no colocó no tiene tramo y no abre panel —la vista queda filtrada por su
+   * persona, que es lo que se puede enseñar de él aquí—.
+   */
+  const selectedItem =
+    agenda.items.find((item) => blockKey(item) === selected) ??
+    (selected === null && ticket !== null
+      ? (agenda.items.find((item) => item.workItemId === ticket) ?? null)
+      : null)
 
   // Quién quedó fuera del equipo, por su identificador: quien no está en el padrón no tiene fila, y
   // la pantalla lo dice en vez de esconder el trabajo sin nombrarlo.
@@ -563,12 +641,29 @@ export function TeamTimeline() {
         shown={shownResources.length}
       />
 
+      {/*
+        La demostración, encima de la agenda que explica: se elige a una persona y un día, y el
+        incidente se ve sobre la rejilla real. Con un solo scroll vertical, la agenda mide varios
+        miles de píxeles; un panel de control al final de ella sería un panel que nadie encuentra.
+        Nada de lo que hace aquí sale de esta pantalla.
+      */}
+      <IncidentSimulator
+        people={peopleOptions}
+        days={days}
+        resources={agenda.resources}
+        items={agenda.items}
+        result={simulation}
+        onChange={setSimulation}
+      />
+
       <TimelineGrid
         resources={shownResources}
         items={agenda.items}
         names={names}
         pending={counts}
         recoverable={recoverableCounts}
+        pendingLinks={pendingLinks}
+        onPendingSelect={(developerId) => focusOn(developerId, 'pendientes')}
         nameLinks={nameLinks}
         label="Agenda del equipo"
         // Las columnas salen del equipo completo, no de las filas visibles: al filtrar, la ventana
@@ -580,6 +675,8 @@ export function TeamTimeline() {
         onSelect={openDetail}
         selected={selected}
         simulation={simulationLayer}
+        states={statesByItem}
+        unscheduled={unscheduled}
       />
 
       {/*
@@ -597,19 +694,6 @@ export function TeamTimeline() {
           de {outsideIds.join(', ')}.
         </p>
       )}
-
-      {/*
-        La demostración, pegada a la agenda que acaba de pintarse: se elige a una persona y un día,
-        y el incidente se ve sobre la rejilla real. Nada de lo que hace aquí sale de esta pantalla.
-      */}
-      <IncidentSimulator
-        people={peopleOptions}
-        days={days}
-        resources={agenda.resources}
-        items={agenda.items}
-        result={simulation}
-        onChange={setSimulation}
-      />
 
       <CoveragePanel
         rows={coverageRows}
@@ -1026,24 +1110,14 @@ function ItemDetail({
         )}
 
         {item.displacement && (
-          <dl
-            data-slot="item-displacement"
-            className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs"
-          >
-            <dt className="text-muted-foreground">Fecha original</dt>
-            <dd>{formatDay(item.displacement.originalDate)}</dd>
-            <dt className="text-muted-foreground">Fecha nueva</dt>
-            <dd>{formatDay(item.displacement.newDate)}</dd>
-            <dt className="text-muted-foreground">Regla aplicada</dt>
-            <dd className="font-mono">{item.displacement.appliedRule}</dd>
-            <dt className="text-muted-foreground">Incidente causante</dt>
-            <dd className="font-mono">
-              {item.displacement.incidentId ?? 'Ocupación previa de la jornada'}
-              {item.displacement.incidentSeverity && ` · ${item.displacement.incidentSeverity}`}
-            </dd>
-            <dt className="text-muted-foreground">Motivo</dt>
-            <dd>{item.displacement.reason}</dd>
-          </dl>
+          <DisplacementCause
+            originalDate={item.displacement.originalDate}
+            newDate={item.displacement.newDate}
+            appliedRule={item.displacement.appliedRule}
+            incidentId={item.displacement.incidentId}
+            severity={item.displacement.incidentSeverity}
+            reason={item.displacement.reason}
+          />
         )}
 
         {renegotiation && (
@@ -1051,8 +1125,14 @@ function ItemDetail({
             data-slot="item-renegotiation"
             className="flex flex-wrap items-center gap-2 text-xs"
           >
-            <Badge variant={renegotiation.status === 'ACORDADA' ? 'success' : 'warning'}>
-              {renegotiation.status === 'ACORDADA' ? 'Acordada' : 'Pendiente de acuerdo'}
+            <Badge
+              variant={renegotiation.status === 'ACORDADA' ? 'success' : 'warning'}
+              data-slot="item-renegotiation-status"
+              data-source={renegotiation.renegotiation?.source ?? ''}
+            >
+              {renegotiation.status === 'ACORDADA'
+                ? AGREEMENT_ORIGIN_BADGE[agreementOrigin(renegotiation.renegotiation?.source)]
+                : 'Pendiente de acuerdo'}
             </Badge>
             {renegotiation.renegotiation ? (
               <>
@@ -1304,7 +1384,14 @@ function CoveragePanel({
             </div>
           )}
 
-          <div className="mt-3 overflow-x-auto">
+          {/*
+            `relative` no es decorativo: el `<caption class="sr-only">` de la tabla es
+            `position:absolute`, y sin un ancestro posicionado su bloque contenedor es el documento.
+            Un elemento absoluto no lo recorta el `overflow` de `main`, así que su posición —el
+            final de una página de casi 4.000 px— alargaba el área desplazable del documento y
+            dejaba ~1.000 px de scroll fantasma por debajo de la aplicación.
+          */}
+          <div className="relative mt-3 overflow-x-auto">
             <table className="w-full min-w-max text-xs">
               <caption className="sr-only">
                 Cobertura por persona: tickets activos, con declaración, planificables, pendientes,
@@ -1641,17 +1728,7 @@ function PendingPanel({
                       // Cada causa se arregla en un sitio distinto, y el enlace lo lleva ahí: lo que
                       // falta se declara, lo que espera una fecha se acuerda y lo que no entró en el
                       // plan se arregla volviendo a generarlo —no declarando lo que ya está declarado—.
-                      to={
-                        item.cause === 'SIN_ACUERDO'
-                          ? renegotiationPath(item.workItemId)
-                          : item.cause === 'NO_INCLUIDO_EN_EL_PLAN'
-                            ? planningPath(item.developerId)
-                            : declarationPath({
-                                developerId: item.developerId,
-                                workItemId: item.workItemId,
-                                from: ROUTES.teamTimeline,
-                              })
-                      }
+                      to={pendingPath(item, ROUTES.teamTimeline)}
                       title={`${PENDING_CAUSE_DETAIL[item.cause]} ${
                         item.cause === 'SIN_ACUERDO'
                           ? 'Abrir la renegociación.'

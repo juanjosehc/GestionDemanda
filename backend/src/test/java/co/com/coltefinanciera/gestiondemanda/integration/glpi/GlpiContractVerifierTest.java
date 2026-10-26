@@ -128,8 +128,8 @@ class GlpiContractVerifierTest {
     void elInformeDeclaraLasVersiones() {
         Report report = GlpiContractVerifier.verify(COMPLETO);
 
-        assertThat(report.adapterVersion()).isEqualTo("glpi-rest-3");
-        assertThat(report.contractVersion()).isEqualTo("glpi-contract-1");
+        assertThat(report.adapterVersion()).isEqualTo("glpi-rest-4");
+        assertThat(report.contractVersion()).isEqualTo("glpi-contract-2");
     }
 
     @Test

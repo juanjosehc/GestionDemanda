@@ -32,11 +32,12 @@ import co.com.coltefinanciera.gestiondemanda.exception.GlpiInvalidDataException;
  * <p>Es la prueba del contrato de la capa anticorrupcion: lo que sale es un objeto del dominio, con
  * tipos del dominio, y el motor lo recibe sin poder saber de donde vino.
  *
- * <p><strong>Desde la decision 124.2 la prueba tiene dos fuentes y las distingue.</strong> Los
- * tickets llegan por parametro, como siempre; las horas y la fecha compromiso se declaran en el
- * repositorio de planificacion antes de construir. Cuando un ticket tiene las dos cosas —las de GLPI
- * y las declaradas— y no coinciden, lo que entra al motor dice cual de las dos gano, y esa es la
- * afirmacion que sostiene el corte.
+ * <p><strong>La prueba tiene dos fuentes y las distingue.</strong> Los tickets llegan por parametro,
+ * como siempre, y de ellos sale la fecha operativa del requerimiento desde la Fase 66b
+ * —{@code internal_time_to_resolve}, o {@code time_to_resolve} si no hay—. Las horas se declaran en el
+ * repositorio de planificacion antes de construir. Cuando un ticket trae las dos cosas y no coinciden,
+ * lo que entra al motor dice cual de las dos gano: las horas de la declaracion y la fecha de GLPI, y
+ * esa es la afirmacion que sostiene el corte.
  */
 class GlpiPlanningRequestFactoryTest {
 
@@ -68,6 +69,12 @@ class GlpiPlanningRequestFactoryTest {
     private static GlpiTicket request(int id, Integer status, long actiontime, String deadline) {
         return new GlpiTicket(id, "Peticion " + id, status, GlpiTicket.TYPE_REQUEST, 3, null, null,
                 actiontime, deadline, "2026-10-01 08:00:00");
+    }
+
+    /** Una peticion con sus dos fechas de GLPI, para distinguir la de OLA de la de SLA. */
+    private static GlpiTicket requestWithOla(int id, String deadline, String internalDeadline) {
+        return new GlpiTicket(id, "Peticion " + id, 1, GlpiTicket.TYPE_REQUEST, 3, null, null,
+                14400L, deadline, internalDeadline, "2026-10-01 08:00:00");
     }
 
     /**
@@ -159,7 +166,7 @@ class GlpiPlanningRequestFactoryTest {
     }
 
     @Test
-    @DisplayName("Un ticket sin planificacion declarada se descarta con sus dos motivos")
+    @DisplayName("Un ticket sin planificacion declarada se descarta por la estimacion")
     void unTicketSinDeclaracionSeDescarta() {
         declararTodo(1);
         GlpiTicket sinDeclaracion = new GlpiTicket(99, "Sin declaracion", 1,
@@ -171,9 +178,9 @@ class GlpiPlanningRequestFactoryTest {
         assertThat(result.request().incidents()).extracting(Incident::id).containsExactly("1");
         assertThat(result.discarded()).extracting(GlpiDiscardedItem::ticketId)
                 .containsOnly("99");
-        assertThat(result.discarded()).extracting(GlpiDiscardedItem::code).containsExactly(
-                GlpiDiscardReason.SIN_ESTIMACION_DECLARADA,
-                GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
+        // Es una incidencia: no se le exige fecha. Lo que falta son las horas declaradas.
+        assertThat(result.discarded()).extracting(GlpiDiscardedItem::code)
+                .containsExactly(GlpiDiscardReason.SIN_ESTIMACION_DECLARADA);
     }
 
     @Test
@@ -232,30 +239,54 @@ class GlpiPlanningRequestFactoryTest {
         }
 
         @Test
-        @DisplayName("Sin metadata el ticket se descarta y el motivo nombra las dos cosas que faltan")
+        @DisplayName("Sin metadata el ticket se descarta por la estimacion")
         void sinMetadataSeDescarta() {
             GlpiPlanningRequestFactory.Result result = factory.build("jdoe", USER,
                     List.of(incident(1, 1, 3600L)), rules());
 
             assertThat(result.request().incidents()).isEmpty();
-            assertThat(result.discarded()).extracting(GlpiDiscardedItem::code).containsExactly(
-                    GlpiDiscardReason.SIN_ESTIMACION_DECLARADA,
-                    GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
+            assertThat(result.discarded()).extracting(GlpiDiscardedItem::code)
+                    .containsExactly(GlpiDiscardReason.SIN_ESTIMACION_DECLARADA);
             assertThat(result.discarded()).allSatisfy(item -> assertThat(item.reason())
                     .contains("no hay planificacion declarada"));
         }
 
         @Test
-        @DisplayName("Con estimacion y sin compromiso el ticket se descarta por lo que falta")
-        void soloConEstimacionSeDescarta() {
+        @DisplayName("En una incidencia basta la estimacion: la fecha no la pone la declaracion")
+        void soloConEstimacionBastaEnUnaIncidencia() {
             declarar(1, "8", null);
 
             GlpiPlanningRequestFactory.Result result = factory.build("jdoe", USER,
                     List.of(incident(1, 1, 3600L)), rules());
 
-            assertThat(result.request().incidents()).isEmpty();
+            assertThat(result.discarded()).isEmpty();
+            assertThat(result.request().incidents()).extracting(Incident::id)
+                    .containsExactly("1");
+        }
+
+        @Test
+        @DisplayName("Una peticion con la estimacion declarada planifica con la fecha de GLPI")
+        void peticionConEstimacionPlanificaConLaFechaDeGlpi() {
+            declarar(2, "4", null);
+
+            PlanningRequest request = factory.build("jdoe", USER,
+                    List.of(request(2, 1, 14400L, "2026-10-20 17:00:00")), rules()).request();
+
+            assertThat(request.requirements().get(0).plannedDate())
+                    .isEqualTo(LocalDate.of(2026, 10, 20));
+        }
+
+        @Test
+        @DisplayName("Una peticion sin ninguna fecha en GLPI se descarta, y el motivo nombra GLPI")
+        void peticionSinFechasSeDescarta() {
+            declarar(2, "4", "2026-10-20");
+
+            GlpiPlanningRequestFactory.Result result = factory.build("jdoe", USER,
+                    List.of(requestWithOla(2, null, null)), rules());
+
+            assertThat(result.request().requirements()).isEmpty();
             assertThat(result.discarded()).extracting(GlpiDiscardedItem::code)
-                    .containsExactly(GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
+                    .containsExactly(GlpiDiscardReason.SIN_FECHA_EN_GLPI);
         }
 
         @Test
@@ -287,9 +318,8 @@ class GlpiPlanningRequestFactoryTest {
                     List.of(incident(1, 1, 3600L)), rules());
 
             assertThat(result.request().incidents()).isEmpty();
-            assertThat(result.discarded()).extracting(GlpiDiscardedItem::code).containsExactly(
-                    GlpiDiscardReason.SIN_ESTIMACION_DECLARADA,
-                    GlpiDiscardReason.SIN_COMPROMISO_DECLARADO);
+            assertThat(result.discarded()).extracting(GlpiDiscardedItem::code)
+                    .containsExactly(GlpiDiscardReason.SIN_ESTIMACION_DECLARADA);
             assertThat(result.discarded()).allSatisfy(item -> assertThat(item.reason())
                     .contains("la planificacion declarada"));
         }
@@ -307,11 +337,10 @@ class GlpiPlanningRequestFactoryTest {
                     rules());
 
             assertThat(result.request().incidents()).extracting(Incident::id)
-                    .containsExactly("1", "4");
-            // El 2 no tiene fila y el 3 la tiene a medias: el primero produce dos descartes y el
-            // segundo uno, asi que la lista tiene tres entradas sobre dos tickets.
+                    .containsExactly("1", "3", "4");
+            // El 2 no tiene fila; el 3 solo tiene horas, y en una incidencia eso basta.
             assertThat(result.discarded()).extracting(GlpiDiscardedItem::ticketId)
-                    .containsExactly("2", "2", "3");
+                    .containsExactly("2");
         }
     }
 
@@ -338,13 +367,38 @@ class GlpiPlanningRequestFactoryTest {
         }
 
         @Test
-        @DisplayName("La fecha del requerimiento es la declarada, no su time_to_resolve")
-        void laFechaEsLaDeclarada() {
-            // El SLA de GLPI vence en diciembre; el gestor comprometio el veinte de octubre.
+        @DisplayName("La fecha del requerimiento es la de GLPI, no la declarada")
+        void laFechaEsLaDeGlpi() {
+            // La declaracion trae el veinte de octubre; el SLA de GLPI vence en diciembre.
             declarar(2, "4", "2026-10-20");
 
             PlanningRequest request = factory.build("jdoe", USER,
                     List.of(request(2, 1, 14400L, "2026-12-31 17:00:00")), rules()).request();
+
+            assertThat(request.requirements().get(0).plannedDate())
+                    .isEqualTo(LocalDate.of(2026, 12, 31));
+        }
+
+        @Test
+        @DisplayName("Con OLA, la fecha del requerimiento es el Internal TTR")
+        void elInternalTtrMandaSobreElTtr() {
+            declarar(2, "4", "2026-10-20");
+
+            PlanningRequest request = factory.build("jdoe", USER,
+                    List.of(requestWithOla(2, "2026-10-20 17:00:00", "2026-11-19 17:30:00")),
+                    rules()).request();
+
+            assertThat(request.requirements().get(0).plannedDate())
+                    .isEqualTo(LocalDate.of(2026, 11, 19));
+        }
+
+        @Test
+        @DisplayName("Sin OLA, la fecha del requerimiento es el TTR")
+        void sinOlaLaFechaEsElTtr() {
+            declarar(2, "4", "2026-10-20");
+
+            PlanningRequest request = factory.build("jdoe", USER,
+                    List.of(requestWithOla(2, "2026-10-20 17:00:00", null)), rules()).request();
 
             assertThat(request.requirements().get(0).plannedDate())
                     .isEqualTo(LocalDate.of(2026, 10, 20));

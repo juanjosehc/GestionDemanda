@@ -1,3 +1,4 @@
+import { declarationPath, planningPath, renegotiationPath } from '@/routes/navigation'
 import { isActive } from '@/lib/incidents'
 import type { DeclarationItem, DeclarationStatus, DeveloperDeclarationsResponse } from '@/types/declarations'
 import type { RenegotiationsResponse } from '@/types/renegotiations'
@@ -359,4 +360,19 @@ export function pendingGroups(
   }
 
   return counts
+}
+
+/**
+ * El sitio donde se resuelve un pendiente, según su causa.
+ *
+ * **Está aquí y no en la pantalla porque lo usan dos sitios que tienen que coincidir**: la fila del
+ * panel de pendientes —donde se ve el ticket y su causa— y el chip «N pendientes» de la fila de la
+ * rejilla, que con un solo pendiente lleva directo a lo mismo. Lo que falta se declara, lo que
+ * espera una fecha se acuerda y lo que no entró en el plan se arregla volviendo a generarlo: no
+ * declarando lo que ya está declarado.
+ */
+export function pendingPath(item: PendingItem, from?: string): string {
+  if (item.cause === 'SIN_ACUERDO') return renegotiationPath(item.workItemId)
+  if (item.cause === 'NO_INCLUIDO_EN_EL_PLAN') return planningPath(item.developerId)
+  return declarationPath({ developerId: item.developerId, workItemId: item.workItemId, from })
 }

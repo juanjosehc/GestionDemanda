@@ -92,6 +92,19 @@ export interface DeclarationItem {
   discards: Discard[]
   /** Lo declarado hoy, o nulo si nadie ha declarado nada. */
   declaration: PlanningMetadata | null
+  /**
+   * La fecha con la que GLPI ubica el ticket: `internal_time_to_resolve` o, si no lo hay,
+   * `time_to_resolve`. Es la que usa el plan desde la Fase 66b, y por eso es la que se enseña.
+   *
+   * Nula en una incidencia —no se ubica por una promesa— y en un ticket al que GLPI no le cargo ni
+   * la OLA ni el SLA. Que falte no es un hueco de la pantalla: es un ticket sin fecha real.
+   */
+  operationalDate: string | null
+  /**
+   * De cual de los dos campos salio. Viaja al lado de la fecha porque `2026-11-19` es la promesa de
+   * la OLA o la del SLA, y sin el origen no se puede contrastar.
+   */
+  operationalDateSource: string | null
 }
 
 /**

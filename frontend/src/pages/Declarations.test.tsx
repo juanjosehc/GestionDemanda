@@ -325,13 +325,20 @@ describe('Declarations', () => {
       'NO_TRADUCIBLE',
     ])
 
-    // Los motivos son los del backend, con su codigo al lado: la pantalla no los reescribe.
+    // Los motivos son los del backend, con su codigo al lado: la pantalla no los reescribe. Desde la
+    // Fase 66b cada carencia nombra a quien tiene que arreglarla: el desarrollador las horas y GLPI
+    // la fecha.
     const sinDeclaracion = rowOf(container, '504')
     expect(
-      within(sinDeclaracion).getAllByText('no hay planificacion declarada para este elemento'),
-    ).toHaveLength(2)
+      within(sinDeclaracion).getByText('no hay planificacion declarada para este elemento'),
+    ).toBeInTheDocument()
+    expect(
+      within(sinDeclaracion).getByText(
+        'GLPI no trae ni internal_time_to_resolve ni time_to_resolve',
+      ),
+    ).toBeInTheDocument()
     expect(within(sinDeclaracion).getByText('SIN_ESTIMACION_DECLARADA')).toBeInTheDocument()
-    expect(within(sinDeclaracion).getByText('SIN_COMPROMISO_DECLARADO')).toBeInTheDocument()
+    expect(within(sinDeclaracion).getByText('SIN_FECHA_EN_GLPI')).toBeInTheDocument()
 
     const intraducible = rowOf(container, '505')
     expect(within(intraducible).getByText('TIPO_DESCONOCIDO')).toBeInTheDocument()
@@ -694,13 +701,13 @@ describe('Declarations · la entrada directa', () => {
     )
   })
 
-  it('sin vuelta declarada el enlace sigue llevando a Incidentes', async () => {
+  it('sin vuelta declarada el enlace sigue llevando a la lista de trabajo', async () => {
     serve({})
 
     renderWithClient(<Declarations />, { route: '/declaraciones' })
 
     // El flujo empieza en la lista de trabajo, asi que ese es el respaldo.
-    expect(await screen.findByRole('link', { name: 'Volver a Incidentes' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Volver a Tickets' })).toHaveAttribute(
       'href',
       ROUTES.incidents,
     )

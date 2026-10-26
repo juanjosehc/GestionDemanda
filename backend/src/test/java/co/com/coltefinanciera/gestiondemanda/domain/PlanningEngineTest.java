@@ -55,7 +55,23 @@ class PlanningEngineTest {
     private static final Clock CLOCK = Clock.fixed(INSTANTE_FIJO, ZoneOffset.UTC);
 
     private static final Developer DEVELOPER = new Developer("dev-1", "Ana");
-    private static final PlanningRules RULES = new PlanningRules(new BigDecimal("4"), new BigDecimal("8"), 10);
+
+    /**
+     * Jornada de los escenarios de este archivo: 09:00-17:00, ocho horas.
+     *
+     * <p>Es un fixture, no la jornada oficial (07:00-17:30). Los escenarios estan calculados sobre
+     * un dia de ocho horas —un incidente de seis deja dos libres— y fijarla aqui los hace
+     * independientes de la jornada que se configure. Que el motor use la oficial se comprueba en
+     * {@link #laJornadaOficialEsLaQueAplicaElMotor()}.
+     */
+    private static final BusinessHours JORNADA_DE_PRUEBA =
+            new BusinessHours(LocalTime.of(9, 0), LocalTime.of(17, 0));
+
+    private static final WorkingCalendar CALENDARIO_DE_PRUEBA =
+            new WorkingCalendar(JORNADA_DE_PRUEBA, WorkingCalendar.DEFAULT_WEEKEND, Set.of());
+
+    private static final PlanningRules RULES = new PlanningRules(
+            new BigDecimal("4"), JORNADA_DE_PRUEBA.duration(), 10, null, CALENDARIO_DE_PRUEBA);
 
     /** Mismo calendario que {@link #RULES}, con el lunes siguiente declarado festivo. */
     private static final PlanningRules RULES_CON_FESTIVO = new PlanningRules(
@@ -64,7 +80,7 @@ class PlanningEngineTest {
             PlanningRules.DEFAULT_PLANNING_HORIZON_DAYS,
             null,
             new WorkingCalendar(
-                    WorkingCalendar.standard().businessHours(),
+                    CALENDARIO_DE_PRUEBA.businessHours(),
                     WorkingCalendar.DEFAULT_WEEKEND,
                     Set.of(LUNES_SIGUIENTE)));
 
@@ -147,16 +163,21 @@ class PlanningEngineTest {
     }
 
     @Test
-    @DisplayName("Reprocesar el mismo escenario no genera cambios ni eventos nuevos")
-    void reprocesarElMismoEscenarioNoGeneraEventosNuevos() {
+    @DisplayName("Reprocesar el mismo escenario republica el mismo evento, no uno nuevo")
+    void reprocesarElMismoEscenarioRepublicaElMismoEvento() {
         Incident grave = incident("INC-1", "6", "2026-10-05T09:00:00Z");
         Requirement requerimiento = requirement("REQ-1", "4", LUNES, RequirementStatus.PLANIFICADO);
 
         PlanningResult first = plan(List.of(grave), List.of(requerimiento));
         PlanningResult second = plan(List.of(grave), List.of(requerimiento));
 
-        assertThat(first.rescheduleEvents()).hasSize(1);
-        assertThat(second.rescheduleEvents()).isEmpty();
+        // Cada plan guarda solo sus propios eventos, asi que la segunda corrida tiene que volver a
+        // publicar el desplazamiento: si no, desaparece del plan nuevo y la conciliacion del TTR se
+        // queda sin nada que leer. Lo que no se duplica es la auditoria, y por eso la marca es la
+        // misma: es el instante en que el desplazamiento ocurrio, no el de esta corrida.
+        assertThat(second.rescheduleEvents()).singleElement()
+                .isEqualTo(first.rescheduleEvents().getFirst());
+        assertThat(second.rescheduleEvents().getFirst().timestamp()).isEqualTo(INSTANTE_FIJO);
         assertThat(second.allocations()).isEqualTo(first.allocations());
     }
 
@@ -438,7 +459,7 @@ class PlanningEngineTest {
     @Test
     @DisplayName("La capacidad diaria sale del calendario, no de un valor declarado aparte")
     void laCapacidadDiariaSaleDelCalendario() {
-        // Bloque de 09:00 a 13:00: cuatro horas de jornada, no las ocho del calendario estandar.
+        // Bloque de 07:00 a 11:00: cuatro horas de jornada, no las diez y media de la oficial.
         PlanningRules mediaJornada = new PlanningRules(new BigDecimal("4"), new BigDecimal("4"), 10);
         List<Requirement> requerimientos = List.of(
                 requirement("REQ-A", "4", LUNES, RequirementStatus.PLANIFICADO),
@@ -447,7 +468,7 @@ class PlanningEngineTest {
         PlanningResult result = plan(List.of(), requerimientos, mediaJornada);
 
         assertThat(mediaJornada.workingHoursPerDay()).isEqualByComparingTo("4");
-        assertThat(mediaJornada.workingCalendar().businessHours().end()).isEqualTo(LocalTime.of(13, 0));
+        assertThat(mediaJornada.workingCalendar().businessHours().end()).isEqualTo(LocalTime.of(11, 0));
         // Con la jornada estandar los dos cabrian el lunes; con cuatro horas, el segundo espera.
         assertThat(fechaDe(result, "REQ-A")).isEqualTo(LUNES);
         assertThat(fechaDe(result, "REQ-B")).isEqualTo(LUNES.plusDays(1));
@@ -568,8 +589,11 @@ class PlanningEngineTest {
             assertThat(event.appliedRule()).isEqualTo(AppliedRule.UMBRAL_INCIDENTE_EXCEDIDO);
         });
 
-        // Y reprocesar el mismo escenario no vuelve a auditar lo ya auditado.
-        assertThat(plan(List.of(grave), List.of(requerimiento)).rescheduleEvents()).isEmpty();
+        // Y reprocesar el mismo escenario republica ese mismo evento: la auditoria sigue siendo una
+        // sola, pero el desplazamiento no se pierde al recalcular.
+        assertThat(plan(List.of(grave), List.of(requerimiento)).rescheduleEvents())
+                .singleElement()
+                .isEqualTo(result.rescheduleEvents().getFirst());
     }
 
     @Test
@@ -586,6 +610,25 @@ class PlanningEngineTest {
         assertThat(fechaDe(result, "REQ-2")).isEqualTo(LUNES.plusDays(1));
         assertThat(bloquesDe(result, "REQ-2")).extracting(WorkBlock::start, WorkBlock::end)
                 .containsExactly(tuple(LUNES.plusDays(1).atTime(13, 0), LUNES.plusDays(1).atTime(17, 0)));
+    }
+
+    @Test
+    @DisplayName("La jornada oficial es lunes a viernes, de 07:00 a 17:30")
+    void laJornadaOficialEsLaQueAplicaElMotor() {
+        PlanningRules oficiales = PlanningRules.defaults();
+
+        assertThat(oficiales.workingHoursPerDay()).isEqualByComparingTo("10.5");
+        assertThat(oficiales.workingCalendar().businessHours().start()).isEqualTo(LocalTime.of(7, 0));
+        assertThat(oficiales.workingCalendar().businessHours().end()).isEqualTo(LocalTime.of(17, 30));
+
+        PlanningResult result = plan(
+                List.of(),
+                List.of(requirement("REQ-1", "4", LUNES, RequirementStatus.PLANIFICADO)),
+                oficiales);
+
+        // El primer bloque del dia empieza a las 07:00, no a las 09:00 del fixture.
+        assertThat(bloquesDe(result, "REQ-1")).extracting(WorkBlock::start, WorkBlock::end)
+                .containsExactly(tuple(LUNES.atTime(7, 0), LUNES.atTime(11, 0)));
     }
 
     private PlanningResult plan(List<Incident> incidents, List<Requirement> requirements) {

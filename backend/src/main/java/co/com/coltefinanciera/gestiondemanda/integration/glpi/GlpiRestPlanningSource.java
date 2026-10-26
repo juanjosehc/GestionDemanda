@@ -76,8 +76,17 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
      * cambia —los mismos campos, el mismo significado—, pero un plan de la version 2 con cero elementos
      * puede ser "no tiene trabajo" o "la recuperacion estaba rota", y son dos cosas distintas que hay
      * que poder separar al releerlo.
+     *
+     * <p><strong>La version 4 es el corte de la Fase 66b, y devuelve la fecha al ticket.</strong> La
+     * decision 124.2 la habia sacado de GLPI y la habia puesto en la declaracion del gestor; la
+     * auditoria de la 66b encontro que esas declaraciones eran de validacion y que su fecha no
+     * coincidia con ninguna de las dos de GLPI en 40 de 45 casos. Desde la version 4 un requerimiento
+     * se ubica por su fecha operativa —{@code internal_time_to_resolve} y, si no hay,
+     * {@code time_to_resolve}—, y la declaracion vuelve a aportar solo las horas. Un plan de la
+     * version 3 con fecha 2026-10-27 en un ticket que GLPI fecha 2026-11-19 se distingue del de la
+     * version 4 por esta marca, y esa es la razon de que exista.
      */
-    public static final String VERSION = "glpi-rest-3";
+    public static final String VERSION = "glpi-rest-4";
 
     private static final String PATH_USER = "/User/";
 
@@ -169,8 +178,29 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
     /** Opcion de busqueda 15: la fecha de apertura, que para una incidencia es su fecha de creacion. */
     private static final int FIELD_DATE = 15;
 
-    /** Opcion de busqueda 18: la fecha de SLA. No alimenta la planificacion desde la decision 124.2. */
+    /**
+     * Opcion de busqueda 18: la fecha de SLA, {@code time_to_resolve}.
+     *
+     * <p>Desde la Fase 66b vuelve a alimentar la planificacion, pero <strong>solo como respaldo</strong>:
+     * la fecha de un requerimiento sale del Internal TTR y cae aqui cuando GLPI no trae el otro. Es el
+     * SLA que se prometio al usuario, tiene cobertura del 99 % en el equipo y lo mantiene el SLA.
+     */
     private static final int FIELD_TIME_TO_RESOLVE = 18;
+
+    /**
+     * Opcion de busqueda 180: la fecha de OLA, {@code internal_time_to_resolve}.
+     *
+     * <p><strong>Es la fecha operativa con la que el negocio compromete la resolucion (Fase 66b).</strong>
+     * No se adivino el numero: {@code /listSearchOptions/Ticket} la publica con ese nombre y ese
+     * identificador en la instancia real. Mientras {@code time_to_resolve} es la promesa al cliente,
+     * esta es la promesa del area que resuelve, y por eso es la que ubica el requerimiento en el
+     * timeline.
+     *
+     * <p><strong>Llega nula cuando el ticket no tiene OLA</strong> —hoy, 71 de los 85 tickets del
+     * equipo con SLA—. Nula no es cero: la fecha no existe y el respaldo la sustituye; se decide en
+     * {@link GlpiTicketMapper}, no aqui.
+     */
+    private static final int FIELD_INTERNAL_TIME_TO_RESOLVE = 180;
 
     /** Opcion de busqueda 45: el tiempo de accion, en segundos. Diagnostico, no planificacion. */
     private static final int FIELD_ACTION_TIME = 45;
@@ -182,15 +212,17 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
      * misma que declara {@link GlpiContract#ticketFields()}: si una se amplia y la otra no, el DTO
      * llega con un valor nulo que parece un dato ausente de GLPI y es una columna que nadie pidio.
      *
-     * <p><strong>Y es tambien lo que hace que la pagina quepa.</strong> Medido contra la instancia: mil
-     * filas proyectadas a estos diez campos pesan entre 150 y 164 KB, y las mismas mil filas sin
+     * <p><strong>Y es tambien lo que hace que la pagina quepa.</strong> Medido contra la instancia con las
+     * diez columnas que habia antes de la Fase 66b: mil filas proyectadas a esos campos pesan entre 150
+     * y 164 KB, y las mismas mil filas sin
      * proyeccion pesan 6,2 MB —mas de lo que el transporte de la aplicacion guarda en memoria, que son
      * 256 KB—, y a un tecnico le respondio directamente {@code HTTP 500}. No es una optimizacion: sin
      * {@code forcedisplay} la ruta nueva fallaria igual que fallaba la vieja, y por el mismo motivo.
      */
     private static final List<Integer> DISPLAYED_FIELDS = List.of(
             FIELD_TITLE, FIELD_ID, FIELD_PRIORITY, FIELD_URGENCY, FIELD_IMPACT,
-            FIELD_STATUS, FIELD_TYPE, FIELD_DATE, FIELD_TIME_TO_RESOLVE, FIELD_ACTION_TIME);
+            FIELD_STATUS, FIELD_TYPE, FIELD_DATE, FIELD_TIME_TO_RESOLVE,
+            FIELD_INTERNAL_TIME_TO_RESOLVE, FIELD_ACTION_TIME);
 
     /** Opcion de busqueda 13 de usuario: sus grupos. Es el criterio del catalogo. */
     private static final int FIELD_GROUP = 13;
@@ -626,6 +658,7 @@ public class GlpiRestPlanningSource implements GlpiPlanningSource {
                 integer(row, FIELD_URGENCY),
                 number(row, FIELD_ACTION_TIME),
                 text(row, FIELD_TIME_TO_RESOLVE),
+                text(row, FIELD_INTERNAL_TIME_TO_RESOLVE),
                 text(row, FIELD_DATE));
     }
 
