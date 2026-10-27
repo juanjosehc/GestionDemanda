@@ -38,6 +38,28 @@ export type TimelineState =
   | 'ACORDADO_MANUAL'
 
 /**
+ * Cuánto apremia el Internal TTR de un ticket, medido contra hoy.
+ *
+ * **Es un eje distinto del de {@link TimelineState} y no lo sustituye.** El estado dice qué hizo el
+ * plan con el trabajo —lo colocó, lo movió, espera un acuerdo—; el riesgo dice cuánto queda hasta la
+ * fecha que GLPI publica. Un tramo planificado puede vencer hoy, y un ticket sin estimación puede
+ * vencer en diciembre: son dos hechos, y colapsarlos en un solo color escondería uno de los dos.
+ *
+ * Los cuatro valores son de la vista y no del backend: el compromiso declarado ya trae
+ * `commitmentOverdue` calculado por el servidor, pero el Internal TTR no viaja con ese derivado, así
+ * que la rejilla lo compara con el día del navegador con `riskOf`.
+ */
+export type CommitmentRisk =
+  /** El Internal TTR ya pasó y el trabajo sigue en el plan o sin estimación. */
+  | 'VENCIDA'
+  /** El Internal TTR es hoy. */
+  | 'HOY'
+  /** El Internal TTR cae dentro de los próximos días del horizonte. */
+  | 'PROXIMA'
+  /** Todavía hay margen: el compromiso no corre riesgo esta semana. */
+  | 'FUTURA'
+
+/**
  * Un ticket que tiene día en GLPI pero no tiene tramo, y que hay que enseñar en ese día.
  *
  * **No es un {@link TimelineItem} y no se puede fabricar uno.** Un tramo ocupa jornada y este no

@@ -392,6 +392,12 @@ describe('TimelineGrid: duración y estado visual', () => {
     expect(ghost?.dataset.workItem).toBe('68428')
     expect(ghost?.textContent).toContain('Sin estimación')
 
+    // El día del ticket sin horas es su fecha de entrega, y se ve sin abrir el título: es la marca
+    // que convierte el Internal TTR en el ancla de la columna y no un aviso suelto dentro de ella.
+    const commitment = ghost?.querySelector('[data-slot="timeline-unscheduled-commitment"]')
+    expect(commitment).not.toBeNull()
+    expect(commitment?.getAttribute('aria-label')).toBe('Fecha de entrega comprometida en GLPI')
+
     // No es un tramo: no entra en la escala ni en los filtros de la agenda.
     expect(blocks(container)).toHaveLength(0)
 
@@ -448,5 +454,81 @@ describe('TimelineGrid: duración y estado visual', () => {
 
     expect(legend.map((entry) => entry.dataset.state)).toEqual(['SIN_ESTIMACION'])
     expect(legend[0]?.textContent).toBe('Requiere estimación')
+  })
+
+  it('el chip sin estimación dice su riesgo con icono y con etiqueta', () => {
+    const { container } = renderWithClient(
+      <TimelineGrid
+        resources={[person('ana', capacityOf('2026-10-19', '2026-10-25', 8))]}
+        items={[]}
+        unscheduled={[
+          {
+            workItemId: '66222',
+            workItemType: 'REQUERIMIENTO',
+            developerId: 'ana',
+            date: '2026-10-21',
+            cause: 'Sin estimación',
+          },
+        ]}
+        risks={{ '66222': 'HOY' }}
+      />,
+    )
+
+    const ghost = container.querySelector<HTMLElement>('[data-slot="timeline-unscheduled"]')
+    expect(ghost?.dataset.risk).toBe('HOY')
+
+    // El riesgo no depende del color: el icono cambia y el `aria-label` lo dice en palabras.
+    const mark = ghost?.querySelector('[data-slot="timeline-unscheduled-commitment"]')
+    expect(mark?.getAttribute('aria-label')).toBe('Entrega hoy')
+
+    // Y se explica en la leyenda sin abrir el título.
+    const legend = [...container.querySelectorAll<HTMLElement>('[data-slot="timeline-legend-risk"]')]
+    expect(legend.map((entry) => entry.dataset.risk)).toEqual(['HOY'])
+    expect(legend[0]?.textContent).toBe('Entrega hoy')
+  })
+
+  it('sin riesgo el chip sigue diciendo que ese día es la fecha de GLPI', () => {
+    // El riesgo es una capa encima: si no se pasa, el chip conserva la marca que tenía.
+    const { container } = renderWithClient(
+      <TimelineGrid
+        resources={[person('ana', capacityOf('2026-10-19', '2026-10-25', 8))]}
+        items={[]}
+        unscheduled={[
+          {
+            workItemId: '68428',
+            workItemType: 'REQUERIMIENTO',
+            developerId: 'ana',
+            date: '2026-10-21',
+            cause: 'Sin estimación',
+          },
+        ]}
+        risks={{ '68428': 'FUTURA' }}
+      />,
+    )
+
+    const ghost = container.querySelector<HTMLElement>('[data-slot="timeline-unscheduled"]')
+    expect(ghost?.dataset.risk).toBeUndefined()
+    expect(
+      ghost?.querySelector('[data-slot="timeline-unscheduled-commitment"]')?.getAttribute('aria-label'),
+    ).toBe('Fecha de entrega comprometida en GLPI')
+    expect(container.querySelectorAll('[data-slot="timeline-legend-risk"]')).toHaveLength(0)
+  })
+
+  it('la bandera de entrega cambia de icono cuando el compromiso apremia', () => {
+    const { container } = renderWithClient(
+      <TimelineGrid
+        resources={[person('ana', capacityOf('2026-10-19', '2026-10-25', 8))]}
+        items={[item('2026-10-21', '07:00', '11:00', 4)]}
+        risks={{ [item('2026-10-21', '07:00', '11:00', 4).workItemId]: 'VENCIDA' }}
+      />,
+    )
+
+    const flag = container.querySelector<HTMLElement>('[data-slot="timeline-delivery"]')
+    expect(flag?.dataset.risk).toBe('VENCIDA')
+    expect(flag?.getAttribute('aria-label')).toBe('Entrega vencida')
+
+    // El relleno del tramo no se toca: el estado del plan es otro eje y se sigue leyendo.
+    const block = container.querySelector<HTMLElement>('[data-slot="timeline-block"]')
+    expect(block?.dataset.state).toBe('PLANIFICADO')
   })
 })

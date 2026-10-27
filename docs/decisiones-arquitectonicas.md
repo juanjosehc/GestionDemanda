@@ -8829,3 +8829,367 @@ La fase 68 no cambia comportamiento; cierra la brecha entre lo desplegado y lo p
 **Impacto en producción.** Mientras producción ejecute `c95c79d`, un ticket con Internal TTR y sin fecha declarada seguirá pareciendo inexistente: son **71 de los 82** activos, que salen `SIN_COMPROMISO_DECLARADO`. Con este commit desplegado, los 82 salen con `operationalDate`, **0** como `SIN_FECHA_EN_GLPI`, y el **66222** enseña `2026-12-03`. **No hay migraciones**: el cambio no lleva SQL, ni columnas nuevas, ni datos que reescribir. Los planes guardados de la versión anterior siguen siendo válidos y se regeneran con la versión nueva (decisión 410).
 
 **Lo que no entra en el commit, y por qué.** `.probe/` (190 ficheros de evidencia y sondas de la auditoría) y `graphify-out/` (grafo regenerado) quedan fuera: son artefactos de análisis y de herramienta, no código desplegable. `f64-renegociaciones-conciliado.png` es una captura suelta de la Fase 64. El repositorio no versiona capturas ni el grafo de análisis como parte de un despliegue.
+
+## Fase 69 — El Internal TTR como ancla del Timeline: verificado, y la planificación hacia atrás medida
+
+**La primera mitad de la fase ya estaba hecha; la segunda es una medición, no un cambio.** El ticket con Internal TTR y sin horas ya entra a la rejilla en su fecha desde la Fase 67 y ya puede hacerlo porque la Fase 68 desplegó el campo 180: lo que faltaba era comprobarlo con el caso testigo del brief y con los siete casos que pide. La planificación hacia atrás —entregar **el día** del Internal TTR en vez de empezar ese día— se mide con el simulador y se documenta; no se implementa, porque cambia el significado del desplazamiento y de ahí cuelgan renegociaciones, snapshots y persistencia, que esta fase tiene prohibido tocar.
+
+### 439. El caso testigo, dentro de la rejilla: el 66222 vive en la columna del jueves 3 de diciembre
+
+Medido en la semana 49 (30 de noviembre – 6 de diciembre) con el Timeline del equipo, filtrado a `AbraAran`:
+
+| Medida | Valor |
+|---|---|
+| Columna «jue, 3 de dic» | x = 901, ancho 132 px |
+| Chip `66222 · Sin estimación` | x = 907, ancho 119 px → **dentro de la columna** |
+| Día publicado por GLPI | `operationalDate = 2026-12-03`, origen `internal_time_to_resolve` |
+| ¿Tramo en la escala de horas? | **No**. La franja se pinta encima del eje, fuera del alto de la jornada |
+
+Que la columna exista es una consecuencia de la Fase 67 que hay que decir: `unscheduledOf` se consulta sin ventana —`{ from: null, to: null }`— y `days` une los días del plan con los de cada ticket sin horas, así que la rejilla se extiende de 2026-06-23 a **2026-12-31** y el 3 de diciembre tiene columna aunque la ventana del plan termine el 16 de noviembre (riesgo 435). Sin esa unión el ticket tendría fecha y no habría dónde ponerlo.
+
+### 440. La representación ya cumplía las cuatro reglas: color propio, sin capacidad y sin tramo ficticio
+
+| Regla del brief | Cómo se cumple |
+|---|---|
+| Color específico «Requiere estimación» | Gris punteado (`border-dashed border-slate-400 bg-slate-50`), el único estado de la paleta que no comparte tono con Planificado, Desplazado, Pendiente de acuerdo ni los dos acordados |
+| Visualmente diferente de los demás | La leyenda solo anuncia los estados presentes en la semana; cuando hay un ticket sin horas la entrada «Requiere estimación» aparece aunque no haya ni un tramo |
+| No consumir capacidad | El chip se pinta en una franja de 20 px **encima del eje de horas**, no dentro de él: no tiene alto de tiempo y `CapacityStrip` no lo ve |
+| No crear tramos ficticios | `UnscheduledItem` no es un `TimelineItem`: no entra en `items`, ni en las sumas del día, ni en el detalle, ni en el filtro de tramos. La prueba cuenta **cero** bloques en la rejilla |
+
+**Lo que sí faltaba era una marca.** El chip decía qué le falta al ticket —«Sin estimación»— pero no decía que **ese día es su fecha de entrega**: para el negocio, el Internal TTR es el compromiso, y sin la marca la columna se lee como el día en que alguien lo dejó ahí. Se añade la bandera de entrega en el chip, la misma que marca el último día de un trabajo de varias jornadas, con `aria-label` propio —«Fecha de entrega comprometida en GLPI»— para que se lea sin abrir el título. **Sustituye al interrogante y no se suma a él**: en compacta la columna mide 132 px y el chip ya truncaba su texto, así que cada icono se paga con letras; con dos iconos el rótulo pasaba de «Sin estimac…» a «Sin esti…».
+
+### 441. La planificación hacia atrás, medida: hoy el motor empieza el día de entrega y desborda hacia delante
+
+El motor ubica cada requerimiento en `plannedDate` —que desde la Fase 66b es la fecha operativa de GLPI— y reclama capacidad **desde ahí hacia delante**. Con el simulador, que no guarda nada, sobre un desarrollo sin incidentes y jornada de 10,5 h (07:00–17:30):
+
+| Trabajo | Entrega | Lo que hace el motor hoy | ¿Es la entrega? |
+|---|---|---|---|
+| 4 h | martes 2026-12-01 | 07:00–11:00 del martes | Sí, cabe |
+| 8 h | martes 2026-12-01 | 07:00–15:00 del martes | Sí, cabe |
+| **16 h** | **martes 2026-12-01** | **10,5 h el martes (07:00–17:30) + 5,5 h el miércoles (07:00–12:30)** | **No: la entrega se va al miércoles** |
+
+Y el desbordamiento no se queda en un dato de la agenda: el 16 h sale en `displacedRequirements` como `{ originalDate: 2026-12-01, newDate: 2026-12-02, newStatus: PENDIENTE_DE_RENEGOCIACION }`. **Un compromiso que se podía cumplir se convierte en una renegociación**: el motor entrega un día tarde y alguien tiene que acordarlo, cuando el trabajo cabía empezando el lunes.
+
+### 442. La regla de negocio, en términos del motor: reclamar hacia atrás, no hacia delante
+
+La regla del brief —«Internal TTR martes + 16 h → lunes trabajo, martes trabajo y entrega»— es exactamente lo que el motor no hace. La diferencia no está en cuánto trabaja el técnico sino en **desde dónde se recorre el calendario**:
+
+- **Hoy:** `capacity.claim(id, …, plannedDate, hours, horizonEnd)` recorre el calendario **hacia delante** desde la fecha de entrega. La entrega real es `placed.getLast().date()`, y si no coincide con la pactada el motor publica un `RescheduleEvent`.
+- **Hacia atrás:** el recorrido empieza en la fecha de entrega y busca capacidad **hacia atrás** hasta consumir las horas declaradas. La entrega deja de ser un resultado y pasa a ser un dato: `placed.getLast().date()` es `plannedDate` por construcción.
+
+Lo que eso arrastra, y por lo que no es un cambio de una línea:
+
+| Pieza | Qué cambia |
+|---|---|
+| `CapacityBook` | Necesita el recorrido inverso —días hábiles hacia atrás, con el calendario de festivos y fines de semana que ya tiene— además del directo |
+| `RescheduleEvent` | Hoy significa «no cupo y se fue al día siguiente». Con la entrega fija, un trabajo que no cabe antes de la fecha **no tiene a dónde ir**: es un conflicto nuevo —«sin capacidad antes del compromiso»— que hoy no existe |
+| Renegociaciones | Hoy nacen de `originalDate → newDate` de un desplazamiento. Sin desplazamiento hacia delante, esa pareja deja de existir y la renegociación tendría que apoyarse en otra cosa |
+| Snapshots y persistencia | El plan guardado cambia de forma para el mismo escenario, y los planes vigentes dejarían de ser comparables con los nuevos |
+
+Por eso esta fase **documenta y no implementa**: el brief prohíbe tocar renegociaciones, snapshots y persistencia, y las tres son la salida del cambio. La propuesta queda escrita para que se decida con la medición delante: el 16 h del cuadro de la decisión 441 es el caso que hay que resolver primero, porque es el único de los siete que hoy produce una renegociación innecesaria.
+
+### 443. Capacidad: el mismo trabajo, los mismos días, otro reparto
+
+La capacidad diaria no cambia —un técnico sigue teniendo 10,5 h y el plan sigue sin meter dos cosas en la misma franja—. Lo que cambia es **qué día carga qué fracción**: hoy las 16 h cargan 10,5 el martes y 5,5 el miércoles; hacia atrás cargarían 10,5 el lunes y 5,5 el martes. Dos consecuencias que hay que tener presentes al decidir:
+
+- **El lunes deja de estar libre.** Un trabajo con entrega el martes ocupa el lunes anterior, y ese lunes puede tener ya trabajo planificado: el hueco que se pide no es el mismo que se pide hoy, y por eso el resultado no es solo «la entrega se respeta», es «también se mueve el trabajo de los días anteriores».
+- **Los incidentes no cambian de dirección.** Un incidente se ubica desde su fecha de reporte y su política de severidad; hacia atrás solo irían los requerimientos, que son los únicos con fecha de entrega pactada. La simulación de incidentes sigue midiendo lo mismo.
+
+**Compatibilidad con los desplazamientos:** un requerimiento desplazado hoy tiene `planningStatus = DESPLAZADO` y un `RescheduleEvent` con la fecha nueva. Con la entrega fija el estado significa otra cosa —«empezó antes de lo que se supo»—, así que el estado no se puede reutilizar con el mismo nombre sin redefinirlo. Es la razón de fondo por la que la fase 69 no lo cambia: el semáforo de seis estados del Timeline (Fase 67) y la pantalla de Renegociaciones están construidos sobre ese significado.
+
+### 444. Los siete casos: dos vivos, uno vivo por analogía y cuatro sin testigo
+
+Medido sobre las **80 asignaciones activas** de las 18 personas operativas (17 responden; `JhonAteh` no existe en GLPI), con **69 `SIN_ESTIMACION`** —57 requerimientos y 12 incidentes— y **11 `PLANIFICABLE`** —7 requerimientos y 4 incidentes—:
+
+| # | Caso | Testigo | Qué se ve |
+|---|---|---|---|
+| 1 | Ticket sin estimación | **66222** (2026-12-03) y otros 68 | Chip gris punteado con bandera de entrega en su columna, fuera del eje de horas |
+| 2 | 4 h | **67923** (2026-11-10) | Un tramo 07:00–11:00 con bandera y barra de entrega el mismo día |
+| 3 | 8 h | **Ninguno de requerimiento.** Los dos tickets de 8 h son incidentes —68347 y 57469— y aun así ocupan dos jornadas, porque un incidente empieza a la hora en que se reporta: el 68347 nace a las 12:15 | Simulado: 07:00–15:00 del día de entrega, cabe y la entrega se respeta |
+| 4 | 16 h | **Ninguno vivo** — simulado | Desborda al día siguiente y queda `PENDIENTE_DE_RENEGOCIACION` (decisión 441) |
+| 5 | Varias jornadas | **68347** (incidente, 8 h, 14 y 15 de octubre) | «día 1 de 2 · continúa» con chevron `›` y «día 2 de 2 · entrega» con bandera y barra inferior. **Un requerimiento nunca ocupa dos jornadas hoy**: el mayor de los siete declarados es de 5 h |
+| 6 | Desplazado | **Ninguno vivo** — `displaced: 0` | El plan vigente ubica los 11 requerimientos en su fecha, todos caben en la jornada |
+| 7 | Acordado | **Ninguno vivo** — `agreed: 0` | La pantalla de Renegociaciones viene vacía: no hay acuerdo que conciliar |
+
+El caso 5 se enseña con un incidente porque es lo que hay: la gramática multidía —chevron, «día N de M», bandera y barra de entrega en el último día— es la misma para un requerimiento, pero **hoy ningún requerimiento la ejercita en vivo**. Se dice así en vez de fabricar una captura. Los casos 3, 4 y 6 se miden con el simulador, que es el motor de verdad sobre un escenario escrito a mano y no guarda nada.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 445 | **21 de los 69 tickets sin estimación no tienen fila donde pintarse** | **Alto: es un tercio del caso que la fase persigue** | La rejilla pinta una fila por recurso **con plan** (9 personas), y son 5 más las que tienen tickets con Internal TTR y sin horas: `StelMedi` 10, `AndrEsco` 4, `FranZulu` 3, `NicoSuar` 3, `AnalRuiz` 1. Sus chips se calculan y no se dibujan. La salida es una fila sin capacidad para quien tiene compromiso y no tiene plan —una decisión de producto, no un fallo de pintado—: sin plan no hay jornada que enseñar y la fila diría «0 h disponibles» en falso |
+| 446 | **La regla de negocio no está ejercitada en vivo** | **Medio: el 16 h es simulado** | Los siete requerimientos declarados tienen 2, 3, 4 o 5 h, así que todos caben el día de entrega y la divergencia no toca a nadie hoy. El caso 4 la demuestra con el simulador; la prueba de que se cumple la regla llegará con el primer requerimiento de más de una jornada |
+| 447 | **El motor convierte en renegociación un compromiso que cabía** | **Medio: no ocurre hoy, ocurrirá con el primero de 16 h** | Medido en la decisión 441: 16 h con entrega el martes salen `PENDIENTE_DE_RENEGOCIACION` con fecha nueva el miércoles. Mientras no se implemente la planificación hacia atrás, el plan seguirá pidiendo un acuerdo que el trabajo no necesita |
+| 448 | **La bandera añade un icono a un chip que ya truncaba** | **Bajo: sustituye, no suma** | Se retiró el interrogante para no perder ancho. En compacta el rótulo sigue cortándose («Sin estimac…») y el texto completo está en el `title`; el estado se lee además por el color, que es el mismo de la leyenda |
+
+## Pruebas
+
+Frontend **415 pruebas en 24 archivos**, todas en verde, `tsc -b --noEmit` y oxlint limpios. El backend no se modificó en esta fase: la medición de la planificación hacia atrás se hizo contra el motor en ejecución con `POST /api/planning/simulate`, que no guarda nada, y las lecturas de declaraciones y renegociaciones contra los datos reales del 2026-10-27.
+
+La prueba nueva vive en `TimelineGrid.test.tsx`, en el caso que ya existía: comprueba que el chip del ticket sin horas lleva la marca de entrega con su `aria-label`, para que la bandera no pueda desaparecer sin que falle nada.
+
+Evidencia de Playwright en `.probe/`: `f69-pw-01-66222-compromiso.png` (semana 49, el 66222 en la columna del 3 de diciembre con la bandera) y `f69-pw-02-multijornada.png` (semana 42, el 68347 en dos jornadas: «continúa» el 14 y «entrega» el 15). Los escenarios del simulador quedan en `.probe/f69-sim-4.json`, `f69-sim-8.json` y `f69-sim-16.json` con sus respuestas.
+
+## Fase 70 — La entrega como ancla: el motor deja de empezar el día pactado
+
+**La Fase 69 midió la divergencia y no la corrigió; esta fase la corrige.** El motor ubicaba cada requerimiento en su `plannedDate` —la fecha operativa de GLPI— y reclamaba capacidad **desde ahí hacia delante**, así que un trabajo de 16 h con entrega el martes ocupaba martes y miércoles. El Internal TTR es una **fecha de entrega**, no una fecha de inicio, y la diferencia se arregla en un solo sitio: preguntar a la agenda por el día en que hay que **arrancar** para cubrir las horas antes de esa fecha.
+
+El cambio son tres piezas: `CapacityBook.startDayFor` (la cuenta hacia atrás), `PlanningEngine.claimForDelivery` (el reparto anclado, con su degradación) y una condición de la auditoría (entregar antes no es desplazarse). No se toca la rejilla, ni las leyendas, ni el color, ni GLPI, ni la conciliación: lo que el Timeline enseña no cambia de gramática, cambia **dónde caen los tramos**.
+
+### 449. La fecha pactada es una entrega: el motor le pregunta a la agenda dónde hay que arrancar
+
+`CapacityBook.startDayFor(hours, deadline, notBefore)` responde exactamente esa pregunta y no existía. Recorre el calendario **desde la entrega hacia atrás**, acumulando lo libre de cada jornada hasta cubrir las horas declaradas, y devuelve el **primer día de la acumulación**: el arranque más tardío posible.
+
+No se reutilizó `claim` con un `notBefore` calculado a ojo porque el arranque no es una resta: depende de cuánto queda libre cada día, y en un plan con incidentes eso no se sabe sin leer la agenda. La cuenta hacia atrás tiene que usar `freeSlots` —las franjas, no un número de horas— por la misma razón por la que la Fase 66b dejó de contar horas: una jornada partida por un incidente no ofrece diez horas y media.
+
+Devolver `null` no significa «no cabe»: significa «no lo sé con lo que puedo mirar», y esa distinción es la que permite que el motor decida qué hacer sin que la agenda presuma.
+
+### 450. La cuenta hacia atrás es por jornadas enteras y devuelve el arranque más tardío
+
+La propiedad que se busca no es «que quepa» sino **«que no termine después»**, y sale de cómo está hecha la acumulación. Si un día cubre por sí solo lo que falta, ese día es el primero de la acumulación y, por tanto, el arranque: los días anteriores al arranque no alcanzan por sí solos, y eso es justo lo que le hizo ser el primero. Repartiendo hacia delante desde ahí, el trabajo **nunca** termina después de la fecha pactada.
+
+La cuenta es por jornadas completas, no por minutos: el reparto hacia delante ya sabe partir una jornada, y hacer la cuenta al minuto obligaría a simular el reparto dos veces para responder lo mismo.
+
+### 451. El reparto sigue siendo hacia delante, y por eso la entrega se cumple siempre y a veces se adelanta
+
+Podría haberse repartido también hacia atrás —llenar el día de entrega primero y remontar—, y no se hizo. El reparto hacia delante desde el arranque más tardío tiene dos propiedades que importan más que la simetría:
+
+| Propiedad | Consecuencia |
+|---|---|
+| Nunca termina después de la fecha | La entrega es un techo que se cumple por construcción, no por suerte |
+| Puede terminar **antes** cuando la capacidad está partida | Un hueco pequeño el día de entrega y días enteros antes hacen que el trabajo cierre antes de la fecha |
+
+Lo segundo no incumple nada: la fecha es una **entrega**, no una cita, y adelantarse es lo que el negocio quiere. Pero cambia una lectura que conviene tener escrita: un trabajo que cierra antes deja su bandera de entrega en el día en que cierra, no en el Internal TTR (riesgo 460).
+
+Se midió lo que cuesta: dos requerimientos de 16 h con la misma entrega salen **A** lunes 30 + martes 1 (entrega el martes) y **B** jueves 26 + viernes 27 (entrega el **viernes**, dos jornadas antes, con cinco horas todavía libres el martes). Idéntico total, distinta colocación: el reparto hacia delante prefiere los días más tempranos (riesgo 461).
+
+### 452. Entregar antes de la fecha no es un desplazamiento: el caso que lo destapó
+
+La auditoría comparaba `deliveredOn` con `plannedDate` por igualdad. Con la entrega como ancla, esa igualdad **deja de ser la norma**: el trabajo cierra el día pactado o antes, y el caso «antes» no es un incumplimiento, así que no hay desplazamiento que auditar ni renegociación que acordar.
+
+El defecto se vio con el simulador, no con las pruebas: los dos requerimientos de 16 h anteriores producían un `RescheduleEvent 2026-12-01 → 2026-11-27` para B, es decir, **una renegociación inventada por entregar dos días antes**. La condición pasa a ser:
+
+```java
+// La entrega es el dia en que el requerimiento cierra. Solo cuenta como desplazamiento
+// si cierra DESPUES de lo pactado: adelantarse no incumple el compromiso.
+LocalDate deliveredOn = placed.getLast().date();
+if (!deliveredOn.isAfter(plannedDate)) {
+    continue;
+}
+```
+
+Queda una prueba que lo fija: `entregarAntesDeLaFechaNoSeAuditaComoDesplazamiento` comprueba un requerimiento de 6 h con entrega el viernes cuyo único bloque cae el jueves y exige `rescheduleEvents()` **vacío**.
+
+### 453. La ventana hacia atrás no cruza hoy: 31 pruebas en rojo lo dijeron
+
+La primera versión de la cuenta hacia atrás miraba hasta `deadline − horizonte` sin más, y **planificaba en el pasado**: con el reloj del escenario en el 5 de octubre y una entrega el 6, el arranque salía el 2. Treinta y una pruebas fallaron por la misma razón, y no era un fallo de las pruebas: el trabajo no puede empezar antes de hoy porque nadie lo hizo.
+
+La ventana se acota con el reloj del motor:
+
+```java
+LocalDate earliestStart = dueOn.minusDays(rules.planningHorizonDays());
+LocalDate today = LocalDate.now(clock);
+if (today.isAfter(earliestStart)) {
+    earliestStart = today;
+}
+```
+
+Quedaron dos fallos, y esos sí eran de las pruebas: `unRequerimientoDesplazadoUnViernesAterrizaElLunes` y `unFestivoTampocoEsDiaLaborable` describían la regla anterior —arrancar en la fecha pactada— y ahora describen la degradación. Se reescribieron para planificar con el reloj **el mismo día de la entrega**, que es el escenario que las dos querían cubrir y el único en el que la degradación se activa.
+
+### 454. Lo que no cambia: el desplazamiento, la renegociación y el snapshot siguen teniendo quién los produzca
+
+El brief prohíbe tocar desplazamientos, renegociaciones y snapshots, y el cambio **no los elimina: los deja de producir cuando no hacen falta**. La rama de degradación conserva el comportamiento anterior íntegro —arrancar en la fecha pactada, desbordar hacia delante y emitir el `RescheduleEvent` con su causa y su regla aplicada—, y se activa en dos situaciones:
+
+1. La entrega es hoy (o ya pasó) y no queda ventana hacia atrás.
+2. El compromiso no cabe de verdad ni mirando el horizonte entero hacia atrás.
+
+La segunda no es un resto: un compromiso que no cabe se sigue auditando **con la fecha en que de verdad se entrega**, en lugar de perderse en un conflicto sin fecha. Un plan que no se puede cumplir tiene que seguir pidiendo un acuerdo.
+
+### 455. `WorkAllocation.date` ya era el arranque; ahora lo es de verdad
+
+El registro documentaba `date` como «día en que arranca el bloque», pero con el motor anterior el arranque y la fecha pactada eran siempre el mismo día, así que el campo nunca se distinguió. Con la entrega como ancla empiezan a ser distintos, y el motor sigue guardando `placed.getFirst().date()`: **el arranque**. No hay nada que corregir, y sí algo que decir en voz alta, porque quien lea ese campo esperando la fecha pactada ahora verá el lunes en un trabajo que se entrega el martes. La fecha pactada sigue en `Requirement.plannedDate`, que es donde estaba.
+
+### 456. Los cuatro casos de referencia del brief, medidos contra el motor nuevo
+
+Sobre el motor nuevo con `POST /api/planning/simulate` (no guarda nada), desarrollo sin incidentes, jornada de 10,5 h (07:00–17:30) y entrega el **martes 1 de diciembre**:
+
+| Trabajo | Arranque | Fin | Entrega | ¿Termina en la fecha? |
+|---|---|---|---|---|
+| 4 h | mar 1 dic 07:00 | mar 1 dic 11:00 | **mar 1 dic** | Sí, y en un solo día |
+| 8 h | mar 1 dic 07:00 | mar 1 dic 15:00 | **mar 1 dic** | Sí, y en un solo día |
+| 16 h | **lun 30 nov 07:00** | mar 1 dic 12:30 | **mar 1 dic** | Sí: dos jornadas, pero la segunda es la de entrega |
+| 24 h | **vie 27 nov 07:00** | mar 1 dic 10:00 | **mar 1 dic** | Sí: tres jornadas, y el fin es el día pactado |
+
+Los cuatro terminan **en** la fecha, que era el criterio. El 16 h es el que cambia de significado:
+
+| | Arranque | Jornadas | ¿Desplazamiento? |
+|---|---|---|---|
+| Motor anterior (medido en la Fase 69) | mar 1 dic | mar 07:00–17:30 + mié 07:00–12:30 | **Sí**: `2026-12-01 → 2026-12-02`, `PENDIENTE_DE_RENEGOCIACION` |
+| Motor de la Fase 70 | lun 30 nov | lun 07:00–17:30 + mar 07:00–12:30 | **No**: `displacedRequirements` vacío |
+
+La diferencia no es cuánto trabaja el técnico —son las mismas 16 h— sino **desde dónde se recorre el calendario**. El compromiso que la fase anterior convertía en una renegociación ahora se cumple sin pedirle permiso a nadie.
+
+### 457. La degradación, probada con los dos escenarios que la activan
+
+| Escenario | Resultado | Lectura |
+|---|---|---|
+| 16 h con entrega **hoy** (27 de octubre) | día de entrega 07:00–17:30 + día siguiente 07:00–12:30, `displacedRequirements: [{ originalDate: 2026-10-27, newDate: 2026-10-28, newStatus: PENDIENTE_DE_RENEGOCIACION }]` | No hay ventana hacia atrás: el compromiso no cabía y se sigue auditando como antes |
+| 16 h con entrega el martes + incidente **ALTO** de 8 h el lunes 30 a las 08:00 | `A` ocupa vie 27 07:00–17:30, lun 07:00–08:00 y mar 07:00–11:30; el incidente ocupa lun 08:00–16:00; `displacedRequirements` vacío | El incidente parte el lunes, el requerimiento se remonta al viernes y **entrega igualmente el martes**, sin renegociación |
+
+El segundo es el que enseña la convivencia: la capacidad partida no rompe la entrega, la adelanta en parte y la completa el día pactado, que es la propiedad de la 451 aplicada a un caso realista.
+
+### 458. La validación especial sigue en pie: el ticket sin horas no necesita horas para tener fecha
+
+El brief pide comprobar que un ticket con Internal TTR y sin horas aparezca igualmente en el Timeline. Se comprueba en vivo, sobre los datos de hoy, en la **semana 49 (30 de noviembre – 6 de diciembre)** con el Timeline filtrado a `AbraAran`: el chip **66222 · Sin estimac…** cae en la columna del **jueves 3 de diciembre**, por encima del eje de horas y fuera del alto de la jornada, y lleva `aria-label="Fecha de entrega comprometida en GLPI"`. La fase no lo toca porque la Fase 69 ya lo dejó cerrado: está aquí porque es la prueba de que el cambio de motor no le quitó el sitio.
+
+### 459. Las capturas de Playwright: la rejilla real, con el motor real
+
+Las capturas multi-jornada no se pueden hacer sobre el plan vivo —los siete requerimientos declarados miden 2, 3, 4 o 5 h— así que la rejilla se pinta con el **resultado real** de `POST /api/planning/simulate`, interceptando la lectura del Timeline con `page.route`. Lo que se sustituye es la respuesta, no el componente: la gramática que se ve —chevron `›` de «continúa», bandera, barra de entrega— es la misma que pinta el plan de verdad.
+
+| Captura | Qué enseña |
+|---|---|
+| `.probe/f70-pw-01-sin-estimacion.png` | Semana 49 en vivo: el 66222 sin estimación en el 3 de diciembre, con bandera de entrega |
+| `.probe/f70-scenario-8.png` | 8 h entregadas el martes en una sola jornada, 07:00–15:00 |
+| `.probe/f70-scenario-16.png` | 16 h: lunes 30 con `›`, martes 1 con bandera y barra |
+| `.probe/f70-scenario-24.png` y `-24-anterior.png` | 24 h en tres jornadas: el viernes 27 en la semana 48, el lunes y el martes en la 49 |
+| `.probe/f70-scenario-antes.png` y `-despues.png` | El mismo 16 h con las dos semánticas: martes + miércoles con la bandera en el miércoles (antes) y lunes + martes con la bandera en el martes (después) |
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 460 | **La bandera de entrega marca el último día ocupado, no el Internal TTR** | **Medio: la fecha pactada puede no verse en ninguna parte** | Con entrega temprana, un trabajo que cierra el viernes y se entrega el martes enseña su bandera el viernes. La rejilla deriva la marca de la posición del bloque, no de la fecha pactada, que no viaja en el tramo. La salida es pintar el Internal TTR como dato del tramo —ya existe el hueco en el texto del título— o no pintar bandera cuando el cierre es anterior a la fecha |
+| 461 | **Con capacidad partida el reparto se va a los días más tempranos** | **Medio: consume capacidad de días que otro trabajo puede necesitar** | Medido en la decisión 451: dos requerimientos de 16 h con la misma entrega reparten uno el lunes y el martes y el otro el jueves y el viernes, con cinco horas libres el martes. El total es correcto y la entrega se cumple, pero el orden de llegada importa: un compromiso posterior puede encontrarse sin hueco. La salida es repartir hacia atrás desde la entrega, no hacia delante desde el arranque |
+| 462 | **Ningún requerimiento vivo ejercita la regla todavía** | **Medio: falta la prueba en producción** | Los siete requerimientos declarados miden 2, 3, 4 y 5 h: todos caben el día de entrega, así que hoy el cambio no mueve ni un tramo del plan real. La evidencia es del simulador y de las pruebas unitarias; la primera confirmación en vivo llegará con el primer requerimiento de más de una jornada |
+| 463 | **Los planes guardados antes de la fase conservan la disposición anterior** | **Bajo: es histórico, y el histórico no se reescribe** | Un snapshot es el plan que se ejecutó, no una proyección: recalcularlo convertiría el histórico en una mentira. La lectura nueva se ve al generar el plan siguiente, y la comparación entre ambos es la que enseña el cambio |
+| 464 | **El desplazamiento de la degradación sigue etiquetado `CAPACIDAD_DIARIA_EXCEDIDA`** | **Bajo: la etiqueta no distingue la causa** | Cuando la rama degradada se activa porque la entrega es hoy, la causa es el horizonte y no la jornada; el evento se audita igual con la regla genérica porque no hay incidente al que atribuirlo. La etiqueta dice la verdad a medias y no engaña sobre la fecha, que es el dato que se renegocia |
+
+## Pruebas
+
+Backend: la suite completa en verde —**416 pruebas, 0 fallos, 3 omitidas**, dos más que antes de la fase—. Las pruebas nuevas son `unRequerimientoDeDosJornadasTerminaEnSuFechaDeEntrega` (16 h con entrega el martes ocupan lunes y martes, sin eventos y sin conflictos) y `entregarAntesDeLaFechaNoSeAuditaComoDesplazamiento` (el trabajo cierra el jueves, la entrega es el viernes y no hay evento). Las dos existentes que describían la regla anterior pasan a describir la degradación con el reloj en el día de entrega.
+
+Frontend: **415 pruebas en 24 archivos** en verde, `tsc -b --noEmit` y oxlint limpios. No se modificó ni un componente: el cambio es de motor.
+
+Evidencia en `.probe/`: `f70-pw-01-sin-estimacion.png` (validación especial en vivo) y los escenarios del simulador con sus respuestas guardadas (`f70-sim-4.out.json`, `f70-sim-8.out.json`, `f70-sim-16.out.json`, `f70-sim-24.out.json`, `f70-sim-dos16.out.json`, `f70-sim-incidente.out.json`, `f70-sim-fallback.out.json`).
+
+## Fase 71 — La capa visual del compromiso
+
+**La fase no toca una línea de planificación.** El motor, la capacidad, el calendario laboral, la conciliación de GLPI, las renegociaciones y los snapshots quedan como estaban; lo que cambia es lo que la pantalla dice de ellos. Añade un segundo eje —**cuánto apremia la fecha que GLPI publica**— encima del eje que ya existía —**qué hizo el plan con el trabajo**— y lo pinta sin repintar ningún tramo.
+
+### 465. El riesgo es un eje aparte del estado, y no lo reemplaza
+
+El brief pide una clasificación de cinco categorías —requiere estimación, entrega próxima, entrega hoy, entrega vencida, planificado— y una leyenda que las explique. Leídas como una partición, se pisan: los datos vivos de hoy tienen tramos que son **planificados y vencidos a la vez**.
+
+| Ticket | Plan | Internal TTR | Qué es |
+|---|---|---|---|
+| 44221 | Tramo el 23 de oct, estado `PLANIFICADO` | 2026-10-23 | Planificado **y** vencido |
+| 66560 | Tramo el 23 de oct, estado `PLANIFICADO` | 2026-10-23 | Planificado **y** vencido |
+| 68831 | Tramo el 20 de oct, estado `PLANIFICADO` | 2026-10-29 | Planificado **y** próximo |
+
+Si el riesgo mandara sobre el color del bloque, esos tres tramos dejarían de decir «el plan los colocó» para decir «vencieron», y el gestor perdería justo lo que la rejilla existe para contar: **qué hizo el plan**. Van los dos hechos, cada uno en su canal:
+
+| Canal | Qué dice | Dónde se pinta |
+|---|---|---|
+| Relleno y borde del tramo | Qué hizo el plan | El bloque entero, como desde la Fase 66b |
+| Icono de entrega | Cuánto queda hasta el Internal TTR | 12 px en la primera línea del tramo |
+| Color y borde del chip | Lo mismo, para el trabajo sin horas | El chip de la franja |
+| Contadores | Lo mismo, agregado | La cabecera de la pantalla |
+
+La decisión se apoya en una regla que la fase anterior ya había asentado: **un dato, un sitio**. El relleno ya tenía dueño —los seis estados—, y darle un segundo significado habría hecho que el mismo azul quisiera decir dos cosas.
+
+### 466. La leyenda final: la paleta pedida, aplicada donde no compite
+
+El brief pide gris / amarillo / naranja / rojo / azul. La leyenda los usa así:
+
+| Categoría | Color | Dónde |
+|---|---|---|
+| Requiere estimación | Gris, borde discontinuo | Chip y recuadro de la leyenda |
+| Entrega próxima | Ámbar | Chip, icono `CalendarClock` |
+| Entrega hoy | Naranja | Chip, icono `Clock` |
+| Entrega vencida | Rojo | Chip, icono `AlertTriangle` |
+| Planificado | Azul | Relleno del tramo, como desde la Fase 57 |
+
+Dos de los cinco ya existían y no se han tocado; los tres del riesgo son nuevos. **No hay conflicto de paleta porque el riesgo nunca rellena un bloque**: el ámbar ya significaba «Desplazado» y el rojo ya significaba «ocupado por encima de lo disponible», y ambos son colores de superficie. Un icono de 12 px sobre la primera línea de un tramo no compite con un relleno de 200 px: se lee encima sin borrarlo.
+
+**`FUTURA` no está en la leyenda y no se pinta.** Lo que no corre riesgo no se resalta; una leyenda que anunciara «todavía no vence» convertiría en excepción la norma y gastaría un renglón en decir nada.
+
+### 467. El riesgo se lee del Internal TTR de la declaración, no del tramo
+
+La tentación era derivarlo de la posición del bloque: si el tramo está antes de hoy, está vencido. **Es falso con datos reales.** El ticket **57469** tiene un Internal TTR del **31 de diciembre de 2026** y un tramo guardado el **24 de junio de 2026**, porque el plan es anterior a que GLPI moviera la fecha. Leído del tramo, sería «vencido hace cuatro meses»; leído del TTR, está holgado.
+
+Por eso `commitmentRisksOf` recorre las declaraciones —que es donde vive la fecha operativa— y no los tramos. Es la misma regla que el resto de la vista ya respeta: **la fecha que manda es la que GLPI publica hoy**, no la que un plan guardado obedeció entonces.
+
+### 468. Tres días de horizonte, contados por días y no por instantes
+
+`RISK_HORIZON_DAYS = 3`. El horizonte no es una medida de la aplicación sino de la conversación que la pantalla quiere sostener —«qué se me vence esta semana»— y tres días es la ventana en la que un gestor todavía puede hacer algo.
+
+`riskOf(date, today)` compara **fechas**, y eso hubo que escribirlo. La primera versión restaba instantes y redondeaba, así que un ticket que vence el 27 a las 23:59 contra hoy a las 00:00 daba 0,999 días, redondeaba a uno y salía **«próxima»** en vez de **«hoy»**. Lo destapó una prueba y se arregló recortando las dos fechas a `yyyy-MM-dd` antes de restar: una fecha con hora no cambia el día en que vence.
+
+### 469. El icono de entrega cambia de forma; el relleno del tramo, no
+
+En el tramo, la marca de entrega ya existía: una bandera en el último día que ocupa el trabajo. Ahora **ese mismo icono cambia** según el riesgo —bandera si no hay ninguno, triángulo si venció, reloj si vence hoy, calendario si vence en los próximos días— y lleva `aria-label` propio. Cambiar el icono y no añadir uno es deliberado: el tramo compacto tiene 18 px de alto y cada icono se paga con letras.
+
+Se comprobó que la marca sobrevive a las cuatro densidades: **12 × 12 px en Compacta, Normal, Amplia y Detalle**, siempre en la primera línea y siempre con su `aria-label` («Entrega vencida», «Entrega hoy», «Entrega próxima»).
+
+### 470. El chip del ticket sin horas usa el mismo eje
+
+El chip del trabajo sin estimación ya tenía bandera y texto. Ahora hereda el riesgo: borde y fondo del color, icono cambiado y `data-risk`. La regla de accesibilidad se mantiene —el icono nunca va solo— y el `title` añade la fecha: «Entrega vencida: 23 de octubre de 2026».
+
+Cuando el día tiene varios tickets, los chips se reparten el ancho de la columna y el texto se recorta hasta dejar el identificador, que es la parte que importa. El icono cuesta unos 16 px, y eso está anotado como riesgo 477.
+
+### 471. Cuatro contadores que se solapan a propósito
+
+`CommitmentSummary` pinta cuatro cifras en la cabecera del equipo: **Compromisos vencidos**, **Entregas hoy**, **Entregas próximas** y **Sin estimación**.
+
+Los tres primeros cuentan **todos** los tickets con Internal TTR, estén planificados o no. El cuarto cuenta el trabajo que no entró al plan por falta de horas. **Se solapan**: un ticket sin estimación que además venció suma en «vencidos» y en «sin estimación». No es un defecto de la cuenta, es que responden preguntas distintas —cuántas promesas se incumplieron y cuánto trabajo no se puede planificar—, y un reparto en el que cada ticket cupiera en una sola casilla obligaría a elegir cuál de los dos hechos esconder.
+
+El cero no se esconde: se pinta apagado. Un contador que desaparece a cero no sirve para saber que está en cero.
+
+Medido en vivo el **27 de octubre de 2026**, con las 17 personas del equipo operativo: **10 compromisos vencidos, 10 entregas hoy, 23 entregas próximas y 71 tickets sin estimación**.
+
+### 472. Los contadores son del equipo entero; la leyenda, de la semana visible
+
+Dos alcances distintos, y conviene que lo sean. Los contadores recorren **todas** las semanas del horizonte —si se movieran al filtrar, dirían «no hay vencidos» de un equipo que sí los tiene—; la leyenda explica **solo lo que está en pantalla**, porque anunciar un color que no se puede encontrar es mandar a buscar donde no hay.
+
+La rejilla ya hacía esto con los estados (`presentStates`); el riesgo se sumó con la misma regla (`presentRisks`). En la semana 43 la leyenda muestra «Entrega vencida» y «Entrega próxima» pero no «Entrega hoy»: no hay ninguna entrega de hoy en esa semana, y el rótulo sobraría.
+
+### 473. Accesibilidad: icono, etiqueta y `aria-label`, nunca solo color
+
+| Recurso | Qué añade |
+|---|---|
+| Icono distinto por riesgo | Se distingue en blanco y negro y con daltonismo |
+| `aria-label` en el icono | «Entrega vencida» / «Entrega hoy» / «Entrega próxima» |
+| `data-risk` en chip, tramo y leyenda | Es un atributo, no una clase: la prueba y el lector lo leen |
+| `sr-only` en cada contador | El lector oye «1 entregas hoy», no una cifra suelta |
+| `title` en el chip y el tramo | La fecha completa, sin abrir nada |
+
+El color queda como refuerzo, no como información única.
+
+### 474. Lo que no cambió, y cómo se comprobó
+
+Ni una línea de `PlanningEngine`, `CapacityBook`, `WorkingCalendar`, conciliación, renegociaciones, snapshots ni persistencia. La prueba de que no se movió nada es la suite del backend: **416 pruebas, 0 fallos, 3 omitidas**, idéntica a la de la Fase 70. En el frontend, los seis estados, sus colores, la capacidad, la franja de pendientes y la simulación siguen intactos; las 415 pruebas anteriores pasan sin cambios, y las 12 nuevas cubren lo añadido.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 475 | **El riesgo se mide con el reloj del navegador** | **Medio: dos puestos con relojes distintos ven cifras distintas** | `riskOf` usa `localTodayIso()`, el día de la máquina. Es coherente con la rejilla, que ya ancla la semana en ese reloj, pero un equipo repartido entre husos vería un `HOY` distinto a cada lado. La salida es publicar el día del servidor en la respuesta del Timeline |
+| 476 | **«Compromisos vencidos» mezcla planificados y sin planificar** | **Bajo: es deliberado, pero el rótulo no lo dice** | Un requerimiento colocado que vence hoy cuenta igual que uno sin horas. El rótulo habla de compromisos y no de trabajo pendiente, que es lo que son los dos; separarlos pediría dos contadores más y volvería a esconder uno de los hechos |
+| 477 | **El chip pierde texto cuando el día tiene varios tickets** | **Bajo: ya pasaba, y el icono acorta 16 px más** | En una columna de 132 px, cinco chips dejan 37 px a cada uno y solo se lee el identificador. El color y el icono siguen distinguiendo el riesgo, que es lo que la fase añade; el detalle está en el `title` |
+| 478 | **La capa no distingue incidente de requerimiento** | **Bajo: el riesgo se mide igual para los dos** | Un incidente tiene Internal TTR y puede vencer; hoy los tres vencidos de la semana 43 son requerimientos, así que el caso del incidente vencido no está ejercitado con datos vivos |
+| 479 | **El riesgo solo cubre a quien el lote de declaraciones devuelve** | **Bajo: lo que no se lee no se cuenta** | `commitmentRisksOf` recorre `declarationsById`, que sale del padrón del equipo. El trabajo de quien no está en el padrón —los tres demo y el usuario de GLPI fuera del grupo— no entra en los contadores; la pantalla ya declara esas filas aparte |
+| 480 | **La capa visual no tiene prueba contra datos vivos** | **Bajo: la evidencia es de capturas, no de una suite** | Las pruebas cubren `riskOf`, `commitmentRisksOf`, el chip, la bandera y los contadores con datos a mano; las cifras de hoy están verificadas en pantalla, no en una prueba que las vuelva a medir mañana. El conjunto activo de GLPI es vivo y los números cambian solos |
+
+## Pruebas
+
+Frontend: **427 pruebas en 25 archivos** en verde, `tsc -b --noEmit` y oxlint limpios. Doce pruebas nuevas:
+
+| Archivo | Qué fija |
+|---|---|
+| `lib/timeline.test.ts` | Los cuatro tramos de `riskOf`, que no cuenta horas y que cruza el cambio de mes; `commitmentRisksOf` salta lo que no tiene fecha y cruza a varios desarrolladores |
+| `timeline/TimelineGrid.test.tsx` | El chip dice su riesgo con icono y leyenda; sin riesgo conserva la bandera de la Fase 70; la bandera del tramo cambia de icono sin tocar el relleno de «Planificado» |
+| `timeline/CommitmentSummary.test.tsx` | Los cuatro contadores, el solapamiento deliberado, el cero apagado y el rótulo junto al número |
+
+Backend: **416 pruebas, 0 fallos, 3 omitidas** — sin tocar código, como regresión.
+
+Evidencia en `.probe/`: `f71-pw-00-contadores.png`, `f71-pw-01-leyenda.png`, `f71-pw-02-semana43.png`, `f71-pw-03-semana44.png`, `f71-pw-04-sin-estimacion-66222.png`, `f71-pw-05-sin-estimacion-68428.png`, `f71-chip-VENCIDA.png` y las cuatro densidades `f71-zoom-compacta.png`, `-normal.png`, `-amplia.png`, `-detalle.png`.

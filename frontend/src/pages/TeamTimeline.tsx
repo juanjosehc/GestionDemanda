@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { DeclarationForm } from '@/components/declarations/DeclarationForm'
+import { CommitmentSummary } from '@/components/timeline/CommitmentSummary'
 import { DisplacementCause } from '@/components/timeline/DisplacementCause'
 import { IncidentSimulator } from '@/components/timeline/IncidentSimulator'
 import { TimelineGrid } from '@/components/timeline/TimelineGrid'
@@ -41,10 +42,12 @@ import { AGREEMENT_ORIGIN_BADGE, agreementOrigin, agreementStates } from '@/lib/
 import { NO_ROW_FILTERS, filterRows, hasFilters } from '@/lib/timelineFilters'
 import {
   blockKey,
+  commitmentRisksOf,
   countOf,
   formatDay,
   formatHours,
   formatTime,
+  localTodayIso,
   teamAgenda,
   timelineDays,
   unscheduledOf,
@@ -361,6 +364,18 @@ export function TeamTimeline() {
     [declarationsById, plannedTickets],
   )
 
+  /*
+   * El riesgo de cada ticket, medido contra el día del navegador.
+   *
+   * Se calcula sobre **todo** el equipo y no sobre lo visible: los contadores de la cabecera son del
+   * horizonte entero, mientras la rejilla enseña una semana. Un contador que se moviera al filtrar
+   * diría «no hay vencidos» de un equipo que sí los tiene.
+   */
+  const commitmentRisks = useMemo(
+    () => commitmentRisksOf(declarationsById, localTodayIso()),
+    [declarationsById],
+  )
+
   // El lote indexa por identificador, así que las listas se alinean aquí antes de entrar: `teamPending`
   // sigue emparejando por posición, y una persona que GLPI no conoce deja su hueco vacío en vez de
   // desplazar a las siguientes.
@@ -633,6 +648,13 @@ export function TeamTimeline() {
         </p>
       </div>
 
+      {/*
+        Los contadores van antes del calendario y no dentro: responden «qué tan mal está el
+        compromiso del equipo» recorriendo todas las semanas, y la rejilla de abajo solo puede
+        enseñar la que está en pantalla.
+      */}
+      <CommitmentSummary risks={commitmentRisks} withoutEstimate={unscheduled.length} />
+
       <TimelineToolbar
         filters={filters}
         onChange={setFilters}
@@ -677,6 +699,7 @@ export function TeamTimeline() {
         simulation={simulationLayer}
         states={statesByItem}
         unscheduled={unscheduled}
+        risks={commitmentRisks}
       />
 
       {/*

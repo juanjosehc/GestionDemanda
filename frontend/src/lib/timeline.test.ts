@@ -4,6 +4,7 @@ import {
   EMPTY_FILTERS,
   addDays,
   blockState,
+  commitmentRisksOf,
   dayPositions,
   filterItems,
   formatHours,
@@ -14,6 +15,7 @@ import {
   itemsByDate,
   minutesOfDay,
   parseLocalDateTime,
+  riskOf,
   timelineDays,
   weekAnchor,
   weekDaysOf,
@@ -340,5 +342,67 @@ describe('unscheduledOf', () => {
     })
 
     expect(unscheduledOf({ ana: planificable }, new Set(), OPEN)).toEqual([])
+  })
+})
+
+describe('riskOf', () => {
+  const today = '2026-10-27'
+
+  it('reparte los cuatro tramos por días enteros', () => {
+    expect(riskOf('2026-10-26', today)).toBe('VENCIDA')
+    expect(riskOf('2026-10-27', today)).toBe('HOY')
+    expect(riskOf('2026-10-28', today)).toBe('PROXIMA')
+    expect(riskOf('2026-10-30', today)).toBe('PROXIMA')
+    expect(riskOf('2026-10-31', today)).toBe('FUTURA')
+  })
+
+  it('no cuenta las horas: un ticket de las 23:00 vence el mismo día', () => {
+    // El horizonte es una conversación de negocio —«los próximos tres días»— y no un instante.
+    expect(riskOf('2026-10-27T23:59:00', today)).toBe('HOY')
+    expect(riskOf('2026-10-30T00:01:00', today)).toBe('PROXIMA')
+  })
+
+  it('cruza el cambio de mes sin desviarse', () => {
+    expect(riskOf('2026-12-03', '2026-11-30')).toBe('PROXIMA')
+    expect(riskOf('2026-11-29', '2026-11-30')).toBe('VENCIDA')
+  })
+})
+
+describe('commitmentRisksOf', () => {
+  it('mapea por ticket y salta los que no tienen fecha', () => {
+    // El 501 del fixture es una incidencia sin fecha operativa: no hay compromiso que medir, y
+    // meterlo como «vencido» afirmaría un incumplimiento que GLPI nunca prometió.
+    const risks = commitmentRisksOf({ ana: declarationsFixture() }, '2026-10-27')
+
+    expect(risks['501']).toBeUndefined()
+    expect(risks['68428']).toBeUndefined()
+  })
+
+  it('cruza a los dos desarrolladores en un solo mapa', () => {
+    const conFecha = declarationsFixture({
+      items: [
+        {
+          ...declarationsFixture().items[1],
+          workItemId: '68428',
+          declarationStatus: 'SIN_ESTIMACION',
+          operationalDate: '2026-10-27',
+        },
+      ],
+    })
+    const vencido = declarationsFixture({
+      items: [
+        {
+          ...declarationsFixture().items[1],
+          workItemId: '66222',
+          declarationStatus: 'SIN_ESTIMACION',
+          operationalDate: '2026-10-20',
+        },
+      ],
+    })
+
+    expect(commitmentRisksOf({ ana: conFecha, beto: vencido }, '2026-10-27')).toEqual({
+      '68428': 'HOY',
+      '66222': 'VENCIDA',
+    })
   })
 })

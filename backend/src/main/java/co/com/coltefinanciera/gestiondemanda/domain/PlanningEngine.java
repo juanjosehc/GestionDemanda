@@ -56,10 +56,13 @@ import co.com.coltefinanciera.gestiondemanda.domain.rules.PlanningRules;
  * de declararse imposible. Una jornada ocupada de 09:00 a 11:00 y de 14:00 a 17:00 sigue ofreciendo
  * las tres horas del medio.
  *
- * <p><strong>Desplazamiento.</strong> Un requerimiento arranca siempre en su fecha pactada, con lo
- * que quede libre; se considera desplazado si no alcanza a cerrarse ese mismo dia, y entonces la
- * auditoria registra la fecha en que realmente se entrega. Un trabajo que de verdad no cabe en el
- * horizonte se reporta como conflicto.
+ * <p><strong>Entrega.</strong> La fecha pactada de un requerimiento —el Internal TTR— es el dia en
+ * que el trabajo <em>termina</em>, no el dia en que empieza. El motor busca hacia atras el dia en
+ * que hay que arrancar para cubrir las horas declaradas antes de esa fecha y reparte desde ahi, de
+ * modo que el trabajo no termina despues de ella. Solo cuando no cabe en el horizonte hacia atras se degrada
+ * al comportamiento anterior —arrancar en la fecha pactada y desbordar hacia delante—, que es lo que
+ * la auditoria registra como desplazamiento y lo que una renegociacion tiene que cubrir. Un trabajo
+ * que de verdad no cabe en el horizonte se reporta como conflicto.
  */
 public class PlanningEngine {
 
@@ -105,19 +108,13 @@ public class PlanningEngine {
             }
         }
 
-        // 2. Requerimientos: trabajo desplazable. Cada uno arranca en su fecha pactada con lo que
-        //    quede libre y sigue hasta cerrarse, aunque tenga que pasar de dia.
+        // 2. Requerimientos: trabajo desplazable, anclado a su fecha de entrega. El Internal TTR es
+        //    cuando el trabajo se entrega, no cuando empieza, asi que la capacidad se busca hacia
+        //    atras desde esa fecha y el reparto va hacia delante hasta aterrizar en ella.
         for (Requirement requirement : plannableRequirements(request.requirements())) {
             LocalDate plannedDate = requirement.plannedDate();
-            LocalDate horizonEnd = plannedDate.plusDays(rules.planningHorizonDays());
 
-            List<WorkBlock> placed = capacity.claim(
-                    requirement.id(),
-                    WorkItemType.REQUERIMIENTO,
-                    developer.id(),
-                    plannedDate.atStartOfDay(clock.getZone()).toInstant(),
-                    requirement.estimatedHours(),
-                    horizonEnd);
+            List<WorkBlock> placed = claimForDelivery(requirement, developer, capacity, rules);
 
             if (placed.isEmpty()) {
                 conflicts.add(new PlanningConflict(
@@ -130,10 +127,13 @@ public class PlanningEngine {
             blocks.addAll(placed);
             allocations.add(allocation(requirement, developer, placed.getFirst().date()));
 
-            // La entrega es el dia en que el requerimiento cierra. Si cierra donde estaba pactado,
-            // no se movio nada y no hay nada que auditar.
+            // La entrega es el dia en que el requerimiento cierra. Solo cuenta como desplazamiento
+            // si cierra DESPUES de lo pactado: adelantarse no incumple el compromiso y no tiene a
+            // quien renegociar. Con la entrega como ancla, cerrar antes deja de ser raro —la
+            // capacidad de los dias previos puede estar partida— y auditarlo inventaria una
+            // renegociacion que nadie pidio.
             LocalDate deliveredOn = placed.getLast().date();
-            if (deliveredOn.equals(plannedDate)) {
+            if (!deliveredOn.isAfter(plannedDate)) {
                 continue;
             }
 
@@ -274,6 +274,58 @@ public class PlanningEngine {
 
     private static int priority(Incident incident) {
         return incident.severity() == null ? Integer.MAX_VALUE : incident.severity().ordinal();
+    }
+
+    /**
+     * Ubica un requerimiento para que <em>termine</em> en su fecha de entrega.
+     *
+     * <p>Primero pregunta a la agenda por el dia en que hay que arrancar para cubrir las horas
+     * declaradas antes de la entrega, y reparte desde ahi. Ese dia es el arranque mas tardio posible,
+     * asi que el trabajo <strong>nunca termina despues de la fecha pactada</strong>: un trabajo de
+     * 16 h con entrega el martes ocupa lunes y martes, y no martes y miercoles. Puede terminar antes
+     * si la capacidad de los dias intermedios esta partida, y eso tambien sirve.
+     *
+     * <p>Cuando no cabe mirando el horizonte hacia atras, se degrada al comportamiento anterior:
+     * arrancar en la fecha pactada y desbordar hacia delante, que es lo que produce el
+     * {@link RescheduleEvent} y, con el, la renegociacion. La degradacion no es un resto: un
+     * compromiso que de verdad no cabe se sigue auditando con la fecha en que de verdad se entrega,
+     * en lugar de perderse en un conflicto sin fecha.
+     */
+    private List<WorkBlock> claimForDelivery(
+            Requirement requirement,
+            Developer developer,
+            CapacityBook capacity,
+            PlanningRules rules) {
+
+        LocalDate dueOn = requirement.plannedDate();
+        // La ventana hacia atras no cruza hoy: buscar capacidad en dias que ya pasaron seria
+        // planificar trabajo que nadie pudo hacer. Cuando la entrega es hoy o el hueco no alcanza
+        // desde aqui, el ancla no devuelve dia y el motor cae al reparto hacia delante.
+        LocalDate earliestStart = dueOn.minusDays(rules.planningHorizonDays());
+        LocalDate today = LocalDate.now(clock);
+        if (today.isAfter(earliestStart)) {
+            earliestStart = today;
+        }
+        LocalDate from = capacity.startDayFor(requirement.estimatedHours(), dueOn, earliestStart);
+
+        // Anclado: lo que se entrega se entrega el dia pactado.
+        if (from != null) {
+            return capacity.claim(
+                    requirement.id(),
+                    WorkItemType.REQUERIMIENTO,
+                    developer.id(),
+                    from.atStartOfDay(clock.getZone()).toInstant(),
+                    requirement.estimatedHours(),
+                    dueOn);
+        }
+
+        return capacity.claim(
+                requirement.id(),
+                WorkItemType.REQUERIMIENTO,
+                developer.id(),
+                dueOn.atStartOfDay(clock.getZone()).toInstant(),
+                requirement.estimatedHours(),
+                dueOn.plusDays(rules.planningHorizonDays()));
     }
 
     private static List<Requirement> plannableRequirements(List<Requirement> requirements) {

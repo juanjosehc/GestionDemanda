@@ -1,4 +1,4 @@
-import { AlertTriangle, ClipboardList, Flag, HelpCircle } from 'lucide-react'
+import { AlertTriangle, CalendarClock, ClipboardList, Clock, Flag } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils'
 import type { DayPosition, HourAxis } from '@/lib/timeline'
 import type { BadgeVariant } from '@/components/ui/badge'
 import type {
+  CommitmentRisk,
   IncidentSeverity,
   TimelineCapacity,
   TimelineItem,
@@ -108,6 +109,50 @@ const STATES: Record<TimelineState, { label: string; variant: BadgeVariant; bloc
 }
 
 /**
+ * La capa de compromisos: cuánto apremia la fecha que GLPI publica.
+ *
+ * **Es un eje aparte del de {@link STATES} y no lo reemplaza.** El color del tramo dice qué hizo el
+ * plan —lo colocó, lo movió, espera un acuerdo—; esto dice cuánto queda hasta la entrega. Un tramo
+ * azul puede vencer hoy, y por eso el riesgo no repinta el bloque: le cambia el icono de entrega y
+ * tiñe el chip del ticket que no tiene horas.
+ *
+ * `FUTURA` no está aquí porque no tiene marca: lo que no corre riesgo no se resalta, y una leyenda
+ * que anunciara «todavía no vence» pintaría de excepción lo que es la norma.
+ *
+ * Los iconos no son decoración: sobreviven al daltonismo y a una captura en blanco y negro, que es
+ * lo único que el color no hace.
+ */
+const RISK = {
+  VENCIDA: {
+    label: 'Entrega vencida',
+    icon: AlertTriangle,
+    chip: 'border-red-500 bg-red-50 text-red-900',
+    flag: 'text-red-600',
+    swatch: 'border-red-500 bg-red-50',
+  },
+  HOY: {
+    label: 'Entrega hoy',
+    icon: Clock,
+    chip: 'border-orange-500 bg-orange-50 text-orange-900',
+    flag: 'text-orange-600',
+    swatch: 'border-orange-500 bg-orange-50',
+  },
+  PROXIMA: {
+    label: 'Entrega próxima',
+    icon: CalendarClock,
+    chip: 'border-amber-500 bg-amber-50 text-amber-900',
+    flag: 'text-amber-600',
+    swatch: 'border-amber-500 bg-amber-50',
+  },
+} as const satisfies Record<
+  Exclude<CommitmentRisk, 'FUTURA'>,
+  { label: string; icon: typeof Flag; chip: string; flag: string; swatch: string }
+>
+
+/** El orden de la leyenda de riesgo: primero lo que ya se incumplió. */
+const RISK_ORDER = ['VENCIDA', 'HOY', 'PROXIMA'] as const
+
+/**
  * El orden en que se leen los estados: primero lo que falta, después lo que el plan decidió y al
  * final los acuerdos. Es el orden de la leyenda y el del recorrido de un gestor.
  */
@@ -126,7 +171,12 @@ const TYPE = {
 } as const
 
 /** Texto del tooltip nativo. La aplicacion no tiene componente de tooltip; el navegador basta. */
-function describe(item: TimelineItem, state: TimelineState, position: DayPosition | undefined): string {
+function describe(
+  item: TimelineItem,
+  state: TimelineState,
+  position: DayPosition | undefined,
+  risk?: CommitmentRisk,
+): string {
   const parts = [
     `${TYPE[item.workItemType].label} ${item.workItemId}`,
     `${formatTime(item.startsAt)}–${formatTime(item.endsAt)} · ${formatHours(item.durationHours)} h de ${formatHours(item.estimatedHours)} h estimadas`,
@@ -145,6 +195,10 @@ function describe(item: TimelineItem, state: TimelineState, position: DayPositio
 
   if (item.severity) {
     parts.push(`Severidad ${item.severity}`)
+  }
+  // El riesgo va con su fecha, porque el icono dice «vence» y no dice cuándo.
+  if (risk !== undefined && risk !== 'FUTURA') {
+    parts.push(RISK[risk].label)
   }
   if (item.committedDate) {
     // `committedDate` es el compromiso **declarado** del ticket, no la fecha de GLPI. La fecha que el
@@ -186,6 +240,15 @@ interface BlockProps {
    * distinción que necesita la marca: un tramo sin fecha propuesta no se pinta como si la tuviera.
    */
   displacedTo?: string | null
+  /**
+   * Cuánto apremia el compromiso de GLPI de este trabajo.
+   *
+   * Se aplica **solo a la bandera del día de entrega**, no al relleno ni al borde: el color del
+   * bloque es el estado del plan y cambiarlo por el riesgo borraría lo que el plan hizo. La marca
+   * dice dos cosas a la vez —«aquí cierra» y «cuánto queda»— en el mismo icono, para no gastar el
+   * poco alto que un tramo compacto tiene para texto.
+   */
+  risk?: CommitmentRisk
 }
 
 /**
@@ -210,9 +273,25 @@ function clockLabel(minutes: number): string {
   return `${String(hours).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 
-function Block({ item, axis, hourHeight, state, position, onSelect, selected, displacedTo }: BlockProps) {
+function Block({
+  item,
+  axis,
+  hourHeight,
+  state,
+  position,
+  onSelect,
+  selected,
+  displacedTo,
+  risk,
+}: BlockProps) {
   const status = STATES[state]
   const Icon = TYPE[item.workItemType].icon
+  /*
+   * `FUTURA` no se pinta: lo que no corre riesgo no se resalta, y una marca en todos los tramos no
+   * marcaría ninguno. El icono de entrega solo cambia cuando hay algo que decir.
+   */
+  const riskMark = risk !== undefined && risk !== 'FUTURA' ? RISK[risk] : null
+  const DeliveryIcon = riskMark?.icon ?? Flag
   const demo = displacedTo !== undefined
   /*
    * Un trabajo de varios días se ve como varios tramos —el plan así lo guarda— y sin marca se leen
@@ -267,10 +346,11 @@ function Block({ item, axis, hourHeight, state, position, onSelect, selected, di
         */}
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {delivered && (
-            <Flag
+            <DeliveryIcon
               data-slot="timeline-delivery"
-              className="size-3 shrink-0"
-              aria-label="Día de entrega"
+              data-risk={riskMark ? risk : undefined}
+              className={cn('size-3 shrink-0', riskMark?.flag)}
+              aria-label={riskMark ? riskMark.label : 'Día de entrega'}
             />
           )}
           {dense && (
@@ -352,8 +432,8 @@ function Block({ item, axis, hourHeight, state, position, onSelect, selected, di
   )
 
   const title = demo
-    ? `${describe(item, state, position)} · SIMULADO: se movería a ${displacedTo ?? 'ningún día hábil de la ventana'}`
-    : describe(item, state, position)
+    ? `${describe(item, state, position, risk)} · SIMULADO: se movería a ${displacedTo ?? 'ningún día hábil de la ventana'}`
+    : describe(item, state, position, risk)
 
   if (!onSelect) {
     return (
@@ -562,6 +642,19 @@ interface TimelineGridProps {
    */
   unscheduled?: readonly UnscheduledItem[]
   /**
+   * Cuánto apremia el compromiso de GLPI de cada ticket, por identificador.
+   *
+   * **Es el segundo eje de la rejilla y no reemplaza a {@link states}.** El estado dice qué hizo el
+   * plan; el riesgo dice cuánto queda hasta la fecha que GLPI publica. Se pinta encima de lo que ya
+   * hay —el icono de entrega del tramo y el chip del ticket sin horas— y no repinta ningún relleno,
+   * porque un bloque tiene un solo color y el del plan es el que no se puede perder.
+   *
+   * La calcula `commitmentRisksOf` sobre las declaraciones y **no se deriva del tramo**: un plan
+   * guardado antes de que GLPI moviera la fecha coloca el trabajo en el día viejo, y leer el riesgo
+   * de ahí diría «vencido» de un ticket que vence en diciembre.
+   */
+  risks?: Readonly<Record<string, CommitmentRisk>>
+  /**
    * El incidente simulado, si hay uno. Se pinta como una capa de demostración y **no altera ni los
    * recursos ni los tramos**: al quitarlo, la rejilla vuelve a ser exactamente la misma.
    */
@@ -646,6 +739,7 @@ export function TimelineGrid({
   simulation,
   states,
   unscheduled,
+  risks,
 }: TimelineGridProps) {
   const [zoom, setZoom] = useState<number>(initialZoom)
 
@@ -738,6 +832,29 @@ export function TimelineGrid({
 
     return STATE_ORDER.filter((state) => present.has(state))
   }, [items, states, unscheduled, days])
+
+  /**
+   * Los riesgos que de verdad se ven esta semana.
+   *
+   * Misma regla que `presentStates`: la leyenda nombra lo que hay en pantalla. Anunciar «entrega
+   * vencida» sin un solo vencido a la vista manda a buscarlo donde no está.
+   */
+  const presentRisks = useMemo(() => {
+    const present = new Set<CommitmentRisk>()
+
+    for (const item of items) {
+      if (days.includes(itemDate(item)) && risks?.[item.workItemId]) {
+        present.add(risks[item.workItemId]!)
+      }
+    }
+    for (const ghost of unscheduled ?? []) {
+      if (days.includes(ghost.date) && risks?.[ghost.workItemId]) {
+        present.add(risks[ghost.workItemId]!)
+      }
+    }
+
+    return RISK_ORDER.filter((risk) => present.has(risk))
+  }, [items, unscheduled, risks, days])
 
   /**
    * Si hay algún ticket sin horas esta semana.
@@ -925,6 +1042,27 @@ export function TimelineGrid({
               {STATES[state].label}
             </li>
           ))}
+          {/*
+            La leyenda del compromiso va detrás de la de los estados porque explica lo que la
+            primera no alcanza: el relleno dice qué hizo el plan, el icono dice cuánto queda hasta
+            la fecha de GLPI. Los dos se ven a la vez sobre el mismo tramo.
+          */}
+          {presentRisks.map((risk) => {
+            const mark = RISK[risk]
+            const RiskIcon = mark.icon
+
+            return (
+              <li
+                key={risk}
+                data-slot="timeline-legend-risk"
+                data-risk={risk}
+                className="flex items-center gap-1.5"
+              >
+                <RiskIcon className={cn('size-3 shrink-0', mark.flag)} aria-hidden="true" />
+                {mark.label}
+              </li>
+            )
+          })}
           <li className="flex items-center gap-1.5">
             <Flag className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
             Día de entrega: el último que ocupa el trabajo
@@ -1178,20 +1316,48 @@ export function TimelineGrid({
                             className="flex h-5 items-center gap-1 overflow-hidden border-t border-dashed border-border/60 px-1.5"
                           >
                             {(ghostsByCell.get(`${resource.developerId}|${day}`) ?? []).map(
-                              (ghost) => (
+                              (ghost) => {
+                                const ghostRisk = risks?.[ghost.workItemId]
+                                const ghostMark =
+                                  ghostRisk !== undefined && ghostRisk !== 'FUTURA'
+                                    ? RISK[ghostRisk]
+                                    : null
+                                const GhostIcon = ghostMark?.icon ?? Flag
+
+                                return (
                                 <span
                                   key={ghost.workItemId}
                                   data-slot="timeline-unscheduled"
                                   data-work-item={ghost.workItemId}
-                                  title={`Ticket ${ghost.workItemId}: tiene día en GLPI y no ocupa jornada. ${ghost.cause}: requiere una estimación de horas.`}
-                                  className="flex min-w-0 items-center gap-1 rounded-xs border border-dashed border-slate-400 bg-slate-50 px-1 text-[10px] leading-none text-slate-700"
+                                  data-risk={ghostMark ? ghostRisk : undefined}
+                                  title={`Ticket ${ghost.workItemId}: tiene día en GLPI y no ocupa jornada. ${ghost.cause}: requiere una estimación de horas.${ghostMark ? ` ${ghostMark.label}: ${formatDay(ghost.date)}.` : ''}`}
+                                  className={cn(
+                                    'flex min-w-0 items-center gap-1 rounded-xs border border-dashed px-1 text-[10px] leading-none',
+                                    ghostMark?.chip ?? 'border-slate-400 bg-slate-50 text-slate-700',
+                                  )}
                                 >
-                                  <HelpCircle className="size-3 shrink-0" aria-hidden="true" />
+                                  {/*
+                                    La bandera sustituye al interrogante que había, y no se suma a
+                                    él: en un día de 132 px el chip ya truncaba su texto, así que
+                                    cada icono se paga con letras. La bandera dice lo que el texto
+                                    no cabe a decir —**ese día es la fecha de entrega que publica
+                                    GLPI** (Internal TTR)— y el resto lo sigue diciendo el
+                                    «Sin estimación». Lleva `aria-label` y no solo el título,
+                                    porque la regla es que se vea sin tooltip.
+                                  */}
+                                  <GhostIcon
+                                    data-slot="timeline-unscheduled-commitment"
+                                    className={cn('size-3 shrink-0', ghostMark?.flag)}
+                                    aria-label={
+                                      ghostMark ? ghostMark.label : 'Fecha de entrega comprometida en GLPI'
+                                    }
+                                  />
                                   <span className="truncate">
                                     {ghost.workItemId} · {ghost.cause}
                                   </span>
                                 </span>
-                              ),
+                                )
+                              },
                             )}
                           </div>
                         )}
@@ -1221,6 +1387,7 @@ export function TimelineGrid({
                               axis={axis}
                               hourHeight={hourHeight}
                               state={blockState(item, states)}
+                              risk={risks?.[item.workItemId]}
                               position={positions.get(`${item.workItemId}@${item.startsAt}`)}
                               onSelect={onSelect}
                               selected={selected === `${item.workItemId}@${item.startsAt}`}

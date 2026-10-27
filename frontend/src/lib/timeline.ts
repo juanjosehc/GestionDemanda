@@ -2,6 +2,7 @@ import { PENDING_CAUSE_LABEL } from '@/lib/pending'
 import type { DeveloperDeclarationsResponse } from '@/types/declarations'
 import type { TeamPerson } from '@/types/team'
 import type {
+  CommitmentRisk,
   IncidentSeverity,
   TeamConflict,
   TeamTimelineResponse,
@@ -500,4 +501,73 @@ export function unscheduledOf(
   }
 
   return unscheduled
+}
+
+/**
+ * Cuántos días hacia delante cuenta como «próxima» una entrega.
+ *
+ * Tres es la ventana que el negocio pidió: lo que vence dentro de la semana en curso todavía se
+ * puede atender, y lo que vence pasado mañana ya hay que mirarlo.
+ */
+export const RISK_HORIZON_DAYS = 3
+
+/**
+ * Cuánto apremia un día comprometido, contado desde `today`.
+ *
+ * **No es una segunda versión de la regla de la declaración.** El backend decide si un ticket es
+ * planificable y si su compromiso *declarado* venció (`commitmentOverdue`); esto compara la fecha con
+ * la que GLPI ubica el ticket —el Internal TTR— contra el día del navegador, que es lo único que la
+ * vista tiene para responder «qué vence esta semana» sin una lectura más. Los dos pueden discrepar, y
+ * por eso el riesgo se enseña como un eje aparte y no reemplaza al estado del tramo.
+ *
+ * Se comparan fechas y no instantes: dos tickets que vencen el 2 de noviembre vencen el mismo día
+ * aunque uno lo haga a las 01:00 y el otro a las 23:00.
+ */
+export function riskOf(date: string, today: string): CommitmentRisk {
+  const days = dayGap(today, date)
+
+  if (days < 0) return 'VENCIDA'
+  if (days === 0) return 'HOY'
+  if (days <= RISK_HORIZON_DAYS) return 'PROXIMA'
+  return 'FUTURA'
+}
+
+/**
+ * El riesgo de cada ticket del equipo, por identificador.
+ *
+ * Sale de la declaración y no del tramo porque **el tramo no siempre está donde manda el
+ * compromiso**: un plan guardado antes de que GLPI moviera el TTR coloca el trabajo en la fecha
+ * vieja, y leer el riesgo del último tramo diría «vencido» de un ticket que vence en diciembre. La
+ * fecha que manda es la operativa, que es la que el plan obedece hoy.
+ *
+ * Un ticket sin fecha no entra: no hay compromiso que medir, y eso no es un riesgo sino un hueco del
+ * dato, que la declaración publica por su cuenta.
+ */
+export function commitmentRisksOf(
+  declarations: Readonly<Record<string, DeveloperDeclarationsResponse>>,
+  today: string,
+): Record<string, CommitmentRisk> {
+  const risks: Record<string, CommitmentRisk> = {}
+
+  for (const declaration of Object.values(declarations)) {
+    for (const item of declaration.items) {
+      if (item.operationalDate === null) continue
+      risks[item.workItemId] = riskOf(item.operationalDate, today)
+    }
+  }
+
+  return risks
+}
+
+/**
+ * Días enteros entre dos fechas del contrato, sin horas: `addDays` al revés y sin zonas.
+ *
+ * Se recorta a `yyyy-MM-dd` antes de restar porque la resta es de días y no de instantes: sin el
+ * recorte, un `2026-10-27T23:59` contra `2026-10-27` da 0,999 días, que redondea a **uno** y
+ * convertiría «hoy» en «próxima». Una fecha con hora no cambia el día en que vence.
+ */
+function dayGap(from: string, to: string): number {
+  const start = parseLocalDateTime(from.slice(0, 10))
+  const end = parseLocalDateTime(to.slice(0, 10))
+  return Math.round((end.getTime() - start.getTime()) / 86_400_000)
 }

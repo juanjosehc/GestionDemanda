@@ -54,6 +54,9 @@ class PlanningEngineTest {
     private static final Instant INSTANTE_FIJO = Instant.parse("2026-10-05T08:00:00Z");
     private static final Clock CLOCK = Clock.fixed(INSTANTE_FIJO, ZoneOffset.UTC);
 
+    /** El viernes 9 a las 08:00: la entrega es hoy y ya no queda ventana hacia atras. */
+    private static final Instant VIERNES_INSTANTE = Instant.parse("2026-10-09T08:00:00Z");
+
     private static final Developer DEVELOPER = new Developer("dev-1", "Ana");
 
     /**
@@ -437,7 +440,7 @@ class PlanningEngineTest {
         Incident alto = incident("INC-1", "8", "2026-10-09T09:00:00Z", IncidentSeverity.ALTO);
         Requirement requerimiento = requirement("REQ-1", "4", VIERNES, RequirementStatus.PLANIFICADO);
 
-        PlanningResult result = plan(List.of(alto), List.of(requerimiento));
+        PlanningResult result = planFrom(VIERNES_INSTANTE, List.of(alto), List.of(requerimiento));
 
         // El sabado y el domingo no son laborables: el primer dia con hueco esta tres dias despues.
         assertThat(fechaDe(result, "REQ-1")).isEqualTo(LUNES_SIGUIENTE);
@@ -450,7 +453,8 @@ class PlanningEngineTest {
         Incident alto = incident("INC-1", "8", "2026-10-09T09:00:00Z", IncidentSeverity.ALTO);
         Requirement requerimiento = requirement("REQ-1", "4", VIERNES, RequirementStatus.PLANIFICADO);
 
-        PlanningResult result = plan(List.of(alto), List.of(requerimiento), RULES_CON_FESTIVO);
+        PlanningResult result =
+                planFrom(VIERNES_INSTANTE, List.of(alto), List.of(requerimiento), RULES_CON_FESTIVO);
 
         // Con el lunes festivo, el hueco se corre al martes: un dia mas, ni uno menos.
         assertThat(fechaDe(result, "REQ-1")).isEqualTo(MARTES_SIGUIENTE);
@@ -574,6 +578,39 @@ class PlanningEngineTest {
     }
 
     @Test
+    @DisplayName("Entregar antes de la fecha no cuenta como desplazamiento")
+    void entregarAntesDeLaFechaNoSeAuditaComoDesplazamiento() {
+        // Seis horas dejan dos libres el viernes, que no alcanzan para las seis del requerimiento.
+        // Con la entrega como ancla, el trabajo se cierra el jueves: antes, no despues. Adelantarse
+        // no incumple el compromiso, asi que no hay nada que auditar ni renegociar.
+        Incident viernes = incident("INC-1", "6", "2026-10-09T09:00:00Z");
+        Requirement seis = requirement("REQ-1", "6", VIERNES, RequirementStatus.PLANIFICADO);
+
+        PlanningResult result = plan(List.of(viernes), List.of(seis));
+
+        assertThat(bloquesDe(result, "REQ-1")).extracting(WorkBlock::start, WorkBlock::end)
+                .containsExactly(tuple(VIERNES.minusDays(1).atTime(9, 0), VIERNES.minusDays(1).atTime(15, 0)));
+        assertThat(result.rescheduleEvents()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Un requerimiento de dos jornadas termina en su fecha de entrega, no empieza en ella")
+    void unRequerimientoDeDosJornadasTerminaEnSuFechaDeEntrega() {
+        // Dieciseis horas con entrega el martes y el reloj parado el lunes: el trabajo cabe, pero
+        // solo empezando el lunes. La fecha pactada es la entrega, no el arranque.
+        Requirement dieciseis = requirement("REQ-1", "16", LUNES.plusDays(1), RequirementStatus.PLANIFICADO);
+
+        PlanningResult result = plan(List.of(), List.of(dieciseis));
+
+        assertThat(bloquesDe(result, "REQ-1")).extracting(WorkBlock::start, WorkBlock::end)
+                .containsExactly(
+                        tuple(LUNES.atTime(9, 0), LUNES.atTime(17, 0)),
+                        tuple(LUNES.plusDays(1).atTime(9, 0), LUNES.plusDays(1).atTime(17, 0)));
+        assertThat(result.rescheduleEvents()).isEmpty();
+        assertThat(result.conflicts()).isEmpty();
+    }
+
+    @Test
     @DisplayName("Caso limite 6 - La auditoria cuenta la misma historia que la agenda")
     void limite6LaAuditoriaCuentaLaMismaHistoriaQueLaAgenda() {
         Incident grave = incident("INC-1", "6", "2026-10-05T09:00:00Z");
@@ -638,6 +675,25 @@ class PlanningEngineTest {
     private PlanningResult plan(
             List<Incident> incidents, List<Requirement> requirements, PlanningRules rules) {
         return engine.plan(new PlanningRequest(DEVELOPER, incidents, requirements, rules));
+    }
+
+    /**
+     * Planifica con el reloj detenido en {@code at}.
+     *
+     * <p>La entrega se busca hacia atras, pero nunca antes de hoy: adelantar el reloj al dia de la
+     * entrega deja la ventana sin dias anteriores y obliga al motor a la caida hacia delante, que es
+     * lo que estas pruebas del calendario quieren medir.
+     */
+    private PlanningResult planFrom(
+            Instant at, List<Incident> incidents, List<Requirement> requirements) {
+        return planFrom(at, incidents, requirements, RULES);
+    }
+
+    private PlanningResult planFrom(
+            Instant at, List<Incident> incidents, List<Requirement> requirements, PlanningRules rules) {
+        PlanningEngine fromAt =
+                new PlanningEngine(new InMemoryRescheduleLedger(), Clock.fixed(at, ZoneOffset.UTC));
+        return fromAt.plan(new PlanningRequest(DEVELOPER, incidents, requirements, rules));
     }
 
     private static Incident incident(String id, String hours, String reportedAt) {

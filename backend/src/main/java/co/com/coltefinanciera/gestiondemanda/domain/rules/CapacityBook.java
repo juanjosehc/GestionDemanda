@@ -88,6 +88,64 @@ public final class CapacityBook {
     }
 
     /**
+     * Dia en que hay que arrancar para que el trabajo <em>termine</em> en {@code deadline}.
+     *
+     * <p>Es la pregunta que la regla de negocio hace y que ninguna pieza respondia: la fecha pactada
+     * con el usuario es una <strong>entrega</strong>, no un comienzo. Dieciseis horas con entrega el
+     * martes ocupan el lunes y el martes, no el martes y el miercoles.
+     *
+     * <p>La cuenta es hacia atras y por jornadas enteras: se acumula lo libre de cada dia desde
+     * {@code deadline} hacia atras hasta cubrir las horas pedidas, y el resultado es el <strong>primer
+     * dia</strong> de la acumulacion, que es el arranque mas tardio posible. Repartiendo hacia delante
+     * desde ahi, el trabajo <strong>nunca termina despues de {@code deadline}</strong>: los dias
+     * posteriores a ese arranque no alcanzan por si solos, que es justo lo que le hizo ser el primero.
+     *
+     * <p>Puede terminar antes. El reparto hacia delante llena cada jornada antes de pasar a la
+     * siguiente, asi que cuando la capacidad esta partida —un hueco pequeno al principio y dias
+     * enteros despues— el trabajo se cierra antes de la fecha. Eso no incumple nada: la fecha es una
+     * entrega, no una cita, y adelantarse es lo que el negocio quiere.
+     *
+     * <p>No mira mas atras de {@code notBefore}. Devolver {@code null} no es «no cabe»: es «no lo se
+     * con lo que el motor puede mirar», y quien pregunta decide que hacer —hoy, planificar hacia
+     * delante desde la fecha pactada y auditar el desplazamiento, que es lo que hacia antes.
+     *
+     * @param hours     horas de jornada que ocupa el trabajo.
+     * @param deadline  dia de entrega, inclusive.
+     * @param notBefore primer dia que se puede mirar hacia atras, inclusive.
+     * @return el dia en que arranca el trabajo, o {@code null} si no cabe mirando hasta
+     *         {@code notBefore}.
+     */
+    public LocalDate startDayFor(BigDecimal hours, LocalDate deadline, LocalDate notBefore) {
+        Objects.requireNonNull(hours, "hours es obligatorio");
+        Objects.requireNonNull(deadline, "deadline es obligatorio");
+        Objects.requireNonNull(notBefore, "notBefore es obligatorio");
+        if (hours.signum() <= 0) {
+            throw new IllegalArgumentException("hours debe ser mayor que cero");
+        }
+
+        long pending = BusinessHours.toMinutes(hours);
+        LocalDate date = deadline;
+
+        while (!date.isBefore(notBefore)) {
+            BusinessHours window = calendar.businessHoursOn(date);
+            if (window != null) {
+                long free = BusinessTimeCalculator.freeSlots(window, busyOn(date)).stream()
+                        .mapToLong(slot -> Duration.between(slot.start(), slot.end()).toMinutes())
+                        .sum();
+                // Este dia cubre lo que falta: es el primero de la acumulacion y, por tanto, el
+                // arranque. Los dias anteriores siguen libres para el trabajo que venga despues.
+                if (free >= pending) {
+                    return date;
+                }
+                pending -= free;
+            }
+            date = date.minusDays(1);
+        }
+
+        return null;
+    }
+
+    /**
      * Tramos libres de una jornada, en orden.
      *
      * <p>Es la lectura de la capacidad en su forma util: una jornada ocupada de 09:00 a 11:00 y de
