@@ -95,11 +95,7 @@ public class PlanningMetricsService {
                 declared.total(),
                 declared.plannable(),
                 new PlanningOperationalMetricsResponse.DeclaredGap(
-                        GlpiDiscardReason.SIN_ESTIMACION_DECLARADA, declared.withoutEstimation()),
-                new PlanningOperationalMetricsResponse.DeclaredGap(
-                        GlpiDiscardReason.SIN_COMPROMISO_DECLARADO, declared.withoutCommitment()),
-                declared.incomplete(),
-                declared.retracted());
+                        GlpiDiscardReason.SIN_ESTIMACION_DECLARADA, declared.withoutEstimation()));
     }
 
     private static PlanningOperationalMetricsResponse.Plans plansOf(long generated) {
@@ -270,21 +266,15 @@ public class PlanningMetricsService {
     }
 
     /**
-     * El codigo con el que se nombra una carencia declarada, o nulo si no tiene uno.
+     * El codigo con el que se nombra una carencia declarada.
      *
-     * <p>Los dos codigos existen una sola vez, en el enum de descartes; aqui solo se elige cual.
-     * {@code METADATA_INCOMPLETA} no tiene ninguno: es la union de las otras dos y no un descarte, y
-     * la fotografia tampoco se lo inventa —enseña un numero a secas—, asi que inventarlo aqui seria
-     * publicar un codigo que no nombra ninguna accion.
-     *
-     * <p>Sin rama por defecto, como el {@code switch} del adaptador: añadir una carencia deja de
-     * compilar en vez de responder sin codigo.
+     * <p>El codigo existe una sola vez, en el enum de descartes; aqui solo se elige cual. Sin rama
+     * por defecto, como el {@code switch} del adaptador: añadir una carencia deja de compilar en vez
+     * de responder sin codigo.
      */
     private static GlpiDiscardReason codeOf(DeclaredGap gap) {
         return switch (gap) {
             case SIN_ESTIMACION -> GlpiDiscardReason.SIN_ESTIMACION_DECLARADA;
-            case SIN_COMPROMISO -> GlpiDiscardReason.SIN_COMPROMISO_DECLARADO;
-            case METADATA_INCOMPLETA -> null;
         };
     }
 

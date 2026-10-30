@@ -25,18 +25,6 @@ public interface PlanningMetadataJpaRepository extends JpaRepository<PlanningMet
      */
     long countByEstimatedHoursIsNull();
 
-    /** Cuantas filas declaradas no tienen fecha compromiso. */
-    long countByCommittedDateIsNull();
-
-    /**
-     * Cuantas filas declaradas no tienen ni lo uno ni lo otro.
-     *
-     * <p>No es la interseccion de las dos de arriba por casualidad: es la unica de las cuatro
-     * situaciones que se cuenta aparte, porque sin ella las dos carencias sumarian mas que las filas
-     * incompletas y los numeros no cerrarian.
-     */
-    long countByEstimatedHoursIsNullAndCommittedDateIsNull();
-
     /**
      * Las filas declaradas sin horas estimadas, en orden de identificador.
      *
@@ -46,18 +34,6 @@ public interface PlanningMetadataJpaRepository extends JpaRepository<PlanningMet
      * declaradas juntas: cambiarlas por separado es lo unico que podria hacerlas discrepar.
      */
     List<PlanningMetadataEntity> findByEstimatedHoursIsNullOrderByWorkItemIdAsc();
-
-    /** Las filas declaradas sin fecha compromiso, en orden de identificador. */
-    List<PlanningMetadataEntity> findByCommittedDateIsNullOrderByWorkItemIdAsc();
-
-    /**
-     * Las filas declaradas a las que les falta al menos uno de los dos valores.
-     *
-     * <p>Es la union y no la interseccion de {@link #countByEstimatedHoursIsNullAndCommittedDateIsNull},
-     * por el mismo motivo que {@code incomplete} no es la interseccion de las dos carencias: una fila
-     * sin ninguno de los dos valores falta por los dos, y contarla una sola vez exige la union.
-     */
-    List<PlanningMetadataEntity> findByEstimatedHoursIsNullOrCommittedDateIsNullOrderByWorkItemIdAsc();
 
     /**
      * El estado de un elemento de trabajo, retenido para escritura hasta que acabe la transaccion.

@@ -19,9 +19,10 @@ import {
  * que las ocultas no se hayan borrado.
  */
 describe('el menú y el catálogo de pantallas', () => {
-  it('deja en el menú las cinco entradas de la operación diaria', () => {
+  it('deja en el menú las seis entradas de la operación diaria', () => {
     expect(MENU_ITEMS.map((item) => item.to)).toEqual([
       ROUTES.teamTimeline,
+      ROUTES.capacity,
       ROUTES.incidents,
       ROUTES.declarations,
       ROUTES.renegotiations,

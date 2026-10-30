@@ -16,25 +16,19 @@ import type { MetricGap } from '@/types/planningMetrics'
 /**
  * Lo que cada desglose es, en palabras.
  *
- * Las tres carencias declaradas comparten la misma forma de fila y solo cambian el titulo y la
- * explicacion; el cuarto desglose no se parece a ellas y tiene su propio texto. La tabla se queda
- * fuera a proposito: lo que se dice aqui es lo que el backend ya afirma con su `scope`.
+ * La carencia declarada y los desplazamientos no se parecen, y por eso tienen su propio texto. La
+ * tabla se queda fuera a proposito: lo que se dice aqui es lo que el backend ya afirma con su
+ * `scope`.
+ *
+ * Era un mapa de tres entradas hasta la Fase 77. Se queda en una porque la declaracion solo puede
+ * carecer de horas: la fecha la publica GLPI y no se declara, asi que «sin compromiso» y «metadata
+ * incompleta» dejaron de nombrar algo.
  */
 const DECLARED: Record<MetricGap, { title: string; description: string }> = {
   'sin-estimacion': {
     title: 'Requerimientos sin estimación',
     description:
-      'Filas declaradas a las que nadie les puso horas. Sin estimación un requerimiento no entra al motor de planificación.',
-  },
-  'sin-compromiso': {
-    title: 'Requerimientos sin compromiso',
-    description:
-      'Filas declaradas a las que nadie les puso fecha compromiso. Se pueden planificar, pero ninguna fecha declarada las ancla.',
-  },
-  'metadata-incompleta': {
-    title: 'Metadata incompleta',
-    description:
-      'Todo lo que le falta al menos un valor: las que no tienen estimación, las que no tienen compromiso y las retiradas, que no tienen ninguno de los dos.',
+      'Filas declaradas a las que nadie les puso horas. Sin estimación un requerimiento no entra al motor de planificación. La fecha de compromiso la publica GLPI y no se declara aquí.',
   },
 }
 

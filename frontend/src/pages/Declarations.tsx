@@ -265,10 +265,10 @@ export function Declarations() {
         Los tickets que GLPI tiene asignados a un técnico, con lo que le falta a cada uno para poder
         planificarse. El técnico se elige de la lista del equipo y el ticket de la suya: no hay ningún
         identificador que teclear. El estado y los motivos los decide el backend —el mismo que decide
-        qué entra al plan—: esta pantalla no reclasifica nada. Lo que sí se escribe aquí es la
-        estimación y la fecha compromiso, que son las dos cosas que GLPI no guarda. Registrar las dos
-        es registrar el acuerdo operativo: el desarrollo pone el esfuerzo y el usuario acuerda la
-        fecha; esta pantalla es donde ese acuerdo queda escrito.
+        qué entra al plan—: esta pantalla no reclasifica nada. Lo que se escribe aquí son las horas
+        estimadas: el desarrollo pone el esfuerzo. La fecha de compromiso no se declara, la publica
+        GLPI con su Internal TTR y el formulario la enseña de solo lectura, para que no haya dos
+        fechas del mismo ticket.
       </p>
 
       {/* La vuelta se ofrece siempre, venga o no de otra pantalla: el flujo empieza en la lista de
@@ -381,9 +381,11 @@ export function Declarations() {
               </dl>
 
               <p className="text-xs text-muted-foreground">
-                «Pendientes» es todo lo que no está declarado; «sin estimación» y «sin compromiso» son
-                dos de sus causas y no lo agotan —lo que resta es trabajo sin ninguna declaración, o un
-                tipo que el contrato no sabe leer y que no se arregla declarando—.
+                «Pendientes» es todo lo que no está planificable; «sin estimación» y «sin compromiso»
+                son dos de sus causas y no lo agotan —lo que resta es trabajo sin ninguna declaración,
+                o un tipo que el contrato no sabe leer y que no se arregla declarando—. «Sin
+                compromiso» tampoco se arregla aquí: es un ticket al que GLPI no le publica fecha, y
+                la fecha no se declara desde la Fase 77.
               </p>
 
               {/* La persona entera, cuando se llega desde el Timeline: una sola vista para sus

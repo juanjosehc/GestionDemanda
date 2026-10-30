@@ -101,6 +101,13 @@ export interface DeclarationItem {
    */
   operationalDate: string | null
   /**
+   * La hora que GLPI publica junto a esa fecha, como `HH:mm:ss`; nula si no hay fecha.
+   *
+   * Es el instante del compromiso y no una reserva: el plan sigue ubicando el ticket por su dia.
+   * Desde la Fase 72 la rejilla la usa para poner el trabajo sin estimacion en su hora.
+   */
+  operationalTime: string | null
+  /**
    * De cual de los dos campos salio. Viaja al lado de la fecha porque `2026-11-19` es la promesa de
    * la OLA o la del SLA, y sin el origen no se puede contrastar.
    */
@@ -134,10 +141,18 @@ export interface DeveloperDeclarationsResponse {
   source: { glpi: string; declaration: string }
 }
 
-/** Cuerpo de `POST /api/planning-metadata`. Al menos uno de los dos valores es obligatorio. */
+/**
+ * Cuerpo de `POST /api/planning-metadata`. Al menos uno de los dos valores es obligatorio.
+ *
+ * **Desde la Fase 77 la pantalla solo manda horas.** `committedDate` sigue en el contrato —los
+ * clientes anteriores y las pruebas del backend lo usan— pero ningun formulario lo pide: el
+ * compromiso es el Internal TTR que publica GLPI, y capturarlo a mano era la segunda fecha del
+ * sistema. El campo viaja nulo en las altas.
+ */
 export interface DeclarationCreateRequest {
   workItemId: string
   estimatedHours: number | null
+  /** Heredado del contrato. La pantalla lo manda nulo: no se declara. */
   committedDate: string | null
   /** Firma la operacion entera: es quien declara esto ahora. */
   changedBy: string
@@ -149,9 +164,14 @@ export interface DeclarationCreateRequest {
  * **Reemplaza, no parchea**: lo que no venga queda en nulo. Por eso este tipo no tiene campos
  * opcionales —los dos valores viajan siempre, con nulo para decir «retiralo»— y por eso el
  * formulario no puede enviar medio cuerpo.
+ *
+ * **La fecha que viaja es la que ya estaba guardada**, no una que alguien escriba: desde la Fase 77
+ * no se declara. Reenviarla conserva el valor historico; mandar nulo lo borraria y con el su rastro
+ * en el historial de cambios.
  */
 export interface DeclarationUpdateRequest {
   estimatedHours: number | null
+  /** La fecha guardada, devuelta tal cual. Nunca la escribe una persona desde esta pantalla. */
   committedDate: string | null
   changedBy: string
 }

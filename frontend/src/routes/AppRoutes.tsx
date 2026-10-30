@@ -5,6 +5,7 @@ import { Alerts } from '@/pages/Alerts'
 import { Calendar } from '@/pages/Calendar'
 import { Dashboard } from '@/pages/Dashboard'
 import { Declarations } from '@/pages/Declarations'
+import { TeamCapacity } from '@/pages/gantt/TeamCapacity'
 import { Incidents } from '@/pages/Incidents'
 import { MetricDetail } from '@/pages/MetricDetail'
 import { NotFound } from '@/pages/NotFound'
@@ -23,6 +24,7 @@ export function AppRoutes() {
     <Routes>
       <Route element={<MainLayout />}>
         <Route index element={<TeamTimeline />} />
+        <Route path={ROUTES.capacity} element={<TeamCapacity />} />
         <Route path={ROUTES.dashboard} element={<Dashboard />} />
         <Route path={ROUTES.alerts} element={<Alerts />} />
         <Route path={ROUTES.resources} element={<Resources />} />

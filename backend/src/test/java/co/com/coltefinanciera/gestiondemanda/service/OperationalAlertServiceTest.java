@@ -43,7 +43,7 @@ class OperationalAlertServiceTest {
     @Test
     @DisplayName("Sin nada que alertar la lista sale vacia, y sigue fechada")
     void sinNadaQueAlertarLaListaSaleVacia() {
-        PlanningOperationalMetricsResponse foto = foto(0, 0, 0, 0, 0);
+        PlanningOperationalMetricsResponse foto = foto(0, 0);
 
         assertThat(OperationalAlertService.project(foto).alerts()).isEmpty();
         // La fecha no es un adorno: sin ella, «no hay nada que mirar» y «no se ha mirado» se
@@ -52,12 +52,11 @@ class OperationalAlertServiceTest {
     }
 
     @Test
-    @DisplayName("Una sola fila sin estimar es aviso, y arrastra consigo el incompleto")
+    @DisplayName("Una sola fila sin estimar es un aviso")
     void unaSolaFilaSinEstimarEsAviso() {
-        // Una fila con compromiso y sin estimacion: la carencia, y el incompleto que la contiene. No
-        // se puede disparar una sin la otra, y eso no es un defecto del catalogo: `incomplete` es la
-        // union de las dos carencias, asi que toda carencia esta dentro.
-        PlanningOperationalMetricsResponse foto = foto(1, 0, 1, 0, 0);
+        // Una fila sin horas: la unica carencia que la declaracion puede tener desde la Fase 77,
+        // porque la fecha de compromiso la publica GLPI y ya no se declara.
+        PlanningOperationalMetricsResponse foto = foto(1, 0);
 
         OperationalAlert estimacion = alerta(foto, OperationalAlertType.SIN_ESTIMACION);
 
@@ -66,43 +65,12 @@ class OperationalAlertServiceTest {
         assertThat(estimacion.detailUrl())
                 .isEqualTo("/api/planning/metrics/declared/SIN_ESTIMACION");
 
-        // Y el incompleto es INFO aunque acompañe a un aviso: su oficio es decir cuanto falta, no
-        // reclamar; reclamar ya lo hace la carencia que lo contiene.
-        OperationalAlert incompleta = alerta(foto, OperationalAlertType.METADATA_INCOMPLETA);
-
-        assertThat(incompleta.severity()).isEqualTo(AlertSeverity.INFO);
-        assertThat(incompleta.count()).isEqualTo(1);
-    }
-
-    @Test
-    @DisplayName("Una sola fila sin comprometer es aviso, con su propio desglose")
-    void unaSolaFilaSinComprometerEsAviso() {
-        PlanningOperationalMetricsResponse foto = foto(0, 1, 1, 0, 0);
-
-        OperationalAlert compromiso = alerta(foto, OperationalAlertType.SIN_COMPROMISO);
-
-        assertThat(compromiso.severity()).isEqualTo(AlertSeverity.WARNING);
-        assertThat(compromiso.count()).isEqualTo(1);
-        assertThat(compromiso.detailUrl())
-                .isEqualTo("/api/planning/metrics/declared/SIN_COMPROMISO");
-        assertThat(alerta(foto, OperationalAlertType.METADATA_INCOMPLETA).count()).isEqualTo(1);
-    }
-
-    @Test
-    @DisplayName("Los retirados no alertan por si solos: no hay a quien reclamarle")
-    void losRetiradosNoAlertanPorSiSolos() {
-        // Dos filas declaradas y despues retiradas: la tabla no esta vacia, pero no hay carencia que
-        // reclamar ni trabajo que planificar. El unico contador que se mueve es el de retiradas, y no
-        // tiene alerta.
-        PlanningOperationalMetricsResponse foto = foto(0, 0, 0, 2, 0);
-
-        assertThat(OperationalAlertService.project(foto).alerts()).isEmpty();
     }
 
     @Test
     @DisplayName("Los requerimientos desplazados son un aviso, con el numero de la fotografia")
     void losDesplazadosSonUnAviso() {
-        PlanningOperationalMetricsResponse foto = foto(0, 0, 0, 0, 3);
+        PlanningOperationalMetricsResponse foto = foto(0, 3);
 
         OperationalAlert desplazados = alerta(foto, OperationalAlertType.REQUERIMIENTOS_DESPLAZADOS);
 
@@ -114,7 +82,7 @@ class OperationalAlertServiceTest {
     @Test
     @DisplayName("Un plan vigente exactamente lleno es un aviso, y no tiene listado propio")
     void unPlanVigenteExactamenteLlenoEsUnAviso() {
-        PlanningOperationalMetricsResponse foto = foto(0, 0, 0, 0, 0, "0");
+        PlanningOperationalMetricsResponse foto = foto(0, 0, "0");
 
         OperationalAlert agotada = alerta(foto, OperationalAlertType.CAPACIDAD_AGOTADA);
 
@@ -130,7 +98,7 @@ class OperationalAlertServiceTest {
         // Sintetica, y hay que decirlo: el motor nunca sobrepasa la jornada, asi que este estado no se
         // alcanza pidiendo un plan. Es exactamente el estado que la alerta existe para ver, y por eso
         // se prueba aqui: se verifica la proyeccion, no la alcanzabilidad.
-        PlanningOperationalMetricsResponse foto = foto(0, 0, 0, 0, 0, "-2");
+        PlanningOperationalMetricsResponse foto = foto(0, 0, "-2");
 
         OperationalAlert negativa = alerta(foto, OperationalAlertType.CAPACIDAD_NEGATIVA);
 
@@ -146,7 +114,7 @@ class OperationalAlertServiceTest {
     void agotadoYNegativoSonExcluyentes() {
         // Tres desarrolladores: uno justo, uno pasado y uno con holgura. Los dos contadores suman dos,
         // que es lo que impide contarlos dos veces.
-        PlanningOperationalMetricsResponse foto = foto(0, 0, 0, 0, 0, "0", "-2", "4");
+        PlanningOperationalMetricsResponse foto = foto(0, 0, "0", "-2", "4");
 
         assertThat(alerta(foto, OperationalAlertType.CAPACIDAD_AGOTADA).count()).isEqualTo(1);
         assertThat(alerta(foto, OperationalAlertType.CAPACIDAD_NEGATIVA).count()).isEqualTo(1);
@@ -155,45 +123,41 @@ class OperationalAlertServiceTest {
     @Test
     @DisplayName("Un contador en cero no produce alerta")
     void unContadorEnCeroNoProduceAlerta() {
-        // La regla «solo se lista lo que se cumple», en las seis: con la fotografia en cero no hay
+        // La regla «solo se lista lo que se cumple», en todas: con la fotografia en cero no hay
         // ninguna, y con una sola declarada solo salen las que esa declaracion produce.
-        PlanningOperationalMetricsResponse sola = foto(0, 0, 0, 0, 0, "8", "8");
+        PlanningOperationalMetricsResponse sola = foto(0, 0, "8", "8");
 
         assertThat(OperationalAlertService.project(sola).alerts()).isEmpty();
 
-        PlanningOperationalMetricsResponse una = foto(1, 0, 1, 0, 0, "8", "8");
+        PlanningOperationalMetricsResponse una = foto(1, 0, "8", "8");
 
-        assertThat(tipos(una)).containsExactly(
-                OperationalAlertType.SIN_ESTIMACION,
-                OperationalAlertType.METADATA_INCOMPLETA);
+        assertThat(tipos(una)).containsExactly(OperationalAlertType.SIN_ESTIMACION);
     }
 
     @Test
     @DisplayName("La salida va de mas grave a menos, y dentro de cada nivel por el orden del catalogo")
     void laSalidaVaDeMasGraveAMenos() {
-        // Las seis condiciones a la vez.
-        PlanningOperationalMetricsResponse foto = foto(1, 1, 2, 0, 3, "0", "-2", "5");
+        // Las cuatro condiciones a la vez.
+        PlanningOperationalMetricsResponse foto = foto(1, 3, "0", "-2", "5");
 
         assertThat(tipos(foto)).containsExactly(
                 OperationalAlertType.CAPACIDAD_NEGATIVA,
                 OperationalAlertType.REQUERIMIENTOS_DESPLAZADOS,
                 OperationalAlertType.CAPACIDAD_AGOTADA,
-                OperationalAlertType.SIN_ESTIMACION,
-                OperationalAlertType.SIN_COMPROMISO,
-                OperationalAlertType.METADATA_INCOMPLETA);
+                OperationalAlertType.SIN_ESTIMACION);
     }
 
     @Test
     @DisplayName("Cada alerta dice de donde sale, que se conto y sobre que universo")
     void cadaAlertaDiceDeDondeSale() {
-        PlanningOperationalMetricsResponse foto = foto(1, 1, 2, 0, 3, "0", "-2");
+        PlanningOperationalMetricsResponse foto = foto(1, 3, "0", "-2");
 
         for (OperationalAlert alert : OperationalAlertService.project(foto).alerts()) {
             assertThat(alert.condition()).isNotBlank();
             assertThat(alert.source()).isNotBlank();
             assertThat(alert.scope()).isNotBlank();
-            // Las tres declaradas salen de la tabla declarada. Las tres de plan, del plan vigente. La
-            // procedencia se afirma contra las constantes del contrato, no contra literales nuevos.
+            // La declarada sale de la tabla declarada. Las de plan, del plan vigente. La procedencia
+            // se afirma contra las constantes del contrato, no contra literales nuevos.
             assertThat(alert.source()).isIn(
                     PlanningOperationalMetricsResponse.Declared.SOURCE,
                     PlanningOperationalMetricsResponse.Current.SOURCE);
@@ -206,7 +170,7 @@ class OperationalAlertServiceTest {
     @Test
     @DisplayName("La fecha de cada alerta es la de la fotografia: no hay una segunda lectura del reloj")
     void laFechaDeCadaAlertaEsLaDeLaFotografia() {
-        PlanningOperationalMetricsResponse foto = foto(1, 1, 2, 0, 3, "0", "-2");
+        PlanningOperationalMetricsResponse foto = foto(1, 3, "0", "-2");
 
         assertThat(OperationalAlertService.project(foto).alerts())
                 .isNotEmpty()
@@ -219,7 +183,7 @@ class OperationalAlertServiceTest {
         // Las seis a la vez, cada una comparada con lo que declara su tipo. Si alguien cambiara una
         // severidad en el enum, la prueba lo sigue; si alguien la escribiera a mano en el servicio,
         // discreparian.
-        PlanningOperationalMetricsResponse foto = foto(1, 1, 2, 0, 3, "0", "-2", "5");
+        PlanningOperationalMetricsResponse foto = foto(1, 3, "0", "-2", "5");
 
         assertThat(OperationalAlertService.project(foto).alerts())
                 .isNotEmpty()
@@ -244,14 +208,13 @@ class OperationalAlertServiceTest {
     /**
      * Una fotografia armada a mano.
      *
-     * <p>Los tres contadores declarados, las retiradas, los desplazamientos y el restante de capacidad
-     * de cada desarrollador vigente, uno por cada valor de {@code restantes}. El disponible se fija en
-     * ocho horas y el ocupado se deriva del restante, para que la capacidad de cada desarrollador siga
-     * cuadrando aunque el estado sea imposible.
+     * <p>La fila sin estimar, los desplazamientos y el restante de capacidad de cada desarrollador
+     * vigente, uno por cada valor de {@code restantes}. El disponible se fija en ocho horas y el
+     * ocupado se deriva del restante, para que la capacidad de cada desarrollador siga cuadrando
+     * aunque el estado sea imposible.
      */
     private static PlanningOperationalMetricsResponse foto(
-            long sinEstimacion, long sinCompromiso, long incompleta, long retiradas,
-            long desplazados, String... restantes) {
+            long sinEstimacion, long desplazados, String... restantes) {
 
         List<PlanningOperationalMetricsResponse.DeveloperCurrent> desarrolladores = new ArrayList<>();
 
@@ -278,11 +241,7 @@ class OperationalAlertServiceTest {
                         0,
                         0,
                         new PlanningOperationalMetricsResponse.DeclaredGap(
-                                GlpiDiscardReason.SIN_ESTIMACION_DECLARADA, sinEstimacion),
-                        new PlanningOperationalMetricsResponse.DeclaredGap(
-                                GlpiDiscardReason.SIN_COMPROMISO_DECLARADO, sinCompromiso),
-                        incompleta,
-                        retiradas),
+                                GlpiDiscardReason.SIN_ESTIMACION_DECLARADA, sinEstimacion)),
                 new PlanningOperationalMetricsResponse.Plans(
                         PlanningOperationalMetricsResponse.Plans.SOURCE,
                         PlanningOperationalMetricsResponse.Plans.SCOPE,

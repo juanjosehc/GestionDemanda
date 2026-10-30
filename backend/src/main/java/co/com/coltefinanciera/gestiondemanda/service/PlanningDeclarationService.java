@@ -173,6 +173,7 @@ public class PlanningDeclarationService {
                         .toList(),
                 declarationOf(verdict.declaration(), today),
                 operational.map(GlpiTicketMapper.OperationalDate::date).orElse(null),
+                operational.map(GlpiTicketMapper.OperationalDate::time).orElse(null),
                 operational.map(GlpiTicketMapper.OperationalDate::source).orElse(null));
     }
 

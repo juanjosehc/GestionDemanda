@@ -1,12 +1,12 @@
 package co.com.coltefinanciera.gestiondemanda.domain.enums;
 
 /**
- * Las tres carencias declaradas que se pueden listar una a una.
+ * La carencia declarada que se puede listar: la unica que queda.
  *
- * <p>Es el vocabulario de la navegacion del tablero, no el de un descarte: los codigos con los que la
- * capa anticorrupcion nombra estas mismas carencias siguen siendo {@link
- * co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiDiscardReason}, y siguen siendo los
- * unicos —aqui no se escribe ninguno—. Lo que hay aqui es la pregunta, no la causa.
+ * <p>Es el vocabulario de la navegacion del tablero, no el de un descarte: el codigo con el que la
+ * capa anticorrupcion nombra esta misma carencia sigue siendo {@link
+ * co.com.coltefinanciera.gestiondemanda.integration.glpi.GlpiDiscardReason}, y sigue siendo el unico
+ * —aqui no se escribe ninguno—. Lo que hay aqui es la pregunta, no la causa.
  *
  * <p><strong>El nombre de la constante se escribe en la ruta tal cual.</strong> Spring convierte el
  * segmento con {@code Enum.valueOf} y sin tolerancia: {@code SIN_ESTIMACION} llega y {@code
@@ -19,20 +19,12 @@ package co.com.coltefinanciera.gestiondemanda.domain.enums;
  */
 public enum DeclaredGap {
 
-    /** Filas declaradas sin horas estimadas. Incluye las retiradas. */
-    SIN_ESTIMACION,
-
-    /** Filas declaradas sin fecha compromiso. Incluye las retiradas. */
-    SIN_COMPROMISO,
-
     /**
-     * Filas declaradas a las que les falta al menos uno de los dos valores.
+     * Filas declaradas sin horas estimadas. Incluye las retiradas, que no dejaron ningun valor.
      *
-     * <p>Es la union de las dos carencias y no su interseccion, porque es lo que significa
-     * {@code incomplete} en la fotografia —{@code withoutEstimation + withoutCommitment - retracted}—
-     * y una fila sin ninguno de los dos valores falta por los dos. El listado que sirve esta carencia
-     * es, por tanto, el predicado «nulo en cualquiera de las dos columnas», que es el mismo que ya la
-     * cuenta.
+     * <p>Desde la Fase 77 es la unica carencia que la declaracion puede tener: la fecha de
+     * compromiso la publica GLPI y ya no se captura, asi que no hay una segunda mitad que pueda
+     * faltar. {@code SIN_COMPROMISO} y {@code METADATA_INCOMPLETA} se retiraron con la captura.
      */
-    METADATA_INCOMPLETA
+    SIN_ESTIMACION
 }

@@ -4,6 +4,7 @@ import {
   CalendarRange,
   ChartGantt,
   ClipboardList,
+  Gauge,
   Handshake,
   LayoutDashboard,
   ListChecks,
@@ -38,6 +39,14 @@ export const ROUTES = {
   dashboard: '/tablero',
   alerts: '/alertas',
   resources: '/recursos',
+  /**
+   * La capacidad del equipo: el Gantt de ocupacion para quien coordina.
+   *
+   * **No es el Timeline y no lo sustituye.** Aquel contesta «cuando se entrega y que paso con este
+   * ticket»; este contesta «que tan ocupado esta el equipo» con las mismas lecturas, recortadas al
+   * periodo que se este mirando. Es de solo lectura y no tiene acciones.
+   */
+  capacity: '/capacidad',
   calendar: '/calendario',
   /** Plantilla de la agenda de un plan. No se enlaza tal cual: se construye con calendarPath(). */
   calendarPlan: '/calendario/:planId',
@@ -321,6 +330,16 @@ export const NAV_ITEMS: readonly NavItem[] = [
     description: 'Quien tiene trabajo, en que esta, cuanto le queda libre y que sigue pendiente',
   },
   {
+    /**
+     * La segunda lectura de la misma agenda, para otro publico: líderes técnicos, coordinación,
+     * gerencia y PMO. No enseña entregas ni renegociaciones —eso es el Timeline—, solo ocupación.
+     */
+    label: 'Capacidad del equipo',
+    to: ROUTES.capacity,
+    icon: Gauge,
+    description: 'Que tan ocupado esta el equipo: horas, ocupacion y capacidad libre por periodo',
+  },
+  {
     label: 'Dashboard',
     to: ROUTES.dashboard,
     icon: LayoutDashboard,
@@ -388,7 +407,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 ]
 
 /**
- * El menu visible: las cinco entradas que la operacion diaria necesita.
+ * El menu visible: las seis entradas que la operacion diaria necesita.
  *
  * **Las demas pantallas no desaparecieron; dejaron de tener puerta propia.** El Timeline es el
  * puesto de mando y enlaza a cada una en el momento en que hace falta —declarar desde una persona,
@@ -405,6 +424,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
  */
 const MENU_ROUTES: readonly string[] = [
   ROUTES.teamTimeline,
+  ROUTES.capacity,
   ROUTES.incidents,
   ROUTES.declarations,
   ROUTES.renegotiations,

@@ -2,6 +2,7 @@ import { fireEvent, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TimelineGrid } from '@/components/timeline/TimelineGrid'
+import { UNSCHEDULED_HEIGHT } from '@/lib/timeline'
 import { renderWithClient } from '@/test/render'
 import type { TimelineCapacity, TimelineItem, TimelineResource } from '@/types/timeline'
 
@@ -380,6 +381,7 @@ describe('TimelineGrid: duración y estado visual', () => {
             workItemType: 'REQUERIMIENTO',
             developerId: 'ana',
             date: '2026-10-21',
+            time: '13:53',
             cause: 'Sin estimación',
           },
         ]}
@@ -401,10 +403,148 @@ describe('TimelineGrid: duración y estado visual', () => {
     // No es un tramo: no entra en la escala ni en los filtros de la agenda.
     expect(blocks(container)).toHaveLength(0)
 
-    // La franja se reserva en todas las celdas de la semana, no solo en la que tiene el ticket:
-    // si solo la reservara esa, su escala de horas empezaría más abajo y las filas no alinearían.
-    const bands = container.querySelectorAll('[data-slot="timeline-unscheduled-band"]')
-    expect(bands).toHaveLength(days(container).length)
+    // **No hay franja aparte.** La Fase 72 borró la banda horizontal: el marcador vive dentro del
+    // cuerpo del día, colocado por la hora del Internal TTR.
+    expect(container.querySelector('[data-slot="timeline-unscheduled-band"]')).toBeNull()
+    expect(ghost?.dataset.time).toBe('13:53')
+    expect(ghost?.parentElement?.className).toContain('relative')
+  })
+
+  it('el marcador es un botón solo cuando hay a quién avisar, y dice si está elegido', () => {
+    /*
+      El marcador nació como una etiqueta: decía «este ticket existe y no tiene horas» y no se podía
+      pulsar. Desde la Fase 76 es la puerta al panel del ticket, pero **solo si alguien la escucha**:
+      sin la prop sigue siendo un `div`, para que una rejilla sin acción no anuncie un botón muerto.
+    */
+    const ghost = {
+      workItemId: '68428',
+      workItemType: 'REQUERIMIENTO' as const,
+      developerId: 'ana',
+      date: '2026-10-21',
+      time: '13:53',
+      cause: 'Sin estimación',
+    }
+
+    const mudo = renderWithClient(
+      <TimelineGrid
+        resources={[person('ana', capacityOf('2026-10-05', '2026-11-01', 8))]}
+        items={[]}
+        names={{ ana: 'Ana' }}
+        unscheduled={[ghost]}
+      />,
+    ).container.querySelector<HTMLElement>('[data-slot="timeline-unscheduled"]')!
+
+    expect(mudo.tagName).toBe('DIV')
+    expect(mudo.getAttribute('aria-pressed')).toBeNull()
+
+    const onTicketSelect = vi.fn()
+    const { container } = renderWithClient(
+      <TimelineGrid
+        resources={[person('ana', capacityOf('2026-10-05', '2026-11-01', 8))]}
+        items={[]}
+        names={{ ana: 'Ana' }}
+        unscheduled={[ghost]}
+        onTicketSelect={onTicketSelect}
+        selectedTicket="68428"
+      />,
+    )
+
+    const marcador = container.querySelector<HTMLElement>('[data-slot="timeline-unscheduled"]')!
+
+    expect(marcador.tagName).toBe('BUTTON')
+    expect(marcador.getAttribute('type')).toBe('button')
+    // `aria-pressed` es lo que dice «este es el ticket que el panel está enseñando».
+    expect(marcador.getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.click(marcador)
+    expect(onTicketSelect).toHaveBeenCalledTimes(1)
+    expect(onTicketSelect.mock.calls[0]?.[0]).toMatchObject({ workItemId: '68428' })
+  })
+
+  it('el ticket sin estimación cae en su hora y no al principio del día', () => {
+    const ghosts = [
+      { workItemId: 'A', date: '2026-10-21', time: '13:00' },
+      { workItemId: 'B', date: '2026-10-22', time: '13:53' },
+      { workItemId: 'C', date: '2026-10-23', time: '14:00' },
+    ]
+
+    const { container } = renderWithClient(
+      <TimelineGrid
+        resources={[person('ana', capacityOf('2026-10-05', '2026-11-01', 8))]}
+        items={[]}
+        names={{ ana: 'Ana' }}
+        unscheduled={ghosts.map((ghost) => ({
+          ...ghost,
+          workItemType: 'REQUERIMIENTO' as const,
+          developerId: 'ana',
+          cause: 'Sin estimación',
+        }))}
+      />,
+    )
+
+    const tops = ['A', 'B', 'C'].map((id) => {
+      const mark = container.querySelector<HTMLElement>(
+        `[data-slot="timeline-unscheduled"][data-work-item="${id}"]`,
+      )
+      return parseFloat(mark!.style.top)
+    })
+
+    // 13:53 está a 53 de los 60 minutos que separan las 13:00 de las 14:00: la posición es
+    // proporcional a la hora y no un reparto de la columna.
+    expect((tops[1]! - tops[0]!) / (tops[2]! - tops[0]!)).toBeCloseTo(53 / 60, 2)
+  })
+
+  it('varios tickets a la misma hora se apilan y siguen diciendo su hora', () => {
+    const { container } = renderWithClient(
+      <TimelineGrid
+        resources={[person('ana', capacityOf('2026-10-05', '2026-11-01', 8))]}
+        items={[]}
+        names={{ ana: 'Ana' }}
+        unscheduled={['A', 'B', 'C'].map((workItemId) => ({
+          workItemId,
+          workItemType: 'REQUERIMIENTO' as const,
+          developerId: 'ana',
+          date: '2026-10-21',
+          // 17:30 es el cierre de la jornada y la hora que GLPI más repite: la peor de las colisiones.
+          time: '17:30',
+          cause: 'Sin estimación',
+        }))}
+      />,
+    )
+
+    const marks = [...container.querySelectorAll<HTMLElement>('[data-slot="timeline-unscheduled"]')]
+    const tops = marks.map((mark) => parseFloat(mark.style.top))
+
+    expect(marks.map((mark) => mark.dataset.time)).toEqual(['17:30', '17:30', '17:30'])
+    expect(tops[1]! - tops[0]!).toBeCloseTo(UNSCHEDULED_HEIGHT, 0)
+    expect(tops[2]! - tops[1]!).toBeCloseTo(UNSCHEDULED_HEIGHT, 0)
+  })
+
+  it('un ticket fuera del eje se pega al borde y escribe su hora', () => {
+    const { container } = renderWithClient(
+      <TimelineGrid
+        resources={[person('ana', capacityOf('2026-10-05', '2026-11-01', 8))]}
+        items={[]}
+        names={{ ana: 'Ana' }}
+        unscheduled={[
+          {
+            workItemId: 'NOCHE',
+            workItemType: 'REQUERIMIENTO',
+            developerId: 'ana',
+            date: '2026-10-21',
+            time: '23:30',
+            cause: 'Sin estimación',
+          },
+        ]}
+      />,
+    )
+
+    const mark = container.querySelector<HTMLElement>('[data-slot="timeline-unscheduled"]')!
+
+    // El eje lo fija el plan (07:00-17:30), no los compromisos: 23:30 no cabe, así que el marcador
+    // se pega al borde inferior y la hora se escribe para no fingir que esa posición es la suya.
+    expect(mark.dataset.outside).toBe('true')
+    expect(mark.textContent).toContain('23:30')
   })
 
   it('la leyenda solo lista los estados que están en la semana', () => {
@@ -444,6 +584,7 @@ describe('TimelineGrid: duración y estado visual', () => {
             workItemType: 'REQUERIMIENTO',
             developerId: 'ana',
             date: '2026-10-21',
+            time: '13:53',
             cause: 'Sin estimación',
           },
         ]}
@@ -467,6 +608,7 @@ describe('TimelineGrid: duración y estado visual', () => {
             workItemType: 'REQUERIMIENTO',
             developerId: 'ana',
             date: '2026-10-21',
+            time: '13:53',
             cause: 'Sin estimación',
           },
         ]}
@@ -499,6 +641,7 @@ describe('TimelineGrid: duración y estado visual', () => {
             workItemType: 'REQUERIMIENTO',
             developerId: 'ana',
             date: '2026-10-21',
+            time: '13:53',
             cause: 'Sin estimación',
           },
         ]}
@@ -530,5 +673,46 @@ describe('TimelineGrid: duración y estado visual', () => {
     // El relleno del tramo no se toca: el estado del plan es otro eje y se sigue leyendo.
     const block = container.querySelector<HTMLElement>('[data-slot="timeline-block"]')
     expect(block?.dataset.state).toBe('PLANIFICADO')
+  })
+
+  it('la fila solo dice lo que ningún contador dice ya, y ninguna dice «Sin plan»', () => {
+    // Cuatro personas en una rejilla: con tramos, con un compromiso que GLPI fecha y nadie estimó,
+    // con pendientes que no están en el plan, y sin nada. Las dos del medio tienen trabajo y sus
+    // chips ya lo cuentan, así que bajo el nombre no dicen nada: repetirlo era el problema.
+    const { container } = renderWithClient(
+      <TimelineGrid
+        resources={[
+          person('ana', capacityOf('2026-10-19', '2026-10-25', 8)),
+          person('beto', capacityOf('2026-10-19', '2026-10-25', 8)),
+          person('caro', capacityOf('2026-10-19', '2026-10-25', 8)),
+          person('dani', capacityOf('2026-10-19', '2026-10-25', 8)),
+        ]}
+        items={[item('2026-10-21', '09:00', '11:00', 2), item('2026-10-22', '09:00', '10:00', 1)]}
+        names={{ ana: 'Ana', beto: 'Beto', caro: 'Caro', dani: 'Dani' }}
+        pending={{ caro: 1 }}
+        unscheduled={[
+          {
+            workItemId: '66120',
+            workItemType: 'REQUERIMIENTO',
+            developerId: 'beto',
+            date: '2026-10-21',
+            time: '17:00',
+            cause: 'Sin estimación',
+          },
+        ]}
+      />,
+    )
+
+    const estados = [...container.querySelectorAll<HTMLElement>('[data-slot="timeline-resource-state"]')]
+    expect(estados.map((estado) => estado.dataset.state)).toEqual(['TRAMOS', 'SIN_TRABAJO'])
+    expect(estados.map((estado) => estado.textContent)).toEqual(['2 tramos', 'Sin trabajo activo'])
+
+    // Beto y Caro tienen trabajo: sus chips y su marcador lo dicen, y la fila se calla.
+    const enSilencio = [...container.querySelectorAll<HTMLElement>('[data-slot="timeline-resource"]')]
+      .filter((row) => row.querySelector('[data-slot="timeline-resource-state"]') === null)
+    expect(enSilencio).toHaveLength(2)
+    expect(screen.queryByText('Sin estimación')).toBeNull()
+    expect(screen.queryByText('Sin tramos')).toBeNull()
+    expect(container.textContent).not.toContain('Sin plan')
   })
 })

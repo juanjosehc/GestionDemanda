@@ -357,7 +357,6 @@ describe('Declarations', () => {
     expect(calls(ITEM_URL)).toHaveLength(0)
 
     escribir('Horas estimadas', '8')
-    escribir('Fecha compromiso', '2026-11-02')
     escribir('Quién declara', 'carlos')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
@@ -369,7 +368,7 @@ describe('Declarations', () => {
         body: {
           workItemId: '504',
           estimatedHours: 8,
-          committedDate: '2026-11-02',
+          committedDate: null,
           changedBy: 'carlos',
         },
       },
@@ -449,7 +448,7 @@ describe('Declarations', () => {
     serve({
       write: errorResponse(400, {
         error: 'VALIDATION_ERROR',
-        message: 'hay que declarar al menos la estimacion o la fecha compromiso',
+        message: 'la estimacion tiene que ser mayor que cero',
       }),
     })
 
@@ -457,12 +456,13 @@ describe('Declarations', () => {
     await consultar(container)
     await abrir(container, '504')
 
+    escribir('Horas estimadas', '8')
     escribir('Quién declara', 'carlos')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
     // El texto es el del backend, palabra por palabra: la pantalla no lo traduce ni lo resume.
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'hay que declarar al menos la estimacion o la fecha compromiso',
+      'la estimacion tiene que ser mayor que cero',
     )
     // El formulario sigue abierto con lo que se escribio, y no se invalidó nada: no hubo escritura.
     expect(field('Quién declara').value).toBe('carlos')
@@ -502,21 +502,23 @@ describe('Declarations', () => {
 
     // Los campos salen de la lectura, no de lo que traia la lista.
     expect(field('Horas estimadas').value).toBe('6')
-    expect(field('Fecha compromiso').value).toBe('2026-10-20')
+    // La fecha compromiso dejo de pedirse en la Fase 77: no hay campo, y su ausencia es la prueba
+    // de que la pantalla no ofrece una segunda fecha.
+    expect(screen.queryByLabelText('Fecha compromiso')).toBeNull()
     // Quien declara es de esta operacion, no del recurso: nunca viene precargado.
     expect(field('Quién declara').value).toBe('')
 
-    // Se cambia solo la fecha. Como el PUT reemplaza, las horas tienen que viajar igualmente: si el
-    // formulario enviara medio cuerpo, guardar la fecha borraria la estimacion.
-    escribir('Fecha compromiso', '2026-12-01')
+    // Se cambian solo las horas. Como el PUT reemplaza, la fecha historica tiene que viajar
+    // igualmente: si el formulario enviara medio cuerpo, guardar la estimacion la borraria.
+    escribir('Horas estimadas', '9')
     escribir('Quién declara', 'carlos')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
     await esperarGuardado()
 
     expect(writes('PUT')[0]?.body).toEqual({
-      estimatedHours: 6,
-      committedDate: '2026-12-01',
+      estimatedHours: 9,
+      committedDate: '2026-10-20',
       changedBy: 'carlos',
     })
   })
@@ -642,11 +644,31 @@ describe('Declarations · la entrada directa', () => {
     // El formulario del ticket pedido esta abierto sin haber tocado el desplegable ni la tabla.
     await screen.findByRole('button', { name: 'Guardar' })
 
-    expect(screen.getByText('Declarar la planificación')).toBeInTheDocument()
+    expect(screen.getByText('Declarar la estimación')).toBeInTheDocument()
     expect(screen.getByLabelText('Técnico')).toHaveValue(DECLARATION_DEVELOPER_ID)
 
     // Y no se pidio nada de mas: el 504 no tiene fila, asi que no hay recurso que leer.
     expect(order()).toEqual([`GET ${TEAM_URL}`, `GET ${LIST_URL}`])
+  })
+
+  it('sin fecha en GLPI el formulario dice que no la hay en vez de pedirla', async () => {
+    serve({})
+
+    renderWithClient(<Declarations />, {
+      route: `/declaraciones?tecnico=${DECLARATION_DEVELOPER_ID}&ticket=502`,
+    })
+
+    await screen.findByRole('button', { name: 'Guardar' })
+
+    // El 502 es una incidencia sin fecha operativa: GLPI no publica compromiso y no hay campo donde
+    // inventarlo. Es la rama que la captura manual tapaba, y la unica respuesta honesta es decirlo.
+    const bloque = document.querySelector<HTMLElement>('[data-slot="compromiso-glpi"]')
+    expect(bloque).not.toBeNull()
+    expect(bloque).toHaveTextContent('Compromiso GLPI')
+    expect(bloque).toHaveTextContent('GLPI no le publica fecha')
+
+    // Sigue sin haber donde teclearla: el bloque es un dato, no un campo deshabilitado.
+    expect(screen.queryByLabelText('Fecha compromiso')).toBeNull()
   })
 
   it('sin contexto no pide ninguna declaración: solo el padrón que llena el desplegable', async () => {
@@ -895,8 +917,10 @@ describe('Declarations · la declaración en lote', () => {
     const { container } = renderWithClient(<Declarations />, { route: BATCH_ROUTE })
     await screen.findByText('Declaración en lote · Ana Perez')
 
-    // Las dos filas con declaracion llegan precargadas con lo suyo.
-    expect(fieldOf(container, '502', 'Fecha').value).toBe('2026-10-21')
+    // Las filas con declaracion llegan precargadas con lo que declaran. El 502 solo tiene fecha
+    // —una declaracion historica— y esa ya no se escribe aqui, asi que su hora sale vacia y la
+    // fila no se envia por estar en blanco; el 503 conserva sus horas.
+    expect(fieldOf(container, '502', 'Horas').value).toBe('')
     expect(fieldOf(container, '503', 'Horas').value).toBe('4')
 
     // Se cambia solo las horas del 503. El 502 esta precargado pero intacto, y el 504 en blanco.

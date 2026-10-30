@@ -190,6 +190,7 @@ class PlanningDeclarationEndpointsTest {
                 .andExpect(jsonPath("$.items[0].discards[0].code")
                         .value("SIN_FECHA_EN_GLPI"))
                 .andExpect(jsonPath("$.items[0].operationalDate").doesNotExist())
+                .andExpect(jsonPath("$.items[0].operationalTime").doesNotExist())
                 .andExpect(jsonPath("$.items[0].operationalDateSource").doesNotExist());
     }
 
@@ -207,6 +208,8 @@ class PlanningDeclarationEndpointsTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].declarationStatus").value("PLANIFICABLE"))
                 .andExpect(jsonPath("$.items[0].operationalDate").value("2026-11-19"))
+                // La hora es la del Internal TTR, no la del SLA: 17:30 y no 17:00.
+                .andExpect(jsonPath("$.items[0].operationalTime").value("17:30:00"))
                 .andExpect(jsonPath("$.items[0].operationalDateSource")
                         .value("internal_time_to_resolve"));
     }

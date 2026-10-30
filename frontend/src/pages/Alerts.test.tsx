@@ -68,7 +68,7 @@ describe('Alerts', () => {
     const { container } = renderWithClient(<Alerts />)
     await tableRendered()
 
-    expect(alertRows(container)).toHaveLength(6)
+    expect(alertRows(container)).toHaveLength(4)
 
     // Una sola lectura, y la de las alertas: la pantalla no pide las metricas para comprobar nada.
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -107,11 +107,9 @@ describe('Alerts', () => {
 
     // Las tres severidades estan a la vista y ninguna se sustituye por una etiqueta propia.
     expect(container.querySelectorAll('[data-slot="alert-row"][data-severity="CRITICAL"]')).toHaveLength(1)
-    expect(container.querySelectorAll('[data-slot="alert-row"][data-severity="WARNING"]')).toHaveLength(4)
-    expect(container.querySelectorAll('[data-slot="alert-row"][data-severity="INFO"]')).toHaveLength(1)
+    expect(container.querySelectorAll('[data-slot="alert-row"][data-severity="WARNING"]')).toHaveLength(3)
 
     expect(within(rowOf(container, 'SIN_ESTIMACION')).getByText('4')).toBeInTheDocument()
-    expect(within(rowOf(container, 'METADATA_INCOMPLETA')).getByText('6')).toBeInTheDocument()
 
     // El instante de la respuesta va fechado en un elemento de tiempo, no en texto suelto.
     expect(container.querySelector('time')?.getAttribute('dateTime')).toBe(fixture.generatedAt)
@@ -151,14 +149,13 @@ describe('Alerts', () => {
       '',
       'CRITICAL',
       'WARNING',
-      'INFO',
     ])
 
     chooseFilter('Severidad', 'CRITICAL')
     expect(typesOf(container)).toEqual(['CAPACIDAD_NEGATIVA'])
 
-    chooseFilter('Severidad', 'INFO')
-    expect(typesOf(container)).toEqual(['METADATA_INCOMPLETA'])
+    chooseFilter('Severidad', 'WARNING')
+    expect(typesOf(container)).toEqual(['REQUERIMIENTOS_DESPLAZADOS', 'CAPACIDAD_AGOTADA', 'SIN_ESTIMACION'])
 
     chooseFilter('Severidad', '')
     expect(alertRows(container)).toHaveLength(fixture.alerts.length)
@@ -173,8 +170,8 @@ describe('Alerts', () => {
     const { container } = renderWithClient(<Alerts />)
     await tableRendered()
 
-    chooseFilter('Tipo', 'SIN_COMPROMISO')
-    expect(typesOf(container)).toEqual(['SIN_COMPROMISO'])
+    chooseFilter('Tipo', 'SIN_ESTIMACION')
+    expect(typesOf(container)).toEqual(['SIN_ESTIMACION'])
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -200,12 +197,10 @@ describe('Alerts', () => {
     const { container } = renderWithClient(<Alerts />)
     await tableRendered()
 
-    // El backend publica la ruta de su API; la pantalla la traduce a la suya. Los cuatro destinos
-    // salen de la misma tabla de tokens que ya usaba el tablero.
+    // El backend publica la ruta de su API; la pantalla la traduce a la suya. Los destinos salen de
+    // la misma tabla de tokens que ya usaba el tablero.
     const destino = [
       ['SIN_ESTIMACION', '/metricas/sin-estimacion'],
-      ['SIN_COMPROMISO', '/metricas/sin-compromiso'],
-      ['METADATA_INCOMPLETA', '/metricas/metadata-incompleta'],
       ['REQUERIMIENTOS_DESPLAZADOS', '/metricas/desplazados'],
     ] as const
 
@@ -265,7 +260,7 @@ describe('Alerts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
 
     await tableRendered()
-    expect(alertRows(document.body)).toHaveLength(6)
+    expect(alertRows(document.body)).toHaveLength(4)
   })
 
   it('no suma los contadores: las alertas clasifican, no particionan', async () => {
@@ -274,9 +269,9 @@ describe('Alerts', () => {
     const { container } = renderWithClient(<Alerts />)
     await tableRendered()
 
-    // Los 19 elementos sumados no significan nada: la misma fila se cuenta en tres alertas a la vez,
+    // Los 11 elementos sumados no significan nada: la misma fila se cuenta en dos alertas a la vez,
     // y la vista no publica ningun total.
-    expect(screen.queryByText('19')).not.toBeInTheDocument()
-    expect(alertRows(container)).toHaveLength(6)
+    expect(screen.queryByText('11')).not.toBeInTheDocument()
+    expect(alertRows(container)).toHaveLength(4)
   })
 })

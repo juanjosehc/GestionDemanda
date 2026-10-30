@@ -328,17 +328,55 @@ describe('TeamTimeline', () => {
     expect(ana.queryByText('Sin plan')).toBeNull()
   })
 
-  it('enseña a una persona operativa sin plan, marcada como tal, en vez de omitirla', async () => {
-    // `dev-003` está en el padrón y no tiene plan vigente. Antes no existía para la pantalla; ahora es
-    // una fila más y la falta se dice en la fila misma, no se deja en blanco.
+  it('enseña a una persona operativa sin plan ni trabajo, en vez de omitirla', async () => {
+    // `dev-003` está en el padrón y no tiene plan vigente **ni tickets**. Antes no existía para la
+    // pantalla; ahora es una fila más, y lo que dice es lo que hay: nada. Ya no dice «Sin plan»,
+    // porque eso es un hecho sobre el documento y no sobre la persona.
     serve({ declarations: declarationsForBoth() })
 
     renderWithClient(<TeamTimeline />)
     await waitFor(() => expect(fila('Diana Lopez')).toBeDefined())
 
     const diana = within(fila('Diana Lopez'))
-    expect(diana.getByText('Sin plan')).toBeDefined()
+    expect(diana.getByText('Sin trabajo activo')).toBeDefined()
     expect(diana.queryByText(/ tramos/)).toBeNull()
+    expect(diana.queryByText('Sin plan')).toBeNull()
+  })
+
+  it('una persona con compromisos sin horas se cuenta con sus chips, sin etiqueta que lo repita', async () => {
+    // El caso de la fase, con `dev-003` como testigo: sin plan vigente y con un ticket que GLPI fecha
+    // a las 17:00 y no estima. La fila no lleva etiqueta de estado —«Sin estimación» encima de «1
+    // pendiente» diría dos veces lo mismo—, y el trabajo se ve igual: el chip y el marcador.
+    const declaracion: Record<string, unknown> = declarationsForBoth()
+    declaracion[OVER_DEVELOPER_ID] = declarationsFixture({
+      developer: { id: OVER_DEVELOPER_ID, name: 'Diana Lopez' },
+      items: [
+        declarationItemFixture({
+          workItemId: '66120',
+          title: 'Renovar credenciales del core',
+          declarationStatus: 'SIN_ESTIMACION',
+          operationalDate: '2026-10-06',
+          operationalTime: '17:00:00',
+        }),
+      ],
+    })
+
+    serve({ declarations: declaracion })
+
+    renderWithClient(<TeamTimeline />)
+    await waitFor(() => expect(fila('Diana Lopez')).toBeDefined())
+
+    // La fila existe desde el padrón; el chip espera a que llegue el lote de declaraciones.
+    await waitFor(() =>
+      expect(within(fila('Diana Lopez')).getByText('1 pendiente')).toBeDefined(),
+    )
+
+    const diana = fila('Diana Lopez')
+    expect(diana.querySelector('[data-slot="timeline-resource-state"]')).toBeNull()
+    expect(within(diana).queryByText('Sin estimación')).toBeNull()
+    expect(within(diana).queryByText('Sin plan')).toBeNull()
+    // Y el marcador existe de verdad en la rejilla: la fila se calla, el trabajo no.
+    expect(document.querySelectorAll('[data-slot="timeline-unscheduled"]').length).toBeGreaterThan(0)
   })
 
   it('no deja que un identificador de demostración cree una fila', async () => {
@@ -469,7 +507,7 @@ describe('TeamTimeline', () => {
     expect(carlos?.textContent).toContain('1 de 1')
     expect(carlos?.textContent).toContain('100%')
     // Diana no tiene plan ni tickets: se dice con la misma etiqueta que la rejilla, no se esconde.
-    expect(diana?.textContent).toContain('Sin plan')
+    expect(diana?.textContent).toContain('Sin plan vigente')
     expect(diana?.textContent).toContain('—')
   })
 
@@ -1174,10 +1212,10 @@ describe('TeamTimeline', () => {
 
     const panel = await screen.findByRole('region', { name: 'Salud operativa' })
 
-    // Seis alertas, cuatro en el panel: el resto sigue en el centro, y se dice.
-    expect(await within(panel).findByText(/6 condiciones/)).toBeDefined()
+    // Las cuatro condiciones del catalogo caben en el panel, asi que no hay resto que anunciar.
+    expect(await within(panel).findByText(/4 condiciones/)).toBeDefined()
     expect(within(panel).getAllByText(/CRITICAL|WARNING|INFO/).length).toBe(4)
-    expect(within(panel).getByText(/2 más en el centro de alertas/)).toBeDefined()
+    expect(within(panel).queryByText(/más en el centro de alertas/)).toBeNull()
 
     // El desglose sale del `detailUrl` del backend traducido, no de una ruta escrita a mano: las
     // alertas sin listado propio —las de capacidad— no ofrecen enlace.
@@ -1248,7 +1286,7 @@ describe('TeamTimeline', () => {
     expect(() => fila('Diana Lopez')).toThrow()
     expect(columnas()).toBe(7)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sin plan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sin plan vigente' }))
     // Incidentes y «sin plan» son un Y: Diana no tiene incidentes, así que no queda nadie.
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="timeline-resource"]')).toHaveLength(0),
@@ -1267,108 +1305,6 @@ describe('TeamTimeline', () => {
     // Solo Ana tiene un pendiente que una declaración desbloquea.
     await waitFor(() => expect(fila('Ana Perez')).toBeDefined())
     expect(() => fila('Diana Lopez')).toThrow()
-  })
-
-  it('simula un incidente como capa de demostración y la quita sin tocar la agenda', async () => {
-    serve({ declarations: declarationsForBoth() })
-
-    const { unmount } = renderWithClient(<TeamTimeline />)
-    await screen.findByText('Ana Perez')
-
-    // La agenda real, antes de simular: tres tramos en la fila de Ana.
-    expect(within(fila('Ana Perez')).getAllByRole('button')).toHaveLength(3)
-    expect(document.querySelector('[data-slot="timeline-demo-incident"]')).toBeNull()
-
-    // Ana, el 5 (día lleno) y 4 h: no cabe, así que mueve el final del día.
-    fireEvent.click(screen.getByRole('button', { name: 'Simular incidente' }))
-
-    await waitFor(() =>
-      expect(document.querySelector('[data-slot="timeline-demo-incident"]')).not.toBeNull(),
-    )
-
-    // La capa se marca en los tres sitios: el día del incidente, la celda y cada tramo que movería.
-    const aviso = document.querySelector('[data-slot="timeline-demo-incident"]')
-    expect(aviso?.textContent).toContain('DEMO')
-    expect(aviso?.textContent).toContain('4 h')
-    expect(document.querySelectorAll('[data-slot="timeline-cell"][data-demo="true"]')).toHaveLength(1)
-
-    const movidos = within(fila('Ana Perez')).getAllByText(/DEMO →/)
-    expect(movidos).toHaveLength(2)
-    expect(
-      within(fila('Ana Perez'))
-        .getAllByRole('button')
-        .filter((block) => block.getAttribute('data-demo') === 'true'),
-    ).toHaveLength(2)
-
-    // El resumen dice qué se mueve y qué necesitaría renegociarse; solo REQ-1 es un requerimiento.
-    const resultado = document.querySelector('[data-slot="simulation-result"]') as HTMLElement
-    expect(resultado.textContent).toContain('SIMULADO')
-    expect(resultado.textContent).toContain('Desplazaría 2 tramos')
-    expect(within(resultado).getByText('Posible renegociación')).toBeDefined()
-
-    // La capacidad que consume el incidente se ve en el propio día, junto al DEMO.
-    const capacidad = document.querySelector('[data-slot="timeline-demo-capacity"]')
-    expect(capacidad?.textContent).toContain('quedan')
-
-    // La fila simulada queda marcada aunque su día se salga de la vista.
-    expect(document.querySelector('[data-slot="timeline-demo-row"]')).not.toBeNull()
-
-    // Y el desplazamiento produce su renegociación simulada: fecha original, fecha nueva, causa y
-    // el estado pendiente, todo marcado DEMO. Nada de esto está en la lista real de renegociaciones.
-    const renegociaciones = document.querySelector(
-      '[data-slot="simulation-renegotiations"]',
-    ) as HTMLElement
-    const simuladas = renegociaciones.querySelectorAll(
-      '[data-slot="simulation-renegotiation"]',
-    )
-    expect(simuladas).toHaveLength(1)
-    expect(simuladas[0].getAttribute('data-work-item')).toBe('REQ-1')
-    expect(simuladas[0].textContent).toContain('→')
-    expect(simuladas[0].textContent).toContain('causa: incidente DEMO')
-    expect(renegociaciones.textContent).toContain('Pendiente de acuerdo · DEMO')
-
-    // La agenda real sigue igual: los tramos no se han movido, solo se marcan. Se cuentan los
-    // tramos y no todos los botones de la fila: desde la Fase 60 el chip de pendientes también se
-    // pulsa, y sigue ahí sin que la simulación lo toque.
-    const tramos = within(fila('Ana Perez'))
-      .getAllByRole('button')
-      .filter((boton) => boton.dataset.slot === 'timeline-block')
-    expect(tramos).toHaveLength(3)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Quitar simulación' }))
-    await waitFor(() =>
-      expect(document.querySelector('[data-slot="timeline-demo-incident"]')).toBeNull(),
-    )
-    expect(document.querySelector('[data-slot="simulation-result"]')).toBeNull()
-    expect(document.querySelector('[data-slot="simulation-renegotiations"]')).toBeNull()
-    expect(document.querySelector('[data-slot="timeline-demo-row"]')).toBeNull()
-    expect(document.querySelectorAll('[data-demo="true"]')).toHaveLength(0)
-
-    // Recargar es montar de nuevo con una caché nueva: la simulación no está en ninguna parte.
-    unmount()
-    renderWithClient(<TeamTimeline />)
-    await screen.findByText('Ana Perez')
-    expect(document.querySelector('[data-slot="timeline-demo-incident"]')).toBeNull()
-    // La simulación entera —no solo el día— desaparece con la recarga: nada se guardó.
-    expect(document.querySelector('[data-slot="simulation-renegotiations"]')).toBeNull()
-    expect(document.querySelector('[data-slot="timeline-demo-row"]')).toBeNull()
-  })
-
-  it('no simula sobre un día no laborable ni sobre una fecha fuera de la ventana', async () => {
-    serve({ declarations: declarationsForBoth() })
-
-    renderWithClient(<TeamTimeline />)
-    await screen.findByText('Ana Perez')
-
-    // El campo limita la fecha a la ventana, y el navegador no deja enviarla fuera de rango. Se envía
-    // el formulario directamente para comprobar que, aun así, el cálculo se defiende solo.
-    const fecha = screen.getByLabelText('Fecha')
-    fireEvent.change(fecha, { target: { value: '2026-10-20' } })
-    fireEvent.submit(fecha.closest('form') as HTMLFormElement)
-
-    const error = await screen.findByText('Esa fecha está fuera de la ventana del plan.')
-    expect(error).toBeDefined()
-    expect(document.querySelector('[data-slot="timeline-demo-incident"]')).toBeNull()
   })
 
   /**
@@ -1469,6 +1405,150 @@ describe('TeamTimeline', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
+  it('abre el ticket sin estimación desde su marcador y deja declararlo sin salir', async () => {
+    /*
+      El caso crítico: un ticket que el plan no colocó. No tiene tramo, así que su marcador era lo
+      único que se veía —y no se podía pulsar—. Ahora abre el mismo panel que un tramo, con lo que
+      GLPI sabe de él y con el formulario a un clic.
+    */
+    serve({
+      declarations: {
+        [DEVELOPER_ID]: declarationsFixture({
+          developer: { id: DEVELOPER_ID, name: 'Ana Perez' },
+          items: [
+            declarationItemFixture({
+              workItemId: '66222',
+              title: 'Renovar credenciales del core',
+              status: 'ASIGNADO',
+              // No hay nada declarado: es lo que el formulario tiene que dejar escribir.
+              declaration: null,
+              declarationStatus: 'SIN_ESTIMACION',
+              operationalDate: '2026-10-06',
+              operationalTime: '13:53:00',
+              operationalDateSource: 'internal_time_to_resolve',
+            }),
+          ],
+        }),
+      },
+    })
+
+    renderWithClient(<TeamTimeline />)
+
+    const marcador = await waitFor(() => {
+      const mark = document.querySelector<HTMLElement>(
+        '[data-slot="timeline-unscheduled"][data-work-item="66222"]',
+      )
+      expect(mark).not.toBeNull()
+      return mark!
+    })
+
+    // El marcador dejó de ser una etiqueta: es la puerta al panel.
+    expect(marcador.tagName).toBe('BUTTON')
+    marcador.focus()
+    fireEvent.click(marcador)
+
+    const detalle = await screen.findByRole('dialog', { name: /66222/ })
+
+    // La ficha del ticket: lo que hasta ahora solo se veía yendo a Tickets o a Declaración.
+    const ficha = detalle.querySelector('[data-slot="ticket-facts"]')
+    expect(ficha?.textContent).toContain('Renovar credenciales del core')
+    expect(ficha?.textContent).toContain('ASIGNADO')
+    expect(ficha?.textContent).toContain('13:53')
+    expect(ficha?.textContent).toContain('Ana Perez')
+
+    // El rótulo es la causa —el mismo que usa el panel de pendientes—, no una etiqueta nueva.
+    expect(within(detalle).getByText('Sin estimación')).toBeDefined()
+
+    // Y el camino de vuelta a la tabla no se inventa una pantalla: enlaza a la existente, filtrada
+    // por la persona, para no aterrizar en la tabla entera.
+    expect(
+      within(detalle).getByRole('link', { name: 'Abrir en Tickets' }).getAttribute('href'),
+    ).toBe(`/incidentes?persona=${DEVELOPER_ID}`)
+
+    // Sin desplazamiento no hay nada que renegociar, y el panel no ofrece un enlace que no lleva a
+    // ninguna parte. Tampoco hay plan que abrir: el ticket no tiene tramo.
+    expect(within(detalle).queryByRole('link', { name: 'Renegociar' })).toBeNull()
+    expect(within(detalle).queryByRole('link', { name: 'Abrir detalle' })).toBeNull()
+
+    // Declarar sin abandonar el Timeline: el formulario sustituye al detalle dentro del panel.
+    fireEvent.click(within(detalle).getByRole('button', { name: 'Declarar estimación' }))
+    expect(await within(detalle).findByText('Horas estimadas')).toBeDefined()
+  })
+
+  it('un ticket suelto enlaza a renegociar cuando el plan lo desplazó', async () => {
+    /*
+      El panel del ticket suelto hereda la renegociación del mismo elemento que ya publica la
+      pantalla de Renegociación. No la calcula: la enlaza. Es lo que evita salir del Timeline a
+      negociar una fecha y volver a buscarla después.
+    */
+    serve({
+      declarations: {
+        [DEVELOPER_ID]: declarationsFixture({
+          developer: { id: DEVELOPER_ID, name: 'Ana Perez' },
+          items: [
+            declarationItemFixture({
+              workItemId: 'REQ-2',
+              declarationStatus: 'SIN_ESTIMACION',
+              operationalDate: '2026-10-06',
+              operationalTime: '13:53:00',
+            }),
+          ],
+        }),
+      },
+      renegotiations: renegotiationsFor('REQ-2', 'PENDIENTE_DE_ACUERDO'),
+    })
+
+    // La dirección siembra el panel con el identificador del ticket: es el mismo camino por el que
+    // llega quien viene de la pantalla de Renegociación o de Tickets.
+    renderWithClient(<TeamTimeline />, { route: '/?ticket=REQ-2' })
+
+    const detalle = await screen.findByRole('dialog', { name: /REQ-2/ })
+
+    expect(within(detalle).getByRole('link', { name: 'Renegociar' }).getAttribute('href')).toBe(
+      '/renegociaciones?ticket=REQ-2',
+    )
+  })
+
+  it('cierra el panel del ticket y devuelve el foco a su marcador', async () => {
+    serve({
+      declarations: {
+        [DEVELOPER_ID]: declarationsFixture({
+          developer: { id: DEVELOPER_ID, name: 'Ana Perez' },
+          items: [
+            declarationItemFixture({
+              workItemId: '66222',
+              declarationStatus: 'SIN_ESTIMACION',
+              operationalDate: '2026-10-06',
+              operationalTime: '13:53:00',
+            }),
+          ],
+        }),
+      },
+    })
+
+    renderWithClient(<TeamTimeline />)
+
+    const marcador = await waitFor(() => {
+      const mark = document.querySelector<HTMLElement>(
+        '[data-slot="timeline-unscheduled"][data-work-item="66222"]',
+      )
+      expect(mark).not.toBeNull()
+      return mark!
+    })
+
+    // El clic no enfoca en jsdom: se enfoca explícitamente para comprobar la vuelta del foco.
+    marcador.focus()
+    fireEvent.click(marcador)
+    expect(await screen.findByRole('dialog', { name: /66222/ })).toBeDefined()
+    expect(marcador.getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(marcador.getAttribute('aria-pressed')).toBe('false')
+    expect(document.activeElement).toBe(marcador)
+  })
+
   it('enseña la cobertura de la persona dentro del detalle', async () => {
     serve({ declarations: declarationsForBoth() })
 
@@ -1526,9 +1606,9 @@ describe('TeamTimeline', () => {
     fireEvent.change(within(detalle).getByLabelText('Horas estimadas'), {
       target: { value: '8' },
     })
-    fireEvent.change(within(detalle).getByLabelText('Fecha compromiso'), {
-      target: { value: '2026-10-30' },
-    })
+    // La fecha no se teclea: el panel la enseña como dato de GLPI, de solo lectura.
+    expect(within(detalle).queryByLabelText('Fecha compromiso')).toBeNull()
+    expect(within(detalle).getByText('Compromiso GLPI')).toBeDefined()
     fireEvent.change(within(detalle).getByLabelText('Quién declara'), {
       target: { value: 'ana' },
     })
@@ -1543,7 +1623,7 @@ describe('TeamTimeline', () => {
     expect(JSON.parse(String(write?.[1]?.body))).toEqual({
       workItemId: 'INC-1',
       estimatedHours: 8,
-      committedDate: '2026-10-30',
+      committedDate: null,
       changedBy: 'ana',
     })
   })

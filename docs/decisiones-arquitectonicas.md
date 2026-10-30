@@ -9193,3 +9193,854 @@ Frontend: **427 pruebas en 25 archivos** en verde, `tsc -b --noEmit` y oxlint li
 Backend: **416 pruebas, 0 fallos, 3 omitidas** — sin tocar código, como regresión.
 
 Evidencia en `.probe/`: `f71-pw-00-contadores.png`, `f71-pw-01-leyenda.png`, `f71-pw-02-semana43.png`, `f71-pw-03-semana44.png`, `f71-pw-04-sin-estimacion-66222.png`, `f71-pw-05-sin-estimacion-68428.png`, `f71-chip-VENCIDA.png` y las cuatro densidades `f71-zoom-compacta.png`, `-normal.png`, `-amplia.png`, `-detalle.png`.
+
+## Fase 72 — El trabajo sin estimación entra en la rejilla
+
+Los tickets sin horas vivían en una **franja horizontal propia**, encima del eje de las horas. La
+franja se justificaba sola: si un ticket no declara duración, no hay dónde ponerlo en un eje que
+mide tiempo. La premisa era falsa. **El Internal TTR trae fecha y hora**, y esa hora es un instante
+real del día —el del compromiso, no el del trabajo—; con ella el ticket tiene una posición en el
+mismo eje que todo lo demás. Esta fase borra la franja y lo mete dentro.
+
+> Las decisiones de esta fase se numeran **desde 496** y no desde 481, que era el número libre al
+> empezarla: la Fase 73 se escribió en paralelo y tomó 481–495. El orden del documento es el de las
+> fases; el de los números, el de la escritura.
+
+### 496. La franja desaparece porque la hora ya existía
+
+La franja se pintaba entre la capacidad y la escala, fuera del área de los tramos, y el comentario
+que la acompañaba decía por qué: «dibujarlos dentro del eje afirmaría unas horas que nadie declaró».
+Eso es verdad para la **duración** y falso para la **posición**. El ticket no dice cuánto dura, pero
+GLPI sí dice cuándo vence.
+
+Medido en vivo el 27 de octubre de 2026, sobre el conjunto activo: **79 tickets con Internal TTR, 79
+con hora, ninguno a medianoche**; los **68 sin estimación** caen en **61 celdas (persona, día, hora)**
+distintas, con una colisión máxima de tres en la misma hora. Es decir: el dato que faltaba no era la
+posición, era la hora, y el pipeline la estaba tirando.
+
+`data-slot="timeline-unscheduled-band"` no existe en ninguna semana. En la 43, la 44, la 45, la 47 y
+la 49 el contador de franjas es **0**.
+
+### 497. La hora viaja con la fecha, y solo se añadió eso
+
+`GlpiTicketMapper.operationalDate()` devolvía un `LocalDate`: leía el `LocalDateTime` del Internal TTR
+y descartaba la hora al construir el resultado. Ahora devuelve el `LocalDateTime` completo y expone
+`date()` y `time()`; la declaración publica `operationalTime` como `HH:mm:ss`, y el timeline lo
+recorta a `HH:mm` en `unscheduledOf`.
+
+El cambio es **aditivo y de lectura**: una propiedad nueva en un DTO y una función que ya existía
+partida en dos. No se tocó `PlanningEngine`, `CapacityBook`, `WorkingCalendar`, la conciliación, las
+renegociaciones, los snapshots ni la persistencia. El plan sigue ubicando el trabajo por su día,
+porque la hora del compromiso no es una reserva.
+
+### 498. El marcador sitúa, no mide: alto fijo y ninguna capacidad
+
+`UNSCHEDULED_HEIGHT = 18`, el mismo alto mínimo que un tramo corto. Una barra que creciera con la
+jornada diría «esto ocupa este tiempo» y sería mentira: el ticket no reserva horas, no entra en la
+capacidad y no genera tramos. El marcador es un **post-it en el eje**, no un bloque.
+
+La semántica visual es la que ya había: gris, borde discontinuo, bandera con `aria-label`, y el
+color del riesgo cuando lo hay —`PROXIMA`, `HOY`, `VENCIDA`—. Lo único que cambia es dónde se pinta.
+
+### 499. Los que caen en la misma hora se apilan hacia abajo
+
+Tres tickets a las 17:30 del mismo día no pueden ocupar el mismo píxel. `unscheduledPlacements`
+agrupa por **(persona, día)**, ordena por hora y empuja cada marcador al menos 18 px por debajo del
+anterior: `top = max(dónde cae, dónde acabó el de arriba)`.
+
+En vivo, AlejPine el **28 de octubre de 2026**: **52178**, **44938** y **38212**, los tres con
+Internal TTR a las **17:30**, quedan a 219, 237 y 255 px. La pila se lee como una lista, no como un
+borrón.
+
+Se eligió apilar y no repartir el ancho o abrir carriles: el ancho de un día en Compacta son 132 px,
+y dos columnas de 60 px no caben un identificador. El alto sobra; la anchura no.
+
+### 500. Si la pila no cabe en el día, sube entera
+
+Una pila al borde del eje se saldría por abajo. En vez de recortar el último —perderlo— o comprimir
+la separación —volver a taparlos—, se calcula lo que sobresale y se resta a **toda** la pila: los tres
+de las 17:30 suben 54 px juntos y siguen separados por 18.
+
+Es la misma regla que ya usa el plan para los tramos: desplazar el conjunto antes que mutilar una
+pieza.
+
+### 501. Lo que cae fuera del eje se pega al borde, y escribe su hora
+
+El eje es **07:00–17:30**. **38 de los 79** tickets del conjunto activo vencen exactamente a las
+17:30, en el borde, y **5 caen fuera** —23:30, 23:00, 17:32, 17:35 y 17:32—.
+
+La alternativa era estirar el eje hasta las 24:00, y se descartó midiendo: cinco tickets de 68
+habrían pagado un **62 % más de alto** en todas las filas de todas las semanas. Lo que se hace es
+pegar el marcador al borde del día, marcarlo con `data-outside` y **escribir su hora dentro del
+chip**: `23:30 · 47643 · Sin estimación`. El dato que la posición ya no puede decir, lo dice el
+texto.
+
+En vivo: el **47643**, con Internal TTR del **30 de octubre a las 23:30**, se pinta en la semana 44
+pegado al final del eje, con su hora delante.
+
+### 502. Las tres densidades no cambian la regla, solo los píxeles
+
+Compacta (26 px/h), Normal (44), Amplia (72) y Detalle (120) recalculan la posición desde la misma
+fórmula —`((hora − 07:00) / 60) × alto de hora`— y el mismo apilado. El **66222**, con Internal TTR
+del **3 de diciembre a las 13:53**, cae a **179 px** en Compacta: `(13:53 − 07:00)` son 413 minutos,
+y 413/60 × 26 = 178,97. La proporción no se redondea a la hora; es la posición real.
+
+### 503. Accesibilidad: la hora se lee, no se adivina
+
+| Recurso | Qué añade |
+|---|---|
+| Icono | Bandera, o el del riesgo: triángulo, reloj, calendario |
+| Texto | `66222 · Sin estimación`, y `HH:mm · ` delante cuando cae fuera del eje |
+| `aria-label` | «Entrega vencida» / «Entrega hoy» / «Entrega próxima» / «Fecha de entrega comprometida en GLPI» |
+| `title` | La fecha **y la hora**: «vence a las 13:53 del jue, 3 de dic» |
+| `data-time` y `data-outside` | Atributos, no clases: los leen la prueba y el lector sin mirar píxeles |
+
+El color sigue siendo refuerzo y nunca la única señal: un marcador gris sin riesgo y uno ámbar con
+riesgo se distinguen por el icono y por el texto.
+
+### 504. Lo que no cambió, y cómo se comprobó
+
+Ni una línea de planificación. La suite del backend pasó de **416 a 418 pruebas** —dos nuevas, del
+mapper y del endpoint, y ninguna otra tocada—, y las de motor, capacidad, calendario y conciliación
+siguen intactas. En el frontend, los seis estados, sus colores, la capacidad, la simulación y los
+tramos planificados se comportan igual: la prueba es que las pruebas que ya existían
+pasan sin cambios y las 10 nuevas cubren lo añadido.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 505 | **La mayoría de los tickets vencen a las 17:30, en el borde del eje** | **Medio: la pila se desplaza y deja de estar en su hora** | 38 de 79 vencen a esa hora, que es el cierre de jornada: es un dato real, no un defecto del eje. Se apilan y, si no caben, suben enteras. El chip escribe la hora cuando se mueve. La salida sería pintar una franja de cierre con nombre propio |
+| 506 | **Un marcador puede tapar un tramo planificado** | **Bajo: pasa en 1 de 68, y solo donde conviven** | El caso vivo es el **69430** (09:01) sobre el tramo del **67113** (07:00–12:00) en la semana 45. Se dibuja encima —por debajo quedaría oculto por el relleno del tramo— y puede comerse una línea de texto del bloque. El `title` de los dos conserva lo que el otro tape |
+| 507 | **En Compacta el marcador pierde la causa** | **Bajo: es el coste de un chip de 18 px** | Icono más `NNNNN · Sin estimación` no cabe en 132 px: se recorta a «Sin estimaci…». El identificador —lo que se busca— nunca se recorta; la causa completa está en el `title` |
+| 508 | **`data-outside` deja de señalar una excepción** | **Bajo: es un atributo, no un aviso** | En la semana 44 marca **24 de 32** marcadores. No se pinta de forma distinta por él, así que no confunde a quien mira; pero como criterio de prueba solo distingue «se movió», no «estaba fuera» |
+| 509 | **Un ticket sin hora cae al inicio del día** | **Bajo, y hoy no ocurre** | Si GLPI publicara la fecha sin hora, `time` es nulo y el marcador va a las 07:00 con el texto «GLPI no publicó la hora». Los 79 del conjunto activo traen hora |
+| 510 | **La posición no tiene prueba contra datos vivos** | **Bajo: la evidencia es de capturas** | Las pruebas fijan la fórmula y el apilado con datos a mano; los números de esta fase están medidos en pantalla el 27 de octubre de 2026 y el conjunto de GLPI cambia solo |
+
+## Pruebas
+
+Frontend: **462 pruebas en 27 archivos** en verde, `tsc -b --noEmit` y oxlint limpios. Diez nuevas:
+
+| Archivo | Qué fija |
+|---|---|
+| `lib/timeline.test.ts` | `unscheduledOf` recorta `13:53:48` a `13:53`; siete pruebas de `unscheduledPlacements`: cada ticket en su hora con alto fijo, el apilado a la misma hora, la pila que sube entera sin dejar ninguno fuera, la hora fuera del eje pegada al borde y declarada, el ticket sin hora al inicio del día, y una pila por persona y día |
+| `timeline/TimelineGrid.test.tsx` | El **66222** cae en su hora y no al principio del día; tres a la misma hora se apilan separados por `UNSCHEDULED_HEIGHT` y siguen diciendo su hora; uno fuera del eje escribe su hora; y ya **no hay franja aparte** |
+
+Backend: **418 pruebas, 0 fallos, 3 omitidas** — dos nuevas en el mapper (`laHoraViajaConElDia`,
+`sinOlaViajaLaHoraDelSla`) y dos aserciones en el endpoint (`operationalTime` nulo cuando no hay
+fecha, `"17:30:00"` cuando la hay).
+
+Evidencia en `.probe/`: `f72-01-66222-en-la-rejilla.png`, `f72-02-66222-marcador.png`,
+`f72-03-varios-sin-estimacion.png`, `f72-04-equipo-semana44.png`, `f72-05-compacta.png`,
+`f72-06-normal.png`, `f72-07-detalle.png`, `f72-08-68428-marcador.png`,
+`f72-09-68428-en-la-rejilla.png`, `f72-11-equipo-tramos-y-marcadores.png`,
+`f72-12-2330-pegado-al-borde.png`, `f72-13-semana.png`, `f72-14-celda.png` y `f72-14-semana.png`.
+
+## Fase 73 — El Gantt ejecutivo de capacidad
+
+La pantalla `/capacidad` existía desde la fase anterior como una **tabla de capacidad**: una fila por
+persona, su porcentaje de ocupación y una barra de color. Respondía «cuánto» y no «qué», y quien
+coordina no abre esa pantalla para sumar horas sino para ver **qué trabajo hay, de quién es, cuándo
+vence y dónde falta gente**. Esta fase la convierte en un Gantt ejecutivo sin tocar una línea del
+motor, del plan ni de la persistencia.
+
+### 481. La barra deja de ser un adorno: el peso se invierte
+
+En la versión 1 el porcentaje mandaba y el trabajo era una cifra que lo justificaba. En la versión 2
+la barra es la protagonista —más alta, con borde, sombra y el nombre dentro— y la cifra la acompaña.
+No es una decisión estética: el Timeline ya enseña el trabajo como barras y esta vista se lee al lado
+de él; una tabla de porcentajes y un plano de barras no se pueden comparar sin traducir. **No se
+añadió ni un dato** para conseguirlo: los tramos ya venían en la respuesta.
+
+### 482. El nombre de la barra sale del título declarado, no del identificador de GLPI
+
+Una barra que dice `67923` obliga a quien la lee a buscarla en otra pantalla. El título ya viajaba en
+la declaración —la misma lectura que el Timeline usa para sus fichas—, así que la barra lo escribe y
+el identificador queda en el tooltip y en el nombre accesible. Cuando el ticket no se declaró, el
+rótulo cae al tipo —«Requerimiento»—, que es un hecho y no un nombre inventado. Se recorta a 38
+caracteres porque una barra de un día no da para más, y **las horas no se sacrifican**: van en su
+propio `span` y solo cede el nombre.
+
+### 483. La entrega es una bandera con fecha, y no el borde de la barra
+
+El Internal TTR es la fecha que GLPI publica, y **no siempre cae en el último día de la barra**: el
+plan ubica el trabajo donde cabe y la promesa vence donde vence. Pintar la barra hasta la fecha de
+entrega habría inventado un reparto que el motor no hizo; marcar solo el borde habría escondido el
+caso en que la entrega cae dentro. Se eligió una **bandera con la fecha escrita al lado**, en el
+color del riesgo, y solo cuando la barra tiene ancho para ella —desde 128 px—; por debajo queda la
+bandera sola, que sigue diciendo que hay entrega, y la fecha viaja en el tooltip.
+
+### 484. Los seis estados se importan del Timeline en vez de copiarse
+
+La versión 1 coloreaba la barra por la banda de ocupación de la persona, que es un eje de capacidad.
+La versión 2 la colorea por **el estado del trabajo** —requiere estimación, planificado, desplazado,
+pendiente de acuerdo, acordado por GLPI, acordado manual—, resuelto con `blockState` y
+`agreementStates`, exactamente las dos piezas del Timeline. Las tablas de clases vivían dentro de
+`TimelineGrid.tsx`; se extrajeron a `lib/timelineVisuals.ts` para que las dos pantallas importen
+**la misma cadena de clases** y no dos copias que se separan al primer cambio. Esa extracción tuvo un
+coste real: la regla `react(only-export-components)` de oxlint prohíbe exportar constantes desde un
+archivo de componente, y mover las tablas fue la forma de cumplirla sin silenciarla.
+
+### 485. El ticket sin estimar tiene carril propio y cuenta del día
+
+Un ticket con fecha en GLPI y sin horas no está en el plan, no ocupa jornada y no puede ser una
+barra: dibujarlo como bloque afirmaría un trabajo que nadie declaró. La versión 1 simplemente no lo
+enseñaba en esta pantalla. La versión 2 lo pone en un **carril bajo la fila**, en el día en que
+vence, con el gris punteado del estado «Requiere estimación» del Timeline y **la cuenta de ese día**
+—hoy hay días con diez—. Los tickets concretos van en el tooltip, con identificador y título, porque
+diez etiquetas en 104 px no se leen. **No es una sección aparte**: el ticket se ve en la fila de su
+dueño y en su día, que es donde el coordinador lo busca.
+
+### 486. El porcentaje se lee en la fila, sin abrir nada: banda, barra y horas libres
+
+La versión 1 ya pintaba el chip de banda. La versión 2 añade la **barra de carga** —rellena hasta el
+porcentaje, con remate rojo cuando pasa de 100— y la línea de horas libres, trabajos y ocupación
+sobre la capacidad. `percent` se recorta a 100 para la barra porque una barra que siguiera creciendo
+se saldría de la celda; el chip de al lado conserva la cifra exacta, así que el recorte no esconde
+nada. La escala de bandas no se tocó: 60, 90, 100 y 120, con la sobrecarga empezando en el primer
+decimal por encima de 100.
+
+### 487. El riesgo no se recalcula: la tira reusa `riskOf` y cuenta solo el periodo visible
+
+La tira superior enseña tres contadores —vencidas, que vencen hoy, próximas— y los saca de
+`commitmentsOf`, que recorre la declaración y aplica `riskOf`, la función del Timeline. No hay una
+segunda regla de vencimiento. **Cuenta solo los compromisos que caen dentro del periodo visible**, que
+es la misma decisión que la Fase 71 tomó para sus contadores: un riesgo que no está en pantalla no se
+cuenta, porque el número junto a la etiqueta se leería como el total del equipo. Los que no tienen
+fecha no entran: no hay compromiso que medir.
+
+### 488. Las tres escalas cambian el ancho del día y el rótulo, no el dato
+
+La semana mide 104 px por día, el mes 40 y el trimestre 18. En el trimestre se rotula el lunes y el
+día primero, no todos los días, porque a 18 px un número por columna es una fila de manchas. La
+columna de personas queda fija para que un trimestre se pueda leer sin perder de quién es la fila.
+**Los datos son los mismos en las tres escalas**: lo único que cambia es cuánto ocupa cada día en
+pantalla y cuánto texto cabe.
+
+### 489. Lo que no cambió: ni el plan, ni la capacidad, ni una lectura nueva del backend
+
+La vista sigue siendo de solo lectura y sigue leyendo lo que ya existía: `GET
+/api/planning/team/timeline` (capacidad publicada por el motor), `GET /api/team` (nombres) y las
+declaraciones (títulos y fechas). La única lectura que añade es la de renegociaciones —la misma del
+Timeline— y solo para saber qué color corresponde a cada barra. **No se tocó** `PlanningEngine`,
+`CapacityBook`, `WorkingCalendar`, el Timeline, las renegociaciones, las declaraciones, GLPI, el
+Internal TTR, la persistencia, los snapshots ni el backend. Las sumas que hace son las que ya hacía
+`loadOf`: recortar la capacidad al periodo y sumarla, sin recalcular ningún porcentaje por su cuenta.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 490 | **El riesgo se mide con el reloj del navegador** | **Medio: dos puestos con relojes distintos ven cifras distintas** | Es el mismo reloj que el Timeline. La salida sigue siendo publicar el día del servidor en la respuesta |
+| 491 | **En el trimestre la barra no cabe con texto** | **Bajo: es una elección de densidad** | A 18 px por día, una barra de dos días mide 36 y no admite nombre; el tooltip lo lleva. El mes, que es la escala que pidió el brief, sí lo admite desde 128 px |
+| 492 | **El carril de pendientes se cuenta por día y no por hora** | **Bajo: no tienen hora de trabajo** | Un ticket sin estimar no tiene duración declarada, así que no hay horas que sumar. La cuenta del día es el dato honesto |
+| 493 | **La paleta compartida acopla las dos pantallas** | **Bajo: es el objetivo** | Cambiar un color en `timelineVisuals` cambia el Timeline y el Gantt a la vez. Es intencionado, y por eso la tabla no vive en ningún componente |
+| 494 | **Los contadores de riesgo incluyen trabajo fuera del plan** | **Bajo: el compromiso existe igual** | Un ticket sin estimar también vence y se cuenta. El rótulo habla de compromisos, no de tramos |
+| 495 | **La evidencia de sobrecarga usa una fixture** | **Bajo, y hay que decirlo** | Con los datos vivos de hoy nadie pasa del 100 %; la captura de sobrecarga infla la carga de una persona **solo en el navegador** con `page.route`, y se retira al terminar. No es una afirmación sobre el dato real |
+
+## Pruebas
+
+Frontend: `tsc -b` y oxlint limpios. La suite completa quedó en **462 pruebas en 27 archivos**, todas en verde. Las del módulo:
+
+| Archivo | Qué fija |
+|---|---|
+| `lib/gantt/capacity.test.ts` | Veintiuna pruebas, ocho nuevas: que la barra hereda el estado que le pasa la página y no uno propio; que lleva la entrega y su riesgo; que `commitmentsOf` no inventa compromiso sin fecha; que `pendingDaysOf` agrupa por persona y día y descarta lo que cae fuera del periodo; que `riskCountsOf` no cuenta un vencido que no está en pantalla |
+| `components/gantt/CapacityGantt.test.tsx` | Cuatro pruebas de contrato visual: la barra lleva `data-state` y el nombre del negocio; el tooltip dice la entrega y su riesgo; la fila enseña la ocupación con barra y horas libres; el ticket sin estimar aparece con su cuenta en su día |
+
+Backend: sin cambios — no se tocó una línea, así que la suite es la misma.
+
+## Fase 74 — «Sin plan» desaparece: la fila cuenta el trabajo, no el documento
+
+Bajo el nombre de una persona, la rejilla decía **«Sin plan»** mientras, dos renglones más abajo y
+en la misma pantalla, el eje dibujaba sus compromisos con fecha y hora de GLPI. El caso testigo:
+**Analy Ruiz / «Sin plan»**, y en su fila el marcador **66120 · 17:00 · Sin estimación**. Las dos
+frases eran ciertas y juntas no se podían creer. La etiqueta se calculaba con
+`resource.capacity.length === 0`: respondía **si existe un documento de plan**, no **qué trabajo
+tiene la persona**. Esta fase cambia la pregunta.
+
+> Las decisiones se numeran desde **511**, el primer número libre al empezar.
+
+### 511. De dónde salía «Sin plan», y por qué dejó de ser cierto
+
+La auditoría recorrió `TimelineGrid`, `TeamTimeline`, el cálculo del estado de la fila y las cifras
+que lo acompañan. El camino era uno solo:
+
+| Pieza | Qué aportaba |
+|---|---|
+| `TeamTimeline` | construye `shownResources` desde `teamAgenda(people, timeline.data)` |
+| `teamAgenda` | capacidades del plan vigente por persona; una persona sin plan llega con `capacity: []` |
+| `TimelineGrid` | pintaba «Sin plan» cuando `resource.capacity.length === 0` |
+
+Es decir: la etiqueta hablaba **del documento**, y el documento es cierto que faltaba. Lo que dejó
+de ser cierto es que la fila estuviera vacía. La **Fase 72** metió los tickets sin estimación dentro
+del eje —el Internal TTR trae hora, y el marcador se pinta en ella—, y la **Fase 70** ya había hecho
+que un compromiso con fecha llegara a la pantalla sin pasar por el motor. Desde entonces una persona
+puede no tener plan y tener trabajo visible, y la fila decía lo contrario de lo que la rejilla
+enseñaba.
+
+### 512. La fila se decide con cuatro cifras que la rejilla ya tiene
+
+`resourcePresence()` en `lib/timeline.ts` recibe lo que la fila ya conoce y no pide nada nuevo:
+
+| Entrada | De dónde sale |
+|---|---|
+| `tramos` | tramos del plan de esa persona (`resourceItems.length`) |
+| `sinEstimacion` | marcadores de esa persona (`unscheduled`, agrupados por desarrollador) |
+| `pendientes` | el mismo contador del chip «N pendientes» |
+| `recuperables` | el mismo contador del chip «N recuperables» |
+
+La precedencia es deliberada: **lo que está dibujado manda sobre lo que está anunciado**.
+
+| Orden | Condición | Lo que dice | `data-state` |
+|---|---|---|---|
+| 1 | `tramos > 0` | «N tramos» | `TRAMOS` |
+| 2 | `sinEstimacion > 0` | «Sin estimación» | `SIN_ESTIMACION` |
+| 3 | `pendientes > 0` o `recuperables > 0` | «Sin tramos» | `SIN_TRAMOS` |
+| 4 | nada de lo anterior | «Sin trabajo activo» | `SIN_TRABAJO` |
+
+### 513. «Sin estimación» dice lo que falta, y no lo que falta del plan
+
+El ticket **existe**, su fecha **existe**, las horas **no**. Eso es exactamente «sin estimación», y
+es la misma frase que ya usa el marcador del eje y la leyenda: la fila y el marcador nombran el mismo
+hecho con la misma palabra. «Sin plan» nombraba otro hecho —que no hay documento— y por eso podía
+ser verdad mientras la rejilla enseñaba un compromiso.
+
+**Un ticket con Internal TTR ya no puede coexistir con «Sin plan»**: el marcador suma a
+`sinEstimacion`, y `sinEstimacion > 0` solo puede producir `SIN_ESTIMACION`.
+
+### 514. «Sin trabajo activo» solo cuando de verdad no hay nada
+
+Es el caso C del encargo: ni tramos, ni compromisos, ni pendientes, ni recuperables. La fila no se
+omite —la Fase 69 ya decidió que una persona del padrón con puesto operativo aparece aunque no tenga
+nada— y su texto dice la verdad: no hay trabajo activo. En vivo, el **27 de octubre de 2026**, tres
+personas del equipo estaban así y las tres lo dicen.
+
+### 515. El cuarto estado: con trabajo que no es ni tramo ni compromiso
+
+Entre «tiene tramos» y «no tiene nada» hay una franja real: quien solo tiene tickets **sin
+compromiso** o **sin declaración**. No hay tramo porque el motor no los recibe, y no hay marcador
+porque GLPI no les dio fecha. Decir «Sin trabajo activo» de esa persona sería falso: tiene tickets
+abiertos esperando algo. «Sin tramos» es lo que la rejilla puede afirmar sin mentir, y el chip de
+pendientes que va al lado dice cuántos son y por qué.
+
+**Hoy no se ve en vivo**: en los datos del 27 de octubre de 2026 toda persona con pendientes tenía
+además al menos un ticket con Internal TTR, así que las 17 filas se repartieron en `TRAMOS` (2),
+`SIN_ESTIMACION` (12) y `SIN_TRABAJO` (3). El estado está probado en pruebas, no en pantalla.
+
+### 516. El estado es de la persona y no de la semana que se está mirando
+
+`ghostsByDeveloper` cuenta la lista completa de tickets sin estimación, y `tramos` cuenta todos los
+tramos de la persona, no los de la semana abierta. Navegar de la semana 44 a la 45 no cambia la
+etiqueta de nadie: la persona no cambió. Es la misma decisión que ya regía el contador de pendientes
+y el de acuerdos, y evita que el estado parpadee al moverse por el calendario.
+
+### 517. La frase fuera de la fila: dos renombres y una copia
+
+«Sin plan» no vivía solo en la rejilla. Se revisó cada aparición en el Timeline:
+
+| Dónde | Antes | Ahora | Por qué |
+|---|---|---|---|
+| Chip de filtro de la cabecera | «Sin plan» | **«Sin plan vigente»** | Filtra por la existencia del documento, y ahora lo dice: el sujeto es el plan, y es vigente |
+| Columna «Plan» del panel de cobertura | «Sin plan» | **«Sin plan vigente»** | Misma razón: la tabla compara personas contra el plan vigente |
+| Estado vacío de la agenda | «quien no, marcado «Sin plan»» | «quien no, con lo que tiene: «Sin estimación», «Sin tramos» o «Sin trabajo activo»» | La copia explicaba la etiqueta vieja y ahora explica la nueva |
+| `ResourceTimeline`, sin plan elegido | «Sin plan seleccionado» | **«Ningún plan seleccionado»** | No habla de una persona sin plan, sino de que no se eligió ninguno |
+
+Fuera del Timeline —`CapacityGantt`, `IncidentTable`, `TeamTable` y la columna Plan de
+Incidencias— la frase **se queda**: allí el sujeto es un tramo que no existe o la cobertura de un
+plan concreto, y cambiarla sería cambiar el significado de otras pantallas, que no es lo que esta
+fase pidió.
+
+### 518. Accesibilidad: el estado es una palabra, no un color
+
+La etiqueta conserva su sitio y añade dos atributos estables: `data-slot="timeline-resource-state"`
+y `data-state` con el valor del estado. Se lee en orden natural junto al nombre y los chips —«Analy
+Ruiz, Sin estimación, 1 pendiente, 1 recuperable»—, sin icono que interpretar y sin depender del
+color: las cuatro etiquetas se distinguen por el texto. `TRAMOS` no lleva `Badge` para no convertirlo
+en una insignia más: es una cifra, y se pinta como texto.
+
+### 519. Lo que no se tocó
+
+Ni una regla de negocio. `PlanningEngine`, `CapacityBook`, `WorkingCalendar`, la conciliación de
+GLPI, las renegociaciones, los snapshots, la persistencia, la lógica de planificación y el Internal
+TTR como fecha de entrega siguen igual. El cambio es de **lectura**: una función pura nueva, cuatro
+usos de cifras que la rejilla ya calculaba y una etiqueta. El backend no se tocó.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 520 | **El estado prioriza el compromiso sobre el pendiente** | **Bajo: los dos datos están a la vista** | Maury Marmolejo tiene **10 pendientes** y un solo ticket sin estimación, y su fila dice «Sin estimación». Es correcto —lo que la rejilla dibuja manda—, y el chip «10 pendientes» va al lado. Si con el uso se prefiere el conteo de pendientes, se invierte el orden de las dos condiciones |
+| 521 | **«Sin tramos» no se ha visto en vivo** | **Bajo: es un estado alcanzable, no inventado** | El 27 de octubre de 2026 nadie tenía pendientes sin tener además un compromiso con hora. Se prueba con datos a mano. Cuando aparezca en vivo conviene revisar si la frase basta o pide un texto con la causa |
+| 522 | **Una fila puede decir «8 tramos» con cero tramos en pantalla** | **Bajo, y es deliberado** | Abraham Arana tiene ocho tramos repartidos en las semanas 42 a 46; en la 44 su semana está vacía y la fila sigue diciendo «8 tramos». Antes decía «Sin plan», que era peor. El estado es de la persona; la semana se lee en la rejilla |
+| 523 | **La cobertura y la fila hablan de cosas distintas en la misma pantalla** | **Medio: dos vocabularios juntos** | El panel de cobertura puede decir «Sin plan vigente» de Diana mientras la fila dice «Sin trabajo activo»: el panel habla del documento y la fila del trabajo. Se dejó explícito en los dos textos, pero quien lea rápido puede cruzarlos |
+| 524 | **«Sin plan» sigue vivo fuera del Timeline** | **Bajo: es otra pregunta** | En Gantt, Incidencias y la tabla de Recursos la frase describe el documento o el tramo que falta. Unificarla exige decidir qué significa allí primero, y esta fase no lo pidió |
+
+## Pruebas
+
+Frontend: **469 pruebas en 27 archivos** en verde —siete nuevas sobre las 462 de la Fase 72—,
+`tsc -b --noEmit` y oxlint limpios.
+
+| Archivo | Qué fija |
+|---|---|
+| `lib/timeline.test.ts` | Cinco pruebas de `resourcePresence`: los tramos cuentan con singular y plural; sin tramos y con compromisos sin horas dice «Sin estimación»; los tramos mandan sobre los compromisos; los pendientes y los recuperables sin nada más dicen «Sin tramos»; y con las cuatro cifras a cero, «Sin trabajo activo» |
+| `components/timeline/TimelineGrid.test.tsx` | Una prueba con las cuatro personas en una sola rejilla: cada fila sale con su `data-state` y su texto, y la pantalla **no contiene «Sin plan»** |
+| `pages/TeamTimeline.test.tsx` | Una persona con un ticket sin horas dice «Sin estimación» y no «Sin plan», y el marcador existe en la rejilla; la persona sin plan ni trabajo dice «Sin trabajo activo». La prueba de cobertura y la del filtro se ajustaron al renombre |
+
+Backend: **418 pruebas, 0 fallos, 3 omitidas**, sin cambios — no se tocó una línea.
+
+Evidencia en `.probe/f74-01-semana44-estados.png` a `f74-06-persona-con-tramos.png`, con los testigos
+**Analy Ruiz / 66120** (sin estimación, marcador a las 17:00), **Daniel Felipe Lopez** (sin trabajo
+activo), **Maury Marmolejo** (10 pendientes y 10 recuperables) y **Abraham Arana** (8 tramos, dos
+visibles en la semana 45).
+
+## Fase 75 — «Sin estimación» desaparece: la fila solo dice lo que ningún contador dice
+
+El encargo trajo el caso escrito: **Alejandro Pineda Machado / Sin estimación / 7 pendientes /
+7 recuperables**. Los tres renglones son ciertos y el primero sobra. «Sin estimación» dice que hay
+tickets a los que les faltan las horas, y **«7 pendientes» dice exactamente eso y además cuántos**.
+La Fase 74 había cambiado la pregunta —de «¿hay plan?» a «¿qué trabajo tiene la persona?»— y dejó
+una respuesta que ahora repetía el contador. Esta fase quita la repetición.
+
+> Las decisiones se numeran desde **525**, el primer número libre al empezar.
+
+### 525. La redundancia es un invariante del código, no una coincidencia de los datos
+
+No es que hoy los números coincidan por casualidad. `causeFor()` en `lib/pending.ts` da por
+pendiente **toda** declaración que no sea `PLANIFICABLE`, y su causa es el propio
+`declarationStatus`; `unscheduledOf()` en `lib/timeline.ts` solo emite marcador para
+`declarationStatus === 'SIN_ESTIMACION'` con `operationalDate` no nulo y fuera del plan. Es decir:
+
+```
+sinEstimación  ⊆  pendientes        (y por tanto sinEstimación > 0 ⇒ pendientes > 0)
+```
+
+**Ningún ticket puede tener marcador y no tener chip.** La etiqueta «Sin estimación» bajo el nombre
+era la única de las cuatro que hablaba de un conjunto que el chip ya contaba entero. Por eso se
+puede borrar sin perder un dato, y por eso la prueba de la regla no depende de los datos de hoy.
+
+### 526. La regla nueva: lo que un contador ya dice, la fila no lo repite
+
+`resourcePresence()` deja de devolver siempre un estado y pasa a poder **callarse**:
+
+| Condición | Lo que dice la fila | `data-state` |
+|---|---|---|
+| `tramos > 0` | «N tramos» | `TRAMOS` |
+| `tramos = 0` y hay pendientes, recuperables o compromisos sin horas | **nada** | — |
+| las cuatro cifras a cero | «Sin trabajo activo» | `SIN_TRABAJO` |
+
+La precedencia no cambió —los tramos siguen mandando—; lo que cambió es el desenlace del segundo
+caso: antes producía una etiqueta, ahora produce silencio. La función devuelve `ResourcePresence |
+null`, y la rejilla no pinta nada cuando es `null`.
+
+### 527. «Sin tramos» se va con ella, y el estado pasa de cuatro a dos
+
+El estado `SIN_TRAMOS` de la Fase 74 se emitía justo cuando `pendientes > 0` o `recuperables > 0`, que
+es **exactamente** el caso en que los chips hablan. Bajo la regla nueva ese estado se vuelve
+inalcanzable, y en vez de dejarlo como código muerto se elimina del tipo: `ResourcePresenceKind` queda
+en `'TRAMOS' | 'SIN_TRABAJO'`. El estado «Sin tramos» no era un hallazgo de la Fase 74 —nunca se vio
+en vivo—, era la redundancia con otro nombre.
+
+Los cuatro estados de la Fase 74 quedan en dos porque los otros dos —«Sin estimación» y «Sin
+tramos»— decían lo que ya decía un chip.
+
+### 528. Cada cosa que queda bajo el nombre se gana su sitio
+
+| Qué | Por qué se queda |
+|---|---|
+| El nombre | Es la identidad de la fila |
+| «N tramos» | Una cifra que la rejilla no da en ningún otro sitio: los bloques dibujados son solo los **de la semana visible** |
+| Chip «N pendientes» | Es la **acción**, no el aviso: abre el pendiente o filtra el panel |
+| «N recuperables» | Cuántos de esos pendientes se desbloquean declarando |
+| «Sin trabajo activo» | La única información que ningún contador puede dar: que **no hay nada** |
+
+El silencio del caso intermedio es la respuesta, no un olvido: una fila con «7 pendientes» y
+«7 recuperables» ya dijo todo lo que tenía que decir.
+
+### 529. Lo que no se tocó: la rejilla sigue dibujando lo mismo
+
+`TimelineGrid` cambió **una sola cosa**: el bloque que pinta la etiqueta bajo el nombre. Ni la escala,
+ni la posición de los tramos, ni el apilado de los marcadores, ni las densidades, ni la capacidad, ni
+las reglas temporales. `PlanningEngine`, `CapacityBook`, `WorkingCalendar`, la conciliación de GLPI,
+las renegociaciones, los snapshots, la persistencia, la lógica de planificación y el Internal TTR como
+fecha de entrega siguen igual. El backend no se tocó.
+
+### 530. Callarse no es dejar un hueco
+
+Cuando la fila no tiene nada que decir **no se pinta un elemento vacío**: el bloque no existe, y el
+lector pasa del nombre directamente a los chips —«Alejandro Pineda Machado, 7 pendientes,
+7 recuperables»—. Las dos etiquetas que quedan conservan `data-slot="timeline-resource-state"` y
+`data-state`, así que la prueba y el lector pueden distinguir «no dice nada» de «dice esto» sin mirar
+píxeles.
+
+### 531. Dónde sigue diciendo «Sin estimación», y por qué allí no sobra
+
+La frase no se prohibió: se quitó **como texto de estado bajo el nombre**. Sigue en cuatro sitios, y
+en los cuatro el sujeto es otro:
+
+| Dónde | Qué dice | Sujeto |
+|---|---|---|
+| Contador de cabecera (`CommitmentSummary`) | «Sin estimación: N» | El **equipo** en todo el horizonte, no una semana ni una persona |
+| Marcador del eje | «17:00 · 66120 · Sin estimación» | El **ticket**, dibujado en su hora |
+| Panel de pendientes | La causa de cada fila | El **pendiente**, uno por uno |
+| Leyenda del Timeline | La clave del marcador | El **símbolo** |
+
+Quitarlas habría borrado información, no redundancia. La fase distingue las dos cosas.
+
+### 532. Verificación en vivo: 27 de octubre de 2026, semana 44
+
+Medido en pantalla con los datos reales de GLPI, tras esperar a que terminaran las 17 lecturas de
+declaraciones:
+
+| Medición | Resultado |
+|---|---|
+| Filas | **17** |
+| Filas con etiqueta | **4** — «8 tramos» y «6 tramos» (con 2 y 4 pendientes al lado) + **2 «Sin trabajo activo»** |
+| Filas en silencio | **13**, todas con chip de pendientes y de recuperables; **ninguna sin contador** |
+| Etiquetas «Sin estimación» bajo el nombre | **0** |
+| «Sin plan» exacto en toda la pantalla | **0** |
+| Marcadores en la semana 44 | **33** |
+| Pendientes del equipo | **74** (68 en filas calladas, 6 en las dos filas con tramos) |
+| Alejandro Pineda Machado | «7 pendientes · 7 recuperables» — el caso del encargo, sin etiqueta |
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 533 | **«Sin trabajo activo» aparece mientras cargan las declaraciones** | **Medio: es una frase falsa, aunque transitoria** | Las 17 declaraciones se leen **en serie** y tardan unos **10 segundos**; mientras llegan, una persona con 9 pendientes dice «Sin trabajo activo». Viene de la Fase 74 —el desenlace era el mismo— y se vio al fotografiar la pantalla antes de tiempo. La salida es pasar a `resourcePresence` si la consulta de ese desarrollador sigue en vuelo y callarse también entonces; no se hizo aquí porque toca el camino de carga, no la etiqueta |
+| 534 | **Una fila callada depende de que el chip se vea** | **Bajo: el chip está en la misma columna fija** | Si una pantalla muy estrecha recortara el chip, la fila quedaría muda. La columna del nombre es `w-44` con `flex-wrap`, así que los chips bajan de línea en vez de recortarse; aun así el ancho mínimo de lectura creció al desaparecer un renglón |
+| 535 | **Los tramos se siguen contando aunque no estén en la semana** | **Bajo, y es deliberado** | Abraham Arana dice «8 tramos» en la semana 44 con la semana vacía. El estado es de la persona; la semana se lee en la rejilla. Ya venía de la Fase 74 |
+| 536 | **Un pendiente sin fecha de GLPI cuenta en el chip y no dibuja marcador** | **Bajo: el chip lo dice** | `unscheduledOf` exige `operationalDate`. Un ticket `SIN_ESTIMACION` sin fecha suma a pendientes y no aparece en el eje; la fila se calla y el chip queda como única señal, que es suficiente —dice cuántos— aunque no dónde. Hoy los 79 tickets del conjunto activo traen hora |
+| 537 | **Quien busque un estado en todas las filas ya no lo encuentra** | **Bajo: es el objetivo** | Trece de diecisiete filas no dicen estado. Quien lea la columna esperando un valor verá chips en su lugar; el chip es el valor. Se documenta aquí para que no se lea como un hueco |
+
+## Pruebas
+
+Frontend: **468 pruebas en 27 archivos** en verde —una menos que las 469 de la Fase 74: la prueba del
+estado «Sin tramos» desaparece con el estado—, `tsc -b --noEmit` y oxlint limpios.
+
+| Archivo | Qué fija |
+|---|---|
+| `lib/timeline.test.ts` | Cuatro pruebas de `resourcePresence`: los tramos cuentan con singular y plural; con compromisos sin horas, con pendientes y recuperables, o solo con recuperables **no devuelve etiqueta**; los tramos mandan sobre todo lo demás; y con las cuatro cifras a cero dice «Sin trabajo activo» |
+| `components/timeline/TimelineGrid.test.tsx` | Una sola rejilla con cuatro personas —una con tramos, una con compromiso sin horas, una con pendientes, una sin nada—: solo dos filas pintan estado, las otras dos quedan en silencio con sus chips, y la pantalla **no contiene «Sin estimación» como etiqueta de fila ni «Sin plan»** |
+| `pages/TeamTimeline.test.tsx` | Una persona con un compromiso sin horas muestra «1 pendiente» y **ninguna etiqueta** debajo del nombre, y su marcador sigue en la rejilla. La copia del estado vacío y la prueba de cobertura se ajustaron al texto nuevo |
+
+Backend: **418 pruebas, 0 fallos, 3 omitidas**, sin cambios — no se tocó una línea.
+
+Evidencia en `.probe/f75-01-semana44-encabezados.png` a `f75-07-semana45.png`, con los testigos
+**Alejandro Pineda Machado** (7 y 7, el caso del encargo, sin etiqueta), **Maury Marmolejo**
+(10 y 10), **Analy Ruiz** (1 y 1, con su marcador), **Daniel Felipe Lopez** y **Jose Alejandro Diaz**
+(«Sin trabajo activo») y **Abraham Arana** (8 tramos, 2 visibles en la semana 45).
+
+## Fase 76 — El ticket del Timeline abre su ficha: de punto visible a punto de entrada
+
+El encargo describe el hueco con precisión: en el Timeline se **ven** los tickets y no se puede
+**hacer nada** con ellos. Cualquier consulta o cualquier acción obliga a salir a Tickets, a
+Declaración o a Renegociación, y al volver hay que encontrarse otra vez. La regla de la fase es una
+sola: **primero el contexto, después la navegación** — y el contexto ya existía para la mitad de los
+tickets.
+
+> Las decisiones se numeran desde **538**, el primer número libre al empezar.
+
+### 538. El panel no se duplica: el detalle que ya existía aprende un segundo sujeto
+
+La auditoría encontró que el Timeline **ya tenía** el panel contextual: `ItemDetail`, un `SidePanel`
+fijo con la declaración en línea, la renegociación, el conflicto y las acciones. Lo que no tenía era
+un sujeto que no fuera un tramo. Ese panel nació con el tramo como dato —`startsAt`, `endsAt`,
+`durationHours`, `sourcePlanId`—, así que un ticket que el plan no colocó no podía entrar por más
+que se quisiera.
+
+La solución no es un segundo panel: es que **el sujeto pase a ser una unión discriminada**.
+
+```ts
+type DetailSubject =
+  | { kind: 'TRAMO'; item: TimelineItem }
+  | { kind: 'TICKET'; developerId: string; item: DeclarationItem }
+```
+
+`ItemDetail` deriva lo que de verdad necesita —`tramo`, `row`, `workItemId`, `developerId`— y el
+resto del cuerpo no cambia: el mismo `SidePanel`, el mismo `DeclarationForm`, las mismas piezas. Se
+reutilizaron **seis** componentes (`SidePanel`, `DeclarationForm`, `DisplacementCause`, `Badge`,
+`Button`, `Link`) y **no se escribió ningún formulario, ninguna lectura ni ningún cálculo**. Lo que
+cambió es qué se le pasa a los que ya estaban.
+
+### 539. El marcador se vuelve botón solo cuando hay a quién avisar
+
+Un ticket sin estimación se dibuja como un marcador de 18 px colocado por la hora de su Internal
+TTR. Hasta esta fase era un `div`: decía «este ticket existe y no tiene horas» y no se podía pulsar.
+El `Block` del tramo ya había resuelto el mismo problema con el mismo patrón —`<button>` cuando hay
+`onSelect`, `<div>` cuando no—, así que el marcador lo copia en vez de inventar otra forma:
+
+| `onTicketSelect` | Se pinta | Se puede |
+|---|---|---|
+| ausente | `<div>` | leer y nada más |
+| presente | `<button type="button" aria-pressed>` | pulsar, tabular, abrir con Enter |
+
+La prop es opcional a propósito: la agenda de un plan usa la misma rejilla y no tiene panel, y una
+rejilla sin acción **no debe anunciar un botón muerto** a un lector de pantalla. `aria-pressed` dice
+cuál de los marcadores es el que el panel está enseñando, igual que el tramo hace desde la Fase 57.
+
+### 540. El sujeto se elige una sola vez, y el tramo manda
+
+Un ticket puede tener tramo y además estar sin estimar en otra declaración. Los dos sujetos no
+pueden abrirse a la vez, así que hay una regla y solo una: **si el ticket tiene tramo en la agenda,
+el panel es el del tramo** —con su día, su hora y su duración—; si no lo tiene, el panel es el del
+ticket suelto. La fila de declaración viaja en los dos casos, porque es la lectura que ya alimentó
+los chips.
+
+Eso arregla además un hueco viejo: la dirección `?ticket=` abría el primer tramo del ticket y, si no
+había ninguno, **no abría nada** y dejaba la vista filtrada por la persona. Ahora abre su panel. Es
+el camino por el que entró el **66222** en la verificación en vivo.
+
+### 541. La ficha muestra lo que ya viajaba, y no pide una lectura nueva
+
+El ticket enseña **título**, **estado en GLPI**, **Internal TTR** y **desarrollador**. Los cuatro
+datos ya estaban en `DeclarationItem`, la fila que alimenta los chips de pendientes desde la Fase
+72: no hay una consulta nueva, no hay un viaje nuevo y **abrir el panel no hace esperar**. La
+información de planificación —horas estimadas, fecha de entrega, fecha de inicio, duración— solo
+aparece cuando hay tramo, porque es exactamente lo que un ticket sin tramo no tiene.
+
+La cabecera también cambia de dueño: un tramo se nombra por lo que el plan hizo con él
+(«Planificado», «Desplazado») y un ticket suelto por lo que le falta para entrar al plan («Sin
+estimación»), con el **mismo rótulo que usa el panel de pendientes**. No hay una segunda tabla de
+estados.
+
+### 542. Las acciones aparecen solo cuando el dato las sostiene
+
+| Acción | Tramo | Ticket suelto | Condición |
+|---|---|---|---|
+| Declarar / Declarar estimación | sí | sí | en línea, con `DeclarationForm`; si la lectura de la persona no llegó, enlaza a la pantalla |
+| Abrir en Tickets | sí | sí | siempre |
+| Renegociar | sí | sí | solo si hay desplazamiento o acuerdo para **ese** elemento |
+| Generar plan | sí | **no** | es del plan, y un ticket sin tramo no está en él |
+| Abrir detalle / Comparar | sí | **no** | son del plan que colocó el tramo |
+
+El panel no promete lo que no puede cumplir: las tres últimas se condicionan al tramo, y Renegociar
+al hecho —no a la pantalla—. Es la misma regla que el panel ya seguía desde la Fase 50: «cada acción
+aparece solo si el dato la sostiene».
+
+### 543. «Abrir en Tickets» reutiliza la tabla y aterriza filtrada por la persona
+
+No se creó ninguna pantalla. La acción enlaza a `/incidentes` con `persona=<login>`, que es el único
+filtro que la tabla siembra sola desde la dirección, para no dejar al gestor delante de la tabla
+entera. **La tabla no sabe abrir un ticket concreto por la dirección** —el hueco queda anotado como
+riesgo 547—, así que la acción promete lo que puede: la pantalla correcta, filtrada.
+
+### 544. El teclado llega al marcador, lo abre y vuelve a él
+
+El marcador es un botón nativo, así que el tabulador lo alcanza sin `tabIndex` ni manejadores de
+teclado propios. Medido en vivo: **38 pulsaciones de Tab** desde el principio de la página hasta el
+primer marcador de la semana, `Enter` abre su panel y `Escape` lo cierra devolviendo el foco **al
+marcador**, no al `body`. En el panel, `aria-labelledby` apunta a `detalle-ticket` cuando el sujeto
+es un ticket y a `detalle-tramo` cuando es un tramo: el lector de pantalla anuncia el mismo diálogo
+con el nombre correcto.
+
+### 545. Verificación en vivo: 27 de octubre de 2026
+
+| Medición | Resultado |
+|---|---|
+| Semana abierta | 44 (26 oct – 1 nov), **17 filas**, **0 tramos**, **33 marcadores** |
+| Marcadores pulsables | **33 de 33** son `BUTTON` |
+| Ticket planificado (semana 45) | **67113**, panel «Requerimiento 67113 · Planificado» con Título, `EN_EJECUCION`, Internal TTR y desarrollador |
+| Acciones del tramo | Declarar · Abrir en Tickets · Generar plan · Abrir detalle · Comparar |
+| **66222** (caso del encargo) | Panel «Requerimiento 66222 · **Sin estimación**», abierto por `?ticket=66222` —su fecha es el 3 de diciembre, fuera de la semana 44— |
+| Acciones del ticket suelto | **Declarar estimación** · Abrir en Tickets (`/incidentes?persona=AbraAran`); **sin** Renegociar y **sin** Abrir detalle |
+| Declarar sin salir | El formulario sustituye al detalle y **la dirección no cambia**; «Cancelar» vuelve al detalle |
+| Cierre | `Escape` deja **0 diálogos** y devuelve el foco al tramo |
+| Teclado | **38 Tab** hasta el marcador **52178**; `Enter` abre «Requerimiento 52178 · Sin estimación»; `Escape` devuelve el foco al marcador |
+| Renegociaciones en el backend | **0** — la acción no se pudo ver en vivo (riesgo 548) |
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 546 | **El marcador tapa el tramo y se come el clic** | **Medio: es una acción que hace otra cosa** | Medido en la semana 45: **1 de 2** tramos tenía un marcador encima (el 69430 a las 09:01 sobre el 67113 de 07:00–12:00). En esa zona el clic abre el ticket sin estimación y no el tramo. Viene de la Fase 72 —el marcador nació encima— pero ahora el clic tiene dos dueños. El tramo sigue abriéndose con el teclado y por su parte libre; la salida es `pointer-events` por bandas o subir el marcador cuando hay tramo debajo. No se hizo aquí porque toca la colocación, no el panel |
+| 547 | **«Abrir en Tickets» no selecciona el ticket** | Bajo: la tabla aterriza filtrada | `/incidentes` siembra modo y filtros, no un identificador; la tabla no tiene una fila abierta por dirección. Hoy la acción lleva a la pantalla con la persona ya filtrada, y el ticket se busca ahí. Cerrarlo exige que Incidents lea un parámetro nuevo y abra su detalle: es otra fase |
+| 548 | **Renegociar no se pudo ver en vivo** | Bajo: está probado con datos a mano | El backend responde `items: []` hoy —**0 desplazados, 0 pendientes, 0 acordados**—, así que ningún ticket de la base real ofrece la acción. La prueba cubre el enlace y su destino (`/renegociaciones?ticket=…`) |
+| 549 | **Sin fila de declaración no hay panel** | Bajo, y coherente | El marcador sale de la misma lectura: si el lote de declaraciones falla, no hay marcador ni panel. No se puede abrir la ficha de un ticket del que no se sabe nada, y el chip de pendientes tampoco aparece. Se anota para que la ausencia no se lea como un fallo del panel |
+| 550 | **Escape cierra el panel mientras se escribe la estimación** | Bajo, heredado | El `SidePanel` escucha `Escape` en la ventana, y el formulario vive dentro. Quien teclea horas y pulsa `Escape` pierde lo escrito. Viene de la Fase 50 y no se toca aquí; la salida es que el formulario detenga el evento mientras tenga cambios |
+
+## Pruebas
+
+Frontend: **472 pruebas en 27 archivos** en verde, `tsc -b --noEmit` y oxlint limpios.
+
+| Archivo | Qué fija |
+|---|---|
+| `components/timeline/TimelineGrid.test.tsx` | El marcador es `div` sin la prop y `button` con ella; `aria-pressed` señala el elegido y el clic devuelve el elemento completo a quien escucha |
+| `pages/TeamTimeline.test.tsx` | Abrir el ticket desde su marcador enseña título, estado de GLPI, Internal TTR y desarrollador; el rótulo es la causa de pendientes; «Abrir en Tickets» apunta a `/incidentes?persona=…`; sin desplazamiento no hay Renegociar ni Abrir detalle; «Declarar estimación» sustituye al detalle en el mismo panel; `Escape` cierra y devuelve el foco al marcador; un ticket desplazado enlaza a `/renegociaciones?ticket=…` |
+
+Backend: **418 pruebas, 0 fallos, 3 omitidas**, sin cambios — no se tocó una línea.
+
+Evidencia en `.probe/f76-00-rejilla.png`, `f76-01-ticket-planificado.png`,
+`f76-02-ticket-sin-estimacion.png`, `f76-03-declarar-en-el-panel.png`, `f76-05-teclado.png`,
+`f76-06-semana-con-tramos.png` y `f76-07-panel-planificado.png`, con los testigos **67113**
+(planificado), **66222** (el caso del encargo, sin estimación), **52178** (abierto con el teclado) y
+la semana 45 como única con tramos dibujados.
+
+## Fase 77 — El compromiso es uno solo: GLPI lo publica y la declaración solo declara horas
+
+El sistema tenía dos fechas para el mismo ticket. Las fases 66b, 68 y 70 dejaron el **Internal TTR**
+de GLPI como fecha operativa, fecha de entrega y ancla del Timeline y de Tickets; el formulario de
+declaración, mientras tanto, seguía pidiendo **Horas estimadas** y **Fecha compromiso**. La segunda
+se escribía a mano, no coincidía con la que publicaba GLPI y obligaba a reconciliar dos valores del
+mismo compromiso: el plan ubicaba el ticket por una y la declaración afirmaba la otra. La decisión de
+negocio es una sola y no admite grados: **GLPI es la única fuente de verdad y su Internal TTR es la
+fecha de compromiso**. Esta fase la implementa; no la discute.
+
+La auditoría se hizo sobre las nueve superficies que tocaban la fecha declarada y su resultado es
+la fase entera:
+
+| Superficie | Qué hacía con `committedDate` | Qué se hizo |
+|---|---|---|
+| Formulario de declaración | era un campo de texto que se capturaba | **se retiró el campo**; el dato de GLPI queda en su lugar, de solo lectura |
+| Lote de declaración (`DeclarationBatch`) | reenviaba el valor guardado | lo sigue reenviando, ya sin campo que lo edite |
+| Tabla de declaraciones | se leía como contraste, no como ubicación | sin cambios |
+| Timeline (rejilla y detalle) | ubica el tramo por la fecha del plan | sin cambios: esa fecha ya era el Internal TTR desde la Fase 66b |
+| Tickets (tabla y desglose) | el desglose contaba `SIN_COMPROMISO` como «compromiso sin declarar» | el parcial pasa a `withoutGlpiDate` y su frase deja de hablar de declarar |
+| `DeclaredPlanningMetrics` | `withoutCommitment` y la unión `incomplete` | **retirados**; quedan `total` y `withoutEstimation` |
+| `DeclaredGap` | `SIN_COMPROMISO` y `METADATA_INCOMPLETA` | **retirados**; queda `SIN_ESTIMACION` |
+| `OperationalAlertType` | `SIN_COMPROMISO` y `METADATA_INCOMPLETA` | **retirados**; quedan cuatro alertas |
+| `GlpiDiscardReason` | `SIN_COMPROMISO_DECLARADO` | **retirado**; quedan siete |
+| `DeclarationStatus` | `SIN_COMPROMISO` | **se conserva**: su dueño es GLPI, no la declaración |
+| Columna `committed_date` y su historial | persistencia | **se conservan**: son historia, no cálculo |
+
+> Las decisiones se numeran desde **551**, el primer número libre al empezar.
+
+### 551. Una sola fecha y un solo dueño: el Internal TTR que publica GLPI
+
+`internal_time_to_resolve` y, si no está, `time_to_resolve`. Es la fecha que el plan usa para ubicar
+un requerimiento desde la Fase 66b, la que el Timeline dibuja y la que la ficha del ticket enseña.
+No se copia a ningún sitio propio, no se recalcula y no se contrasta con nada: se lee de la fila que
+el backend ya publicó.
+
+El formulario no pregunta cuál es. La enseña con su origen —«Compromiso GLPI · 28/10/2026 17:30 ·
+Origen: Internal TTR»— para responder a la pregunta que el formulario deja abierta («¿y cuándo hay
+que entregarlo?») sin convertir la respuesta en una segunda fuente. Que el origen se nombre y no se
+dé por sabido es deliberado: el día que GLPI publique el `time_to_resolve` en lugar del interno, el
+rótulo lo dirá, y no hará falta abrir el ticket para averiguarlo.
+
+El formato lo produce una sola función, `glpiCommitmentOf`, compartida por el formulario y por el
+lote. Un formateador y no dos evita que la misma fecha se lea distinto en dos sitios de la misma
+pantalla.
+
+### 552. La fecha deja de ser un campo y pasa a ser un dato
+
+Lo que había era un `<input type="date">` llamado «Fecha compromiso». Lo que hay es un bloque de
+lectura: `data-slot="compromiso-glpi"`, un icono y una línea de texto. **No es un campo
+deshabilitado.** Un campo deshabilitado sigue diciendo «esto se rellena en otro sitio»; un dato dice
+«esto no se rellena». La diferencia se nota en el teclado —el dato no recibe foco y no aparece en el
+orden de tabulación— y en el lector de pantalla, que no lo anuncia como editable.
+
+Cuando GLPI no publica fecha, el bloque lo dice con dos mensajes distintos porque son dos hechos
+distintos: en un **incidente** —«Un incidente no se ubica por una promesa: GLPI no le publica
+fecha»— y en un **requerimiento** —«GLPI no publica fecha para este ticket»—. Un hueco en blanco se
+leería como una carga que falta; el texto dice que no hay nada que cargar.
+
+### 553. La declaración se queda con una sola responsabilidad: las horas
+
+El formulario tiene dos campos y ninguno es una fecha: **Horas estimadas** y **Quién declara**. Un
+alta exige la primera porque es lo único que se declara; la segunda es la firma, que se recuerda
+entre formularios. Vaciar las horas se convierte en nulo y no en cero: retirar la estimación es una
+operación legítima y queda registrada con su autor, y por eso `withoutEstimation` incluye las filas
+retiradas.
+
+La consecuencia es que **la declaración ya no puede estar incompleta por dos motivos**. O tiene
+horas o no las tiene. Todo lo que contaba la otra mitad de la ausencia se retiró con la captura que
+lo producía, y lo que queda se cuenta en un solo número.
+
+### 554. El formulario reenvía la fecha guardada en vez de pedirla
+
+El `PUT` reemplaza la fila. Mandar `null` en un campo que ya no se edita habría borrado el valor que
+una declaración anterior dejó escrito, y con él su rastro en el historial: la operación de guardar
+las horas habría destruido en silencio un dato que no estaba en pantalla.
+
+Por eso `valuesOf` recibe el `committedDate` de la lectura fresca y lo manda tal cual. En un alta no
+hay nada que conservar y viaja nulo. La regla se sostiene en una frase: **lo que no se edita no se
+reemplaza por la ausencia**.
+
+### 555. El contrato de métricas declaradas se encoge a dos números
+
+`DeclaredPlanningMetrics` era `total`, `withoutCommitment`, `incomplete` y `withoutEstimation`.
+Ahora es `total` y `withoutEstimation`, y `plannable` se deriva —`total - withoutEstimation`— en vez
+de viajar: contarlo aparte era pedirle a la base lo que ya había dicho.
+
+Con la fecha fuera de la declaración, los tres retirados no describían nada: seguir publicando
+`withoutCommitment` diría que todo lo declarado desde la fase está incompleto, y sería cierto solo
+porque la columna ya no se escribe. Un contador que mide la ausencia de algo que ya no se captura no
+es un dato, es la sombra del que había.
+
+La retirada arrastró lo que lo nombraba: `DeclaredGap.SIN_COMPROMISO` y `METADATA_INCOMPLETA`,
+`OperationalAlertType.SIN_COMPROMISO` y `METADATA_INCOMPLETA`, `GlpiDiscardReason.SIN_COMPROMISO_DECLARADO`
+y sus rutas en el frontend. `DeclaredGap` queda con una sola constante, `SIN_ESTIMACION`, y las
+alertas con cuatro: capacidad negativa, requerimientos desplazados, capacidad agotada y sin
+estimación.
+
+### 556. `DeclarationStatus.SIN_COMPROMISO` sobrevive porque su dueño es GLPI
+
+Hay un `SIN_COMPROMISO` que **no** se retiró, y la diferencia importa. El enum `DeclarationStatus`
+dice qué le falta a un ticket para poder planificarse, y lo deriva el validador de GLPI: se asigna
+cuando el ticket no trae ni `internal_time_to_resolve` ni `time_to_resolve`, o sea cuando **GLPI** no
+publica fecha. No dice «el negocio no ha declarado el compromiso» —eso era el `DeclaredGap` retirado—
+sino «no hay fecha con la que ubicarlo».
+
+Conservarlo no es arrastrar deuda: es el estado que la Fase 77 hace más frecuente, porque ahora la
+única salida para esos tickets es cargar la OLA o el SLA en GLPI y no una declaración.
+
+### 557. La columna `committed_date` no se borra: es historia, no cálculo
+
+La columna existe, el `PUT` la escribe y el historial conserva sus cambios. **Ningún cálculo la
+mira.** Las filas anteriores a la fase guardan la fecha que alguien tecleó; las posteriores guardan
+nulo, porque el formulario reenvía el nulo que había. No se borra ni se migra: un `DROP COLUMN` sin
+evidencia de que nada la lee es una pérdida irreversible a cambio de nada, y una migración que
+rellenara las filas viejas con el Internal TTR actual inventaría un histórico que nunca existió.
+
+La estrategia es una sola y no tiene pasos: **se deja de escribir, se sigue leyendo donde ya se
+leía**. Y donde se lee es en un solo sitio: el detalle de la carencia declarada, que enseña la fecha
+guardada como contraste. Ese es el hueco que queda abierto y el riesgo 560 lo nombra.
+
+### 558. Verificación en vivo: 28 de octubre de 2026
+
+| Medición | Resultado |
+|---|---|
+| Semana abierta | **44** (26 oct – 1 nov) |
+| Ticket de la captura | **66222**, requerimiento, «Compromiso GLPI · **03/12/2026 13:53 · Origen: Internal TTR**» |
+| Ticket que entrega hoy | **52178**, requerimiento, Internal TTR **28/10/2026 17:30** |
+| Campos del formulario | **2**: Horas estimadas, Quién declara |
+| Campo de fecha | **ninguno**, y el bloque de GLPI no recibe foco |
+| Guardado desde el Timeline | **67113**, 5 h; la fila quedó con las mismas horas y la misma fecha guardada |
+| Historial del 67113 | 5 → 6 a las 09:15:19 y 6 → 5 a las 09:16:58, **sin ninguna fila `COMMITTED_DATE`** |
+| Declaraciones | **14 filas, 14 planificables, 0 sin estimación** |
+| Tickets sin Internal TTR | **0 de 90** en el conjunto activo: los 90 traen fecha |
+
+El `67113` es el testigo de las dos cosas a la vez: es una declaración **histórica**, con su fecha
+de octubre de 2026 escrita a mano, y se pudo editar dos veces sin que el formulario la tocara. Lo que
+demuestra no es que el campo nuevo funcione sino que el viejo **no se perdió**.
+
+## Riesgos identificados
+
+| # | Riesgo | Severidad | Tratamiento |
+|---|---|---|---|
+| 559 | **La API sigue aceptando `committedDate`, así que dos fechas pueden coexistir por contrato** | **Medio: la pantalla no lo ofrece, la API sí** | `PlanningMetadataRequest` mantiene el campo y su validación lo acepta como declaración válida por sí solo. Un cliente que no sea el formulario —un script, un `curl`, una integración futura— puede escribir una fecha sin horas. Cerrarlo exige cambiar el contrato y decidir qué hacer con las filas que ya lo tienen, y eso es otra fase. La pantalla es hoy el único cliente y no lo envía |
+| 560 | **La fila conserva una fecha que el formulario ya no enseña** | **Medio: pueden verse dos fechas del mismo ticket en dos pantallas** | El detalle de la carencia declarada pinta `committedDate` guardado —la fecha histórica— y la ficha del ticket pinta el Internal TTR de hoy. En una fila anterior a la fase pueden no coincidir, y nada las reconcilia. No es un cálculo: es contraste. La salida es que ese detalle deje de enseñarla o la enseñe rotulada como histórica |
+| 561 | **Un cliente que no reenvíe la fecha la borra** | **Bajo: la protege el formulario, no la API** | El `PUT` reemplaza, así que un cuerpo sin `committedDate` deja la fila en nulo. `valuesOf` lo reenvía y el lote también; cualquier otro cliente debe hacer lo mismo. Es coherente con el riesgo 559 —el contrato conserva el campo— y se cierra el día que se cierre aquel |
+| 562 | **Los tickets sin Internal TTR no tienen caso vivo** | **Bajo: cubierto por prueba** | Los 90 tickets del conjunto activo traen fecha, así que el mensaje de ausencia del bloque de GLPI no se pudo ver contra datos reales. Está cubierto por prueba en las dos variantes —incidente y requerimiento—, que es el único sitio donde hoy puede reproducirse |
+| 563 | **`SIN_COMPROMISO` nombra dos cosas en dos sitios** | **Bajo, y ya solo uno lo usa** | El `DeclaredGap.SIN_COMPROMISO` —carecía de fecha declarada— se retiró; el `DeclarationStatus.SIN_COMPROMISO` —GLPI no publica fecha— se conserva. Coincide el nombre y no el dueño, y quien lea el código sin contexto puede confundirlos. Queda documentado aquí y en el javadoc de la constante |
+
+## Pruebas
+
+Backend: **416 pruebas, 0 fallos, 0 errores, 3 omitidas**. Son dos menos que en la Fase 76 porque
+dos pruebas cubrían exactamente los contadores que se retiraron.
+
+Frontend: **473 pruebas en 27 archivos** en verde, `tsc -b --noEmit` y oxlint limpios.
+
+| Archivo | Qué fija |
+|---|---|
+| `pages/Declarations.test.tsx` | El formulario no ofrece campo de fecha; el bloque «Compromiso GLPI» enseña la fecha de GLPI con su origen; guardar manda las horas y la fecha que ya estaba, y en un alta manda nulo |
+| `pages/TeamTimeline.test.tsx` | Declarar desde el panel del ticket abre el mismo formulario sin fecha, y el commit no la altera |
+| `pages/Incidents.test.tsx` | El desglose de Tickets ya no dice «compromiso sin declarar»: el parcial cuenta tickets sin fecha publicada por GLPI |
+| `pages/DeclarationFlow.test.tsx` | El ciclo completo —declarar, planificar, renegociar— con el estado `SIN_FECHA_EN_GLPI` |
+| `pages/Dashboard.test.tsx` | El bloque declarado se pinta con `total`, `plannable` y `withoutEstimation`, y sin los contadores retirados |
+| `pages/Alerts.test.tsx` | Las cuatro alertas que quedan, sin `SIN_COMPROMISO` ni `METADATA_INCOMPLETA` |
+
+Evidencia en `.probe/f77-01-timeline-declarar.png`, `f77-02-timeline-editar.png`,
+`f77-04-tickets.png` y `f77-05-declaraciones-desde-tickets.png`, con el **66222** como testigo del
+bloque de GLPI —es el que abre la captura, 03/12/2026 13:53—, el **52178** como el ticket que
+entrega hoy y el **67113** como testigo de la declaración histórica que se edita sin perder su fecha.

@@ -108,8 +108,6 @@ public class OperationalAlertService {
             case CAPACIDAD_AGOTADA -> developersWith(photo, signum -> signum == 0);
             case REQUERIMIENTOS_DESPLAZADOS -> photo.current().displacedRequirements();
             case SIN_ESTIMACION -> photo.declared().withoutEstimation().count();
-            case SIN_COMPROMISO -> photo.declared().withoutCommitment().count();
-            case METADATA_INCOMPLETA -> photo.declared().incomplete();
         };
     }
 
@@ -141,7 +139,7 @@ public class OperationalAlertService {
                     new Provenance(
                             PlanningOperationalMetricsResponse.Current.SOURCE,
                             PlanningOperationalMetricsResponse.Current.SCOPE);
-            case SIN_ESTIMACION, SIN_COMPROMISO, METADATA_INCOMPLETA ->
+            case SIN_ESTIMACION ->
                     new Provenance(
                             PlanningOperationalMetricsResponse.Declared.SOURCE,
                             PlanningOperationalMetricsResponse.Declared.SCOPE);

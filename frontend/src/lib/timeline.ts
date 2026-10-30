@@ -495,12 +495,154 @@ export function unscheduledOf(
         workItemType: item.type,
         developerId,
         date: item.operationalDate,
+        // La hora viaja con la fecha desde la Fase 72: el Internal TTR es una fecha-hora y la
+        // rejilla necesita la parte del reloj para poner el ticket en su sitio. `HH:mm:ss` se
+        // recorta a `HH:mm`, que es lo unico que se pinta.
+        time: item.operationalTime ? item.operationalTime.slice(0, 5) : null,
         cause: PENDING_CAUSE_LABEL.SIN_ESTIMACION,
       })
     }
   }
 
   return unscheduled
+}
+
+/** Alto del marcador de un ticket sin estimación, en píxeles. */
+export const UNSCHEDULED_HEIGHT = 18
+
+/** Dónde cae un marcador sin estimación dentro del cuerpo de su día. */
+export interface UnscheduledPlacement {
+  /** Distancia desde el borde superior del día, en píxeles. */
+  top: number
+  /** Alto fijo: el ticket no declara horas, así que el marcador no mide trabajo. */
+  height: number
+  /** Su hora no está donde se pinta: cae fuera del eje y hubo que pegarlo al borde del día. */
+  outside: boolean
+}
+
+/** Minutos desde medianoche de una hora del contrato (`13:53`). */
+function clockMinutes(time: string): number {
+  const [hour = 0, minute = 0] = time.split(':').map(Number)
+  return hour * 60 + minute
+}
+
+/**
+ * Dónde se pinta cada ticket sin estimación dentro del eje del día.
+ *
+ * **La posición sale de la hora del Internal TTR** y no de un cálculo de horas: el ticket dice
+ * cuándo vence, no cuánto dura, así que el marcador tiene alto fijo y **no consume capacidad**. Si
+ * no hay hora —GLPI publicó solo la fecha—, cae al inicio del día, que es lo poco que se sabe.
+ *
+ * **Las colisiones se apilan hacia abajo.** Varios tickets a la misma hora se dibujan uno debajo de
+ * otro, separados por un alto de marcador, en el orden de su hora; el que llega después queda
+ * debajo y conserva su posición real mientras haya sitio. Si el grupo no cabe en el día, **sube
+ * entero** lo justo para que el último toque el borde: desplazar solo el que sobra borraría el
+ * orden y sacaría al resto de su hora sin decirlo.
+ *
+ * Un marcador cuya hora cae fuera del eje —el eje lo fija el plan, no los compromisos— se pega al
+ * borde más cercano y se marca `outside`, para que la vista pueda decir la hora exacta en el texto
+ * en vez de fingir que esa posición es la hora.
+ */
+export function unscheduledPlacements(
+  ghosts: readonly UnscheduledItem[],
+  axis: HourAxis,
+  hourHeight: number,
+  bodyHeight: number,
+): Map<string, UnscheduledPlacement> {
+  const byCell = new Map<string, UnscheduledItem[]>()
+
+  for (const ghost of ghosts) {
+    const key = `${ghost.developerId}|${ghost.date}`
+    const bucket = byCell.get(key)
+
+    if (bucket) {
+      bucket.push(ghost)
+    } else {
+      byCell.set(key, [ghost])
+    }
+  }
+
+  const placements = new Map<string, UnscheduledPlacement>()
+  const minutesOf = (ghost: UnscheduledItem) =>
+    ghost.time === null ? axis.startMinutes : clockMinutes(ghost.time)
+
+  for (const cell of byCell.values()) {
+    const ordered = [...cell].sort((left, right) => minutesOf(left) - minutesOf(right))
+    const wanted = ordered.map(
+      (ghost) => ((minutesOf(ghost) - axis.startMinutes) / 60) * hourHeight,
+    )
+
+    const stacked: number[] = []
+    let cursor = 0
+
+    for (const position of wanted) {
+      // `Math.max` es la pila: nunca por encima de donde le toca, y nunca encima del anterior.
+      const top = Math.max(position, cursor)
+      stacked.push(top)
+      cursor = top + UNSCHEDULED_HEIGHT
+    }
+
+    const overflow = Math.max(0, cursor - bodyHeight)
+
+    ordered.forEach((ghost, index) => {
+      const top = Math.max(0, (stacked[index] ?? 0) - overflow)
+      placements.set(ghost.workItemId, {
+        top,
+        height: UNSCHEDULED_HEIGHT,
+        outside: Math.abs(top - (wanted[index] ?? 0)) > 0.5,
+      })
+    })
+  }
+
+  return placements
+}
+
+/**
+ * Lo que la fila de una persona dice bajo su nombre: lo que ningún contador dice ya.
+ *
+ * La Fase 74 quitó «Sin plan» —un dato del documento leído como un dato de la persona— y puso en su
+ * lugar el hecho más completo que la fila podía afirmar. La Fase 75 quita también ese hecho cuando
+ * lo dice un contador: «Sin estimación» encima de un chip «7 pendientes» repite lo mismo dos veces, y
+ * «Sin tramos» encima de un chip «3 pendientes» también.
+ *
+ * Queda solo lo que nadie más dice:
+ *
+ * - `TRAMOS` — cuántos tramos tiene colocados. Es una cifra, y la rejilla no la da en otro sitio.
+ * - `SIN_TRABAJO` — no hay nada: ni tramos, ni compromisos, ni pendientes ni recuperables.
+ *
+ * Cuando hay trabajo pero no tramos, la fila **no** inventa una etiqueta: los chips de pendientes y
+ * de recuperables ya lo cuentan, y los marcadores del eje ya lo dibujan.
+ */
+export type ResourcePresenceKind = 'TRAMOS' | 'SIN_TRABAJO'
+
+/** Lo que la fila de una persona cuenta de su trabajo. */
+export interface ResourcePresence {
+  kind: ResourcePresenceKind
+  label: string
+}
+
+/** Las cuatro cifras de las que sale lo que la fila dice, y de las que sale su silencio. */
+export interface ResourceWork {
+  /** Tramos del plan que son de esta persona. */
+  tramos: number
+  /** Compromisos con fecha de GLPI y sin horas: los marcadores de la rejilla. */
+  sinEstimacion: number
+  /** Tickets que el motor dejó fuera del plan vigente. */
+  pendientes: number
+  /** De los pendientes, los que una declaración desbloquea. */
+  recuperables: number
+}
+
+export function resourcePresence({
+  tramos,
+  sinEstimacion,
+  pendientes,
+  recuperables,
+}: ResourceWork): ResourcePresence | null {
+  if (tramos > 0) return { kind: 'TRAMOS', label: countOf(tramos, 'tramo', 'tramos') }
+  // Hay trabajo y lo cuentan los chips: la fila se calla en vez de repetirlo.
+  if (sinEstimacion > 0 || pendientes > 0 || recuperables > 0) return null
+  return { kind: 'SIN_TRABAJO', label: 'Sin trabajo activo' }
 }
 
 /**

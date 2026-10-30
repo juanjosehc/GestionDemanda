@@ -27,18 +27,17 @@ import co.com.coltefinanciera.gestiondemanda.domain.enums.OperationalAlertType;
  * elementos que producen la alerta —el mismo endpoint que sirve la Fase 18—, y no una ruta de la
  * interfaz. Es lo que la hace comprobable: se puede pedir y verificar que el numero de elementos cuadra
  * con {@code count}. Cuando la alerta no tiene listado propio viaja {@code null}, y el campo viaja
- * igualmente, para que el esquema sea el mismo en las seis.
+ * igualmente, para que el esquema sea el mismo en todas.
  *
  * <p><strong>{@code generatedAt} va tambien en la alerta</strong>, aunque hoy sea el mismo instante que
  * el de la respuesta: hay una sola fuente, la fotografia. Va porque el dia que una alerta salga de otra
  * fuente su fecha ya estara donde tiene que estar, y porque una alerta sin fecha no se puede ni
  * archivar ni comparar.
  *
- * <p><strong>Las alertas clasifican, no particionan.</strong> Una fila declarada sin ninguno de los dos
- * valores se cuenta en {@code SIN_ESTIMACION}, en {@code SIN_COMPROMISO} y en {@code METADATA_INCOMPLETA}
- * a la vez. Es correcto —cada alerta responde a una pregunta distinta sobre el mismo elemento— pero
- * significa que sumar los {@code count} de la lista no mide nada. No se publica ningun total, y esto se
- * dice aqui para que nadie lo construya.
+ * <p><strong>Las alertas clasifican, no particionan.</strong> Un mismo elemento puede producir mas de
+ * una —un plan desplazado que ademas agoto la capacidad, por ejemplo—, asi que sumar los
+ * {@code count} de la lista no mide nada. No se publica ningun total, y esto se dice aqui para que
+ * nadie lo construya.
  *
  * @param type        que condicion se cumple. Es la identidad estable de la alerta.
  * @param severity    cuanto urge.

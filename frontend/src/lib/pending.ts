@@ -91,15 +91,18 @@ export const PENDING_CAUSE_LABEL: Record<PendingCause, string> = {
 /**
  * Qué hacer con cada causa. Va debajo del rótulo, en el panel y en el título del enlace.
  *
- * Las cuatro de información mandan a declarar porque **es lo único que las desbloquea**: sin
- * estimación el motor no sabe cuánto ocupa, y sin compromiso no sabe para cuándo. «No incluido en el
- * último plan» no se arregla declarando —ya está declarado—, se arregla generando el plan otra vez;
- * por eso su texto lo dice y su enlace no es el mismo que el de declarar.
+ * Tres de las cuatro de información mandan a declarar porque **es lo único que las desbloquea**: sin
+ * estimación el motor no sabe cuánto ocupa. La cuarta —sin compromiso— no se arregla declarando: el
+ * compromiso es el Internal TTR que publica GLPI desde la Fase 77, y lo que falta es la fecha en
+ * GLPI, no en la declaración. «No incluido en el último plan» tampoco se arregla declarando —ya está
+ * declarado—, se arregla generando el plan otra vez; por eso su texto lo dice y su enlace no es el
+ * mismo que el de declarar.
  */
 export const PENDING_CAUSE_DETAIL: Record<PendingCause, string> = {
   SIN_ESTIMACION: 'GLPI lo tiene asignado y le faltan las horas: el motor no sabe cuánto ocupa.',
-  SIN_COMPROMISO: 'Tiene horas, pero nadie fijó para cuándo: el motor no sabe dónde colocarlo.',
-  SIN_DECLARACION: 'GLPI lo tiene asignado y no tiene ni horas ni fecha compromiso.',
+  SIN_COMPROMISO:
+    'Tiene horas, pero GLPI no le publica fecha: el motor no sabe dónde colocarlo.',
+  SIN_DECLARACION: 'No tiene estimación declarada y GLPI no le publica fecha.',
   NO_TRADUCIBLE: 'GLPI lo entrega con un tipo que el contrato no conoce; no se puede clasificar.',
   FUERA_POR_CAPACIDAD: 'Sí entró al motor y no cupo: el plan vigente lo dejó fuera por capacidad.',
   SIN_ACUERDO: 'El plan lo movió de fecha y todavía nadie acordó la fecha nueva.',

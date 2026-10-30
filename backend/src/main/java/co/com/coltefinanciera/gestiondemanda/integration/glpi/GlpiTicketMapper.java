@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -232,12 +233,15 @@ public class GlpiTicketMapper {
      * rellenar huecos con valores que parecen datos— aplicada al campo que ahora si importa.
      */
     public Optional<OperationalDate> operationalDate(GlpiTicket ticket) {
-        Optional<LocalDate> internal = internalTimeToResolve(ticket);
+        // Se parsea la fecha-hora entera, no su dia: GLPI publica la hora del Internal TTR y quien
+        // ubica el ticket en la rejilla temporal la necesita. La fecha que alimenta el motor sigue
+        // siendo la misma (`OperationalDate::date`). Desde la Fase 72 la hora viaja con ella.
+        Optional<LocalDateTime> internal = parseDateTime(ticket.internalTimeToResolve());
         if (internal.isPresent()) {
-            return internal.map(date -> new OperationalDate(date, OperationalDate.INTERNAL_TTR));
+            return internal.map(at -> new OperationalDate(at, OperationalDate.INTERNAL_TTR));
         }
-        return timeToResolve(ticket)
-                .map(date -> new OperationalDate(date, OperationalDate.TTR));
+        return parseDateTime(ticket.timeToResolve())
+                .map(at -> new OperationalDate(at, OperationalDate.TTR));
     }
 
     /**
@@ -245,13 +249,35 @@ public class GlpiTicketMapper {
      *
      * @param source {@link #INTERNAL_TTR} o {@link #TTR}; nunca vacio cuando hay fecha
      */
-    public record OperationalDate(LocalDate date, String source) {
+    public record OperationalDate(LocalDateTime dateTime, String source) {
 
         /** La fecha de OLA, que es la fuente principal. */
         public static final String INTERNAL_TTR = "internal_time_to_resolve";
 
         /** La fecha de SLA, que es el respaldo. */
         public static final String TTR = "time_to_resolve";
+
+        /**
+         * El dia, que es lo que la planificacion usa.
+         *
+         * <p>El motor ubica un requerimiento en un dia, no en un instante: {@code PlacedBlock} guarda
+         * dias y la capacidad se descuenta por dia. La hora no entra ahi y no debe entrar.
+         */
+        public LocalDate date() {
+            return dateTime.toLocalDate();
+        }
+
+        /**
+         * La hora que GLPI publica junto a la fecha, sin la fraccion de segundo.
+         *
+         * <p><strong>No es una hora de trabajo ni una reserva.</strong> Es el instante del compromiso
+         * —el Internal TTR es una fecha-hora para GLPI— y sirve solo para situar el ticket en el eje
+         * del dia. Un ticket sin estimacion no consume capacidad por tener hora: la tiene porque su
+         * promesa la tiene.
+         */
+        public LocalTime time() {
+            return dateTime.toLocalTime();
+        }
     }
 
     /**

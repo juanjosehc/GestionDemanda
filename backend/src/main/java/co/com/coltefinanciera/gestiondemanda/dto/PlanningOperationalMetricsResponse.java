@@ -68,28 +68,27 @@ public record PlanningOperationalMetricsResponse(
      * <p><strong>Lo que este bloque no es.</strong> No es el historial de descartes de la capa
      * anticorrupcion. Aquellos descartes no se persisten —viajan en la respuesta de
      * {@code POST /from-glpi} y mueren ahi—, asi que reconstruirlos exigiria persistencia nueva, que
-     * esta fase no introduce. Los dos codigos que viajan aqui dicen otra cosa, y la dicen exacta:
-     * <em>cuantas filas declaradas producirian hoy este descarte si se planificaran ahora</em>. Es
-     * la lectura que sirve para decidir a quien hay que ir a pedirle algo.
+     * esta fase no introduce. El codigo que viaja aqui dice otra cosa, y la dice exacta: <em>cuantas
+     * filas declaradas producirian hoy este descarte si se planificaran ahora</em>. Es la lectura que
+     * sirve para decidir a quien hay que ir a pedirle algo.
+     *
+     * <p><strong>La carencia de compromiso ya no existe.</strong> Desde la Fase 77 la fecha de
+     * compromiso la publica GLPI y no se declara, asi que una fila declarada solo puede carecer de
+     * horas. Los campos {@code withoutCommitment}, {@code incomplete} y {@code retracted} se
+     * retiraron con la captura manual que los alimentaba: mantenerlos habria contado como incompleta
+     * cada declaracion nueva.
      *
      * @param total             filas declaradas. El denominador.
-     * @param plannable         filas con estimacion y compromiso: las que hoy entrarian al motor.
+     * @param plannable         filas con horas estimadas: las que aportan algo al motor.
      * @param withoutEstimation filas sin estimacion, con el codigo con el que la capa anticorrupcion
      *                          las descartaria.
-     * @param withoutCommitment filas sin compromiso, con su codigo.
-     * @param incomplete        filas a las que les falta algo.
-     * @param retracted         filas sin ninguno de los dos valores. Se expone porque sin el la
-     *                          aritmetica de este bloque no cierra para el consumidor.
      */
     public record Declared(
             String source,
             String scope,
             long total,
             long plannable,
-            DeclaredGap withoutEstimation,
-            DeclaredGap withoutCommitment,
-            long incomplete,
-            long retracted) {
+            DeclaredGap withoutEstimation) {
 
         /** La tabla de la que sale todo este bloque. */
         public static final String SOURCE = "planning_metadata";

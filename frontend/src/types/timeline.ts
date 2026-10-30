@@ -63,9 +63,13 @@ export type CommitmentRisk =
  * Un ticket que tiene día en GLPI pero no tiene tramo, y que hay que enseñar en ese día.
  *
  * **No es un {@link TimelineItem} y no se puede fabricar uno.** Un tramo ocupa jornada y este no
- * ocupa nada: no tiene horas, no suma capacidad y no está en ningún plan. Convertirlo en un tramo de
- * cero horas lo haría entrar en los filtros, en las sumas y en el detalle como si estuviera
- * planificado, que es justo lo que no es.
+ * ocupa nada: no declara horas de trabajo, no suma capacidad y no está en ningún plan. Convertirlo en
+ * un tramo de cero horas lo haría entrar en los filtros, en las sumas y en el detalle como si
+ * estuviera planificado, que es justo lo que no es.
+ *
+ * **Desde la Fase 72 lleva la hora del compromiso.** El Internal TTR es una fecha-hora en GLPI, y esa
+ * hora sitúa el ticket en el eje del día sin convertirlo en un tramo: dice **cuándo vence**, no
+ * **cuánto dura**.
  */
 export interface UnscheduledItem {
   workItemId: string
@@ -74,6 +78,13 @@ export interface UnscheduledItem {
   developerId: string
   /** El día en que GLPI lo ubica (Internal TTR), en formato ISO. */
   date: string
+  /**
+   * La hora del Internal TTR, como `HH:mm`; nula si GLPI publicó la fecha sin hora.
+   *
+   * No es una duración —no la hay, y por eso el ticket no entró al plan—: es el instante en que
+   * vence el compromiso, y es lo que lo coloca en la rejilla de su día.
+   */
+  time: string | null
   /** La causa que publicó el backend, en palabras: lo que le falta al ticket. */
   cause: string
 }

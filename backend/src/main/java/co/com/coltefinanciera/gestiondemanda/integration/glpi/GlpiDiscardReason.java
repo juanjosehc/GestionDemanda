@@ -7,19 +7,16 @@ package co.com.coltefinanciera.gestiondemanda.integration.glpi;
  * persona que opera GLPI y nombra el campo que hay que corregir. Este codigo esta escrito para que lo
  * lea un programa, y existe porque las dos cosas no caben en un solo campo: un texto libre no se
  * puede contar, y contar los descartes por causa es lo unico que permite responder la pregunta de la
- * transicion —si van por detras los desarrolladores que estiman o los gestores que comprometen—.
+ * transicion —si van por detras los desarrolladores que estiman o los tickets que GLPI no fecha—.
  *
  * <p>Es un enum y no un conjunto de constantes de texto por lo mismo que
  * {@code PlanningMetadataField}: es un conjunto cerrado, y un codigo inventado en un sitio lejano
  * solo se descubre el dia que alguien lo lee en un informe.
  *
- * <p><strong>{@link #SIN_ESTIMACION_DECLARADA} y {@link #SIN_COMPROMISO_DECLARADO} son dos y no
- * uno.</strong> Se podrian haber juntado en un {@code METADATA_INCOMPLETA} con el detalle de lo que
- * falta, y se decidio no hacerlo: cada uno nombra a una persona distinta que tiene que actuar —el
- * desarrollador para la estimacion, el gestor de demanda para el compromiso— y un codigo combinado
- * borraria justo el dato que hace util el descarte. El precio es que un ticket sin declaracion
- * produce dos entradas con el mismo identificador, asi que el numero de descartes ya no es el numero
- * de tickets; quien los cuente tiene que contar identificadores distintos.
+ * <p><strong>Desde la Fase 77 la carencia declarada es una sola.</strong>
+ * {@link #SIN_COMPROMISO_DECLARADO} se retiro con la captura manual de la fecha: el compromiso es el
+ * Internal TTR de GLPI y una declaracion ya no puede carecer de el. Lo que si sigue sin fecha son los
+ * tickets a los que GLPI no les publica ninguna, y esos los nombra {@link #SIN_FECHA_EN_GLPI}.
  */
 public enum GlpiDiscardReason {
 
@@ -43,17 +40,6 @@ public enum GlpiDiscardReason {
      * retirara la estimacion—; el codigo no, porque la accion a tomar es la misma.
      */
     SIN_ESTIMACION_DECLARADA,
-
-    /**
-     * La declaracion del negocio no tiene fecha compromiso.
-     *
-     * <p><strong>Desde la Fase 66b no lo emite el validador</strong>: la fecha que ubica un
-     * requerimiento viene de GLPI, y por eso un requerimiento sin fecha se descarta con
-     * {@link #SIN_FECHA_EN_GLPI}. El codigo se conserva porque sigue nombrando una carencia real de
-     * los datos —hay declaraciones sin fecha— y es el que publica la fotografia operativa en su hueco
-     * de compromisos, donde el sujeto es la declaracion y no el ticket.
-     */
-    SIN_COMPROMISO_DECLARADO,
 
     /**
      * GLPI no trae fecha con la que ubicar el requerimiento.

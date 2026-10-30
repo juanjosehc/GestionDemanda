@@ -90,28 +90,21 @@ public class JpaPlanningMetadataRepository implements PlanningMetadataRepository
     @Override
     @Transactional(readOnly = true)
     public DeclaredPlanningMetrics declaredMetrics() {
-        return new DeclaredPlanningMetrics(
-                rows.count(),
-                rows.countByEstimatedHoursIsNull(),
-                rows.countByCommittedDateIsNull(),
-                rows.countByEstimatedHoursIsNullAndCommittedDateIsNull());
+        return new DeclaredPlanningMetrics(rows.count(), rows.countByEstimatedHoursIsNull());
     }
 
     /**
      * Elige el listado segun la carencia.
      *
-     * <p>El {@code switch} no tiene rama por defecto y no la quiere: con las tres constantes cubiertas
-     * el compilador lo da por exhaustivo, asi que el dia que se añada una cuarta carencia esto deja de
-     * compilar en vez de devolver una lista vacia en silencio.
+     * <p>El {@code switch} no tiene rama por defecto y no la quiere: con todas las constantes
+     * cubiertas el compilador lo da por exhaustivo, asi que el dia que se añada otra carencia esto
+     * deja de compilar en vez de devolver una lista vacia en silencio.
      */
     @Override
     @Transactional(readOnly = true)
     public List<PlanningMetadata> findByDeclaredGap(DeclaredGap gap) {
         List<PlanningMetadataEntity> found = switch (gap) {
             case SIN_ESTIMACION -> rows.findByEstimatedHoursIsNullOrderByWorkItemIdAsc();
-            case SIN_COMPROMISO -> rows.findByCommittedDateIsNullOrderByWorkItemIdAsc();
-            case METADATA_INCOMPLETA ->
-                    rows.findByEstimatedHoursIsNullOrCommittedDateIsNullOrderByWorkItemIdAsc();
         };
 
         return found.stream().map(PlanningMetadataEntity::toDomain).toList();

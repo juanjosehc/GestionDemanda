@@ -55,3 +55,7 @@ desktop.ini
 logs/
 *.log
 .playwright-mcp/
+
+# El probe de GLPI deja aqui su entorno temporal. Contiene los tokens de la
+# aplicacion, asi que nunca entra al repositorio: se exporta al shell y se borra.
+.probe/.glpi_tmp_env

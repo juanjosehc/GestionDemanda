@@ -5,7 +5,6 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { DeclarationForm } from '@/components/declarations/DeclarationForm'
 import { CommitmentSummary } from '@/components/timeline/CommitmentSummary'
 import { DisplacementCause } from '@/components/timeline/DisplacementCause'
-import { IncidentSimulator } from '@/components/timeline/IncidentSimulator'
 import { TimelineGrid } from '@/components/timeline/TimelineGrid'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,6 +37,7 @@ import {
   plannedByDeveloper,
   teamPending,
 } from '@/lib/pending'
+import { NO_FILTERS } from '@/lib/incidents'
 import { AGREEMENT_ORIGIN_BADGE, agreementOrigin, agreementStates } from '@/lib/renegotiations'
 import { NO_ROW_FILTERS, filterRows, hasFilters } from '@/lib/timelineFilters'
 import {
@@ -57,13 +57,13 @@ import {
   calendarPath,
   comparisonPath,
   declarationPath,
+  incidentsPath,
   planningPath,
   renegotiationPath,
   ROUTES,
 } from '@/routes/navigation'
 import type { BadgeVariant } from '@/components/ui/badge'
 import type { CoverageTotals, DeveloperCoverage } from '@/lib/coverage'
-import type { SimulationResult } from '@/lib/simulation'
 import type { TeamRowFilters, TeamRowSignals } from '@/lib/timelineFilters'
 import type { ReactNode } from 'react'
 import type { DeclarationItem, DeveloperDeclarationsResponse } from '@/types/declarations'
@@ -71,7 +71,7 @@ import type { PendingCause, PendingGroup, PendingItem } from '@/lib/pending'
 import type { OperationalAlert } from '@/types/alerts'
 import type { RenegotiationItem } from '@/types/renegotiations'
 import type { TeamPerson } from '@/types/team'
-import type { TeamConflict, TimelineItem, WorkItemType } from '@/types/timeline'
+import type { TeamConflict, TimelineItem, UnscheduledItem, WorkItemType } from '@/types/timeline'
 
 /**
  * El nombre de cada persona, indexado por todo con lo que se la puede nombrar.
@@ -211,6 +211,16 @@ export function TeamTimeline() {
   const [selected, setSelected] = useState<string | null>(null)
 
   /*
+   * El ticket sin estimación abierto, por su identificador.
+   *
+   * **Es el otro sujeto del mismo panel.** Un tramo tiene fecha de inicio y duración; un ticket que
+   * el plan no colocó no tiene ninguna de las dos, y por eso no se puede abrir por `blockKey`. Se
+   * guarda el identificador y el panel resuelve su fila de declaración, que es la que trae el título,
+   * el estado de GLPI y el Internal TTR.
+   */
+  const [selectedTicket, setSelectedTicket] = useState<string | null>(null)
+
+  /*
    * El ticket señalado por la dirección, si lo hay.
    *
    * **El panel se abre por clave de tramo, y la dirección no la conoce**: un ticket puede tener más
@@ -233,9 +243,23 @@ export function TeamTimeline() {
     setTicket(null)
     setSelected(blockKey(item))
   }, [])
+  /**
+   * Abrir el detalle de un ticket sin estimación.
+   *
+   * Comparte con `openDetail` el foco y el cierre: se sale de la misma rejilla hacia el mismo panel,
+   * así que a dónde vuelve el foco lo decide igual quien lo abrió.
+   */
+  const openTicketDetail = useCallback((ghost: UnscheduledItem) => {
+    openerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setSelected(null)
+    setTicket(null)
+    setSelectedTicket(ghost.workItemId)
+  }, [])
   const closeDetail = useCallback(() => {
     setSelected(null)
     setTicket(null)
+    setSelectedTicket(null)
     openerRef.current?.focus()
   }, [])
 
@@ -270,14 +294,6 @@ export function TeamTimeline() {
     ...NO_ROW_FILTERS,
     developerId: searchParams.get('tecnico') ?? NO_ROW_FILTERS.developerId,
   }))
-
-  /**
-   * El incidente de demostración, si lo hay.
-   *
-   * Vive aquí y solo aquí: no se guarda, no se envía y se pierde al recargar. `null` es el estado
-   * normal de la pantalla.
-   */
-  const [simulation, setSimulation] = useState<SimulationResult | null>(null)
 
   /**
    * Las filas del timeline son **las personas del equipo operativo**, no los planes.
@@ -419,7 +435,7 @@ export function TeamTimeline() {
   // paso siguiente a «llama a esta persona»: qué se le pide exactamente y por dónde empezar.
   const tickets = priorityTickets(pending, coverageRows)
 
-  // Cuántos desbloquea una declaración, por persona: la rejilla lo enseña junto a «Sin plan».
+  // Cuántos desbloquea una declaración, por persona: la rejilla lo enseña junto al estado de la fila.
   const recoverableCounts = Object.fromEntries(
     coverageRows.map((row) => [row.developerId, row.blockedByInformation]),
   )
@@ -439,7 +455,7 @@ export function TeamTimeline() {
   )
 
   // Quién tiene plan vigente, por identificador: es la columna «Plan» de la cobertura y la misma
-  // señal que pinta «Sin plan» en la rejilla.
+  // señal que cuenta la rejilla en la fila de la persona.
   const plannedIds = useMemo(
     () =>
       new Set(
@@ -490,12 +506,6 @@ export function TeamTimeline() {
 
   const shownIds = new Set(filterRows(rowSignals, filters).map((row) => row.developerId))
 
-  // La persona simulada no se esconde por un filtro: se acaba de pedir ver su incidente, y esconder
-  // su fila dejaría al gestor con un simulador que no enseña nada.
-  if (simulation && !simulation.error) {
-    shownIds.add(simulation.input.developerId)
-  }
-
   const shownResources = agenda.resources.filter((resource) => shownIds.has(resource.developerId))
 
   // El nombre con el que la pantalla nombra a cada persona, para los controles que la listan.
@@ -503,26 +513,6 @@ export function TeamTimeline() {
     developerId: person.developerId,
     name: names[person.developerId] ?? person.name ?? person.developerId,
   }))
-
-  /*
-   * La simulación tal como la pinta la rejilla: un mapa de claves de tramo a fecha propuesta. Se
-   * arma aquí para que la rejilla no tenga que conocer el resultado completo, y se omite si la
-   * simulación no pudo calcularse —un error no tiene tramos que marcar—.
-   */
-  const simulationLayer =
-    simulation && !simulation.error
-      ? {
-          developerId: simulation.input.developerId,
-          date: simulation.input.date,
-          hours: simulation.input.hours,
-          severity: simulation.input.severity,
-          availableHours: simulation.availableHours,
-          remainingAfter: simulation.remainingAfter,
-          displaced: new Map(
-            simulation.displaced.map((block) => [block.key, block.newDate] as const),
-          ),
-        }
-      : undefined
 
   const readingPending = declarations.isPending
   // Un fallo del lote deja a todas las personas sin leer; los desconocidos son un 404 por persona que
@@ -596,7 +586,7 @@ export function TeamTimeline() {
       <EmptyState
         icon={ChartGantt}
         title="El equipo no tiene planes todavía"
-        detail={`El equipo operativo tiene ${people.length} ${people.length === 1 ? 'persona' : 'personas'} y ninguna tiene un plan vigente. En cuanto haya al menos uno, todo el equipo aparece aquí: quien tenga plan, con su capacidad y su trabajo; quien no, marcado «Sin plan».`}
+        detail={`El equipo operativo tiene ${people.length} ${people.length === 1 ? 'persona' : 'personas'} y ninguna tiene un plan vigente. En cuanto haya al menos uno, todo el equipo aparece aquí: quien tenga plan, con su capacidad y su trabajo; quien no, con sus tramos, sus pendientes y sus recuperables, o «Sin trabajo activo» si no tiene nada.`}
         action={
           <Button asChild variant="outline" size="sm">
             <Link to={ROUTES.planning}>Generar un plan</Link>
@@ -615,14 +605,38 @@ export function TeamTimeline() {
 
   /*
    * El tramo abierto: el que se pulsó o, si la dirección trajo un ticket, el primero de sus tramos.
-   * Un ticket que el plan no colocó no tiene tramo y no abre panel —la vista queda filtrada por su
-   * persona, que es lo que se puede enseñar de él aquí—.
+   * Un ticket que el plan no colocó no tiene tramo —entonces abre el otro sujeto del panel, unas
+   * líneas más abajo—.
    */
   const selectedItem =
     agenda.items.find((item) => blockKey(item) === selected) ??
     (selected === null && ticket !== null
       ? (agenda.items.find((item) => item.workItemId === ticket) ?? null)
       : null)
+
+  /*
+   * El ticket que no tiene tramo, resuelto a su fila de declaración.
+   *
+   * **Se busca por identificador y no por clave de tramo**, porque es justamente lo que un ticket sin
+   * estimación no tiene. La fila sale de la lectura que ya alimenta los chips y el panel de
+   * pendientes: no hay una consulta nueva, y por eso abrir el panel no hace esperar.
+   *
+   * El sujeto se elige una sola vez: si el ticket tiene tramo, manda el tramo —con su día, su hora y
+   * su duración—; la fila de declaración llega igual, dentro del panel.
+   */
+  let selectedTicketItem: { developerId: string; item: DeclarationItem } | null = null
+  const ticketWorkItemId = selectedTicket ?? (selected === null ? ticket : null)
+  if (selectedItem === null && ticketWorkItemId !== null) {
+    for (const developerId of developerIds) {
+      const item = declarationsById[developerId]?.items.find(
+        (entry) => entry.workItemId === ticketWorkItemId,
+      )
+      if (item) {
+        selectedTicketItem = { developerId, item }
+        break
+      }
+    }
+  }
 
   // Quién quedó fuera del equipo, por su identificador: quien no está en el padrón no tiene fila, y
   // la pantalla lo dice en vez de esconder el trabajo sin nombrarlo.
@@ -663,21 +677,6 @@ export function TeamTimeline() {
         shown={shownResources.length}
       />
 
-      {/*
-        La demostración, encima de la agenda que explica: se elige a una persona y un día, y el
-        incidente se ve sobre la rejilla real. Con un solo scroll vertical, la agenda mide varios
-        miles de píxeles; un panel de control al final de ella sería un panel que nadie encuentra.
-        Nada de lo que hace aquí sale de esta pantalla.
-      */}
-      <IncidentSimulator
-        people={peopleOptions}
-        days={days}
-        resources={agenda.resources}
-        items={agenda.items}
-        result={simulation}
-        onChange={setSimulation}
-      />
-
       <TimelineGrid
         resources={shownResources}
         items={agenda.items}
@@ -696,7 +695,12 @@ export function TeamTimeline() {
         initialZoom={0}
         onSelect={openDetail}
         selected={selected}
-        simulation={simulationLayer}
+        // Los dos sujetos del panel se abren desde la misma rejilla. El marcador de un ticket sin
+        // estimación deja de ser un `div` y pasa a ser un botón cuando esta prop llega.
+        onTicketSelect={openTicketDetail}
+        // El que se está enseñando, venga de un clic o de `?ticket=`: `aria-pressed` no distingue
+        // cómo se llegó, solo cuál es el sujeto del panel.
+        selectedTicket={ticketWorkItemId}
         states={statesByItem}
         unscheduled={unscheduled}
         risks={commitmentRisks}
@@ -733,15 +737,17 @@ export function TeamTimeline() {
         onFocusAgreements={(developerId) => focusOn(developerId, 'acuerdos')}
       />
 
-      {selectedItem && (
+      {/*
+        Un solo panel para los dos sujetos, y nunca los dos a la vez: el tramo manda cuando existe.
+
+        `key` por sujeto y por ticket: cambiar de tramo —o de ticket suelto— remonta el panel y
+        devuelve su estado local —la declaración abierta— al detalle. Sin clave, volver al anterior
+        reabriría un formulario a medio escribir.
+      */}
+      {selectedItem ? (
         <ItemDetail
-          /*
-            `key` por tramo: cambiar de ticket remonta el panel y devuelve su estado local —la
-            declaración abierta— al detalle. Sin clave, volver al tramo anterior reabriría un
-            formulario a medio escribir.
-          */
-          key={selectedItem.workItemId}
-          item={selectedItem}
+          key={`tramo:${selectedItem.workItemId}`}
+          subject={{ kind: 'TRAMO', item: selectedItem }}
           name={names[selectedItem.developerId] ?? selectedItem.developerId}
           coverage={coverageRows.find((row) => row.developerId === selectedItem.developerId)}
           renegotiation={agreementByItem.get(selectedItem.workItemId)}
@@ -760,6 +766,29 @@ export function TeamTimeline() {
           )}
           onClose={closeDetail}
         />
+      ) : (
+        selectedTicketItem && (
+          <ItemDetail
+            key={`ticket:${selectedTicketItem.item.workItemId}`}
+            subject={{
+              kind: 'TICKET',
+              developerId: selectedTicketItem.developerId,
+              item: selectedTicketItem.item,
+            }}
+            name={names[selectedTicketItem.developerId] ?? selectedTicketItem.developerId}
+            coverage={coverageRows.find(
+              (row) => row.developerId === selectedTicketItem?.developerId,
+            )}
+            renegotiation={agreementByItem.get(selectedTicketItem.item.workItemId)}
+            declarationItem={selectedTicketItem.item}
+            conflicts={agenda.conflicts.filter(
+              (conflict) =>
+                conflict.developerId === selectedTicketItem?.developerId &&
+                conflict.workItemId === selectedTicketItem?.item.workItemId,
+            )}
+            onClose={closeDetail}
+          />
+        )
       )}
 
       <ConflictPanel conflicts={agenda.conflicts} names={names} />
@@ -926,20 +955,20 @@ function TimelineToolbar({ filters, onChange, people, total, shown }: TimelineTo
 
         <div
           role="group"
-          aria-label="Plan"
+          aria-label="Plan vigente"
           className="flex gap-0.5 rounded-md border border-border p-0.5"
         >
           <Chip
             active={filters.plan === 'CON'}
             onClick={() => set({ plan: filters.plan === 'CON' ? 'TODOS' : 'CON' })}
           >
-            Con plan
+            Con plan vigente
           </Chip>
           <Chip
             active={filters.plan === 'SIN'}
             onClick={() => set({ plan: filters.plan === 'SIN' ? 'TODOS' : 'SIN' })}
           >
-            Sin plan
+            Sin plan vigente
           </Chip>
         </div>
 
@@ -984,8 +1013,20 @@ function TimelineToolbar({ filters, onChange, people, total, shown }: TimelineTo
   )
 }
 
+/**
+ * Lo que el panel puede enseñar: un tramo del plan o un ticket que el plan no colocó.
+ *
+ * **Son el mismo panel y no dos.** Las dos cosas son un ticket de GLPI y las dos se declaran con el
+ * mismo formulario; lo que cambia es qué se sabe de él. Un tramo trae día, hora y duración porque el
+ * motor lo colocó; un ticket sin estimación no trae ninguna de las tres, y lo que sí trae —título,
+ * estado de GLPI e Internal TTR— lo publica su fila de declaración.
+ */
+type DetailSubject =
+  | { kind: 'TRAMO'; item: TimelineItem }
+  | { kind: 'TICKET'; developerId: string; item: DeclarationItem }
+
 interface ItemDetailProps {
-  item: TimelineItem
+  subject: DetailSubject
   /** El nombre de la persona, el mismo que usa la rejilla. */
   name: string
   /** La cobertura de esa persona, si su declaración se pudo leer. Es la fila que ya calculó la tabla. */
@@ -1024,7 +1065,7 @@ interface ItemDetailProps {
  * lleva a una lista vacía enseña a desconfiar de la pantalla entera.
  */
 function ItemDetail({
-  item,
+  subject,
   name,
   coverage,
   renegotiation,
@@ -1032,7 +1073,45 @@ function ItemDetail({
   conflicts,
   onClose,
 }: ItemDetailProps) {
-  const displaced = item.planningStatus === 'DESPLAZADO'
+  const tramo = subject.kind === 'TRAMO' ? subject.item : null
+  const displaced = tramo?.planningStatus === 'DESPLAZADO'
+
+  // La fila de declaración del ticket: la suya cuando el sujeto es un ticket suelto, la que ya
+  // cargó la capa de pendientes cuando es un tramo. Es la misma lectura en los dos casos.
+  const row = subject.kind === 'TICKET' ? subject.item : declarationItem
+  const workItemId = subject.item.workItemId
+  const developerId = subject.kind === 'TRAMO' ? subject.item.developerId : subject.developerId
+
+  /*
+   * El estado con el que se abre la cabecera.
+   *
+   * Un tramo se nombra por lo que el plan hizo con él; un ticket suelto, por lo que le falta para
+   * entrar al plan —el mismo rótulo que usa el panel de pendientes—. «Planificable» no es una falta,
+   * así que se dice tal cual.
+   */
+  const stateLabel =
+    subject.kind === 'TRAMO'
+      ? displaced
+        ? 'Desplazado'
+        : 'Planificado'
+      : subject.item.declarationStatus === 'PLANIFICABLE'
+        ? 'Planificable'
+        : PENDING_CAUSE_LABEL[subject.item.declarationStatus]
+
+  const stateVariant: BadgeVariant =
+    subject.kind === 'TRAMO' ? (displaced ? 'warning' : 'info') : 'secondary'
+
+  // El tipo sale de la misma fuente en los dos casos; un ticket sin tipo traducido se nombra por lo
+  // que es —un ticket— en vez de inventarle una clasificación.
+  const type = subject.kind === 'TRAMO' ? subject.item.workItemType : subject.item.type
+  const typeLabel =
+    type === 'INCIDENTE' ? 'Incidente' : type === 'REQUERIMIENTO' ? 'Requerimiento' : 'Ticket'
+
+  /** El Internal TTR en una línea: el día y, cuando GLPI la publicó, la hora. */
+  const internalTtr =
+    row?.operationalDate == null
+      ? null
+      : `${formatDay(row.operationalDate)}${row.operationalTime ? ` · ${row.operationalTime.slice(0, 5)}` : ''}`
 
   // La declaración sustituye al detalle dentro del mismo panel; cerrarla —o guardarla— devuelve al
   // detalle sin mover la agenda. El estado es local y muere con el tramo gracias a la `key`.
@@ -1040,27 +1119,41 @@ function ItemDetail({
 
   return (
     <SidePanel
-      labelledBy="detalle-tramo"
+      labelledBy={subject.kind === 'TRAMO' ? 'detalle-tramo' : 'detalle-ticket'}
       closeLabel="Cerrar detalle"
       onClose={onClose}
       header={
         <>
-          <h2 id="detalle-tramo" className="flex flex-wrap items-center gap-2 text-sm font-medium">
-            <span>{item.workItemType === 'INCIDENTE' ? 'Incidente' : 'Requerimiento'}</span>
-            <span className="font-mono">{item.workItemId}</span>
-            <Badge variant={displaced ? 'warning' : 'info'}>
-              {displaced ? 'Desplazado' : 'Planificado'}
-            </Badge>
+          <h2
+            id={subject.kind === 'TRAMO' ? 'detalle-tramo' : 'detalle-ticket'}
+            className="flex flex-wrap items-center gap-2 text-sm font-medium"
+          >
+            <span>{typeLabel}</span>
+            <span className="font-mono">{workItemId}</span>
+            <Badge variant={stateVariant}>{stateLabel}</Badge>
           </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {name} · {formatDay(item.startsAt.slice(0, 10))} · {formatTime(item.startsAt)}–
-            {formatTime(item.endsAt)} · {formatHours(item.durationHours)} h de{' '}
-            {formatHours(item.estimatedHours)} h estimadas
-            {item.committedDate && ` · compromiso ${formatDay(item.committedDate)}`}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Plan <span className="font-mono">{item.sourcePlanId}</span>
-          </p>
+          {tramo ? (
+            <>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {name} · {formatDay(tramo.startsAt.slice(0, 10))} · {formatTime(tramo.startsAt)}–
+                {formatTime(tramo.endsAt)} · {formatHours(tramo.durationHours)} h de{' '}
+                {formatHours(tramo.estimatedHours)} h estimadas
+                {tramo.committedDate && ` · compromiso ${formatDay(tramo.committedDate)}`}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Plan <span className="font-mono">{tramo.sourcePlanId}</span>
+              </p>
+            </>
+          ) : (
+            /*
+              Un ticket sin tramo no tiene día ni duración que enseñar: el plan no lo colocó. Lo que
+              sí tiene es su fecha de GLPI, y esa va en la cabecera porque es la que lo ubica.
+            */
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {name}
+              {internalTtr ? ` · Internal TTR ${internalTtr}` : ' · GLPI no le publica fecha'}
+            </p>
+          )}
         </>
       }
     >
@@ -1082,16 +1175,16 @@ function ItemDetail({
             se enlaza a la pantalla, que vuelve a leer antes de escribir. Las dos rutas acaban en el
             mismo `DeclarationForm` y en el mismo servicio; no hay una segunda lógica.
           */}
-          {declarationItem ? (
+          {row ? (
             <Button variant="outline" size="sm" onClick={() => setDeclaring(true)}>
-              Declarar
+              {tramo ? 'Declarar' : 'Declarar estimación'}
             </Button>
           ) : (
             <Button asChild variant="outline" size="sm">
               <Link
                 to={declarationPath({
-                  developerId: item.developerId,
-                  workItemId: item.workItemId,
+                  developerId,
+                  workItemId,
                   from: ROUTES.teamTimeline,
                 })}
               >
@@ -1100,30 +1193,73 @@ function ItemDetail({
             </Button>
           )}
 
-          {/* La generación del plan ya sabe pedir el técnico por la dirección. */}
+          {/*
+            La pantalla de Tickets existe y no se duplica: se enlaza. Aterriza filtrada por la
+            persona —el único filtro que la tabla sembraría por sí sola— para no dejar al gestor
+            delante de la tabla entera. La tabla no sabe abrir un ticket concreto por la dirección;
+            ver el riesgo anotado en `docs/decisiones-arquitectonicas.md`.
+          */}
           <Button asChild variant="ghost" size="sm">
-            <Link to={planningPath(item.developerId)}>Generar plan</Link>
+            <Link to={incidentsPath({ ...NO_FILTERS, person: developerId }, 'operativo')}>
+              Abrir en Tickets
+            </Link>
           </Button>
 
-          {(item.displacement || renegotiation) && (
-            <Button asChild variant="outline" size="sm">
-              <Link to={renegotiationPath(item.workItemId)}>Renegociar</Link>
+          {/* La generación del plan ya sabe pedir el técnico por la dirección. */}
+          {tramo && (
+            <Button asChild variant="ghost" size="sm">
+              <Link to={planningPath(developerId)}>Generar plan</Link>
             </Button>
           )}
 
-          <Button asChild variant="ghost" size="sm">
-            <Link to={calendarPath(item.sourcePlanId)}>Abrir detalle</Link>
-          </Button>
+          {((tramo?.displacement ?? false) || renegotiation) && (
+            <Button asChild variant="outline" size="sm">
+              <Link to={renegotiationPath(workItemId)}>Renegociar</Link>
+            </Button>
+          )}
 
           {/*
-            Comparar vive en el calendario y sigue viviendo ahi: no se trae la pantalla, se enlaza.
-            Lo que cambia es desde donde se llega —de una barra del timeline en vez de la lista de
-            planes—, que es lo que convierte la comparacion en un modo del timeline.
+            El calendario, la comparación y el conflicto son del **plan**: sin tramo no hay plan que
+            abrir, y el panel no enseña acciones que no llevan a ninguna parte.
           */}
-          <Button asChild variant="ghost" size="sm">
-            <Link to={comparisonPath(item.sourcePlanId)}>Comparar</Link>
-          </Button>
+          {tramo && (
+            <>
+              <Button asChild variant="ghost" size="sm">
+                <Link to={calendarPath(tramo.sourcePlanId)}>Abrir detalle</Link>
+              </Button>
+
+              {/*
+                Comparar vive en el calendario y sigue viviendo ahi: no se trae la pantalla, se enlaza.
+                Lo que cambia es desde donde se llega —de una barra del timeline en vez de la lista de
+                planes—, que es lo que convierte la comparacion en un modo del timeline.
+              */}
+              <Button asChild variant="ghost" size="sm">
+                <Link to={comparisonPath(tramo.sourcePlanId)}>Comparar</Link>
+              </Button>
+            </>
+          )}
         </div>
+
+        {/*
+          Los hechos del ticket, iguales vengan de un tramo o de un ticket suelto: título, estado en
+          GLPI, Internal TTR y a quién está asignado. Es la información que hasta ahora solo se
+          veía yendo a Declaración o a Tickets.
+        */}
+        {row && (
+          <dl
+            data-slot="ticket-facts"
+            className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs"
+          >
+            <dt className="text-muted-foreground">Título</dt>
+            <dd className="min-w-0">{row.title}</dd>
+            <dt className="text-muted-foreground">Estado en GLPI</dt>
+            <dd>{row.status ?? 'sin traducir'}</dd>
+            <dt className="text-muted-foreground">Internal TTR</dt>
+            <dd>{internalTtr ?? 'GLPI no lo publica'}</dd>
+            <dt className="text-muted-foreground">Desarrollador</dt>
+            <dd>{name}</dd>
+          </dl>
+        )}
 
         {coverage && (
           <p data-slot="item-coverage" className="text-xs text-muted-foreground">
@@ -1132,14 +1268,14 @@ function ItemDetail({
           </p>
         )}
 
-        {item.displacement && (
+        {tramo?.displacement && (
           <DisplacementCause
-            originalDate={item.displacement.originalDate}
-            newDate={item.displacement.newDate}
-            appliedRule={item.displacement.appliedRule}
-            incidentId={item.displacement.incidentId}
-            severity={item.displacement.incidentSeverity}
-            reason={item.displacement.reason}
+            originalDate={tramo.displacement.originalDate}
+            newDate={tramo.displacement.newDate}
+            appliedRule={tramo.displacement.appliedRule}
+            incidentId={tramo.displacement.incidentId}
+            severity={tramo.displacement.incidentSeverity}
+            reason={tramo.displacement.reason}
           />
         )}
 
@@ -1188,7 +1324,7 @@ interface CoveragePanelProps {
   /** Los pendientes por grupo, sumados de las filas. Es «qué impide planificar», en una línea. */
   groups: Record<PendingGroup, number>
   names: Readonly<Record<string, string>>
-  /** Quién tiene plan vigente: la columna «Plan» y la misma señal que pinta «Sin plan» arriba. */
+  /** Quién tiene plan vigente: la columna «Plan» y el mismo criterio que filtra arriba. */
   withPlan: ReadonlySet<string>
   /** Los tickets que una llamada desbloquea, ya ordenados por `coverage.priorityTickets`. */
   tickets: readonly PendingItem[]
@@ -1539,7 +1675,7 @@ function CoveragePanel({
                       {withPlan.has(row.developerId) ? (
                         'Con plan'
                       ) : (
-                        <Badge variant="secondary">Sin plan</Badge>
+                        <Badge variant="secondary">Sin plan vigente</Badge>
                       )}
                     </td>
                     <td className="py-1 pr-4 text-right tabular-nums">{row.active}</td>

@@ -188,15 +188,15 @@ class PlanningOperationalAlertsEndpointsTest {
     }
 
     /**
-     * Las tres alertas declaradas, y cada una enlazando con su desglose.
+     * La unica alerta declarada, enlazando con su desglose.
      *
-     * <p>Las tres carencias salen a la vez porque una fila retirada cuenta en las tres: se declara con
-     * los dos valores y despues se retiran. Es un estado legitimo del endpoint de actualizacion, y es
-     * el que hace que la union y las dos carencias no coincidan.
+     * <p>Desde la Fase 77 una declaracion solo puede carecer de horas: la fecha compromiso la publica
+     * GLPI, asi que no hay una segunda mitad que contar. La fila retirada sigue contando como carencia,
+     * porque retirar la estimacion es exactamente eso.
      */
     @Test
-    @DisplayName("Las carencias declaradas alertan con el numero de la fotografia, y enlazan con su desglose")
-    void lasCarenciasDeclaradasAlertanConElNumeroDeLaFotografia() throws Exception {
+    @DisplayName("La carencia declarada alerta con el numero de la fotografia, y enlaza con su desglose")
+    void laCarenciaDeclaradaAlertaConElNumeroDeLaFotografia() throws Exception {
         declarar("A", new BigDecimal("8"), null);
         declarar("B", null, LocalDate.parse(LUNES));
         declarar("C", new BigDecimal("4"), LocalDate.parse(MARTES));
@@ -209,22 +209,12 @@ class PlanningOperationalAlertsEndpointsTest {
         assertThat(cuenta(alertas, "SIN_ESTIMACION"))
                 .isEqualTo(cuantosEn(foto, "$.declared.withoutEstimation.count"))
                 .isPositive();
-        assertThat(cuenta(alertas, "SIN_COMPROMISO"))
-                .isEqualTo(cuantosEn(foto, "$.declared.withoutCommitment.count"))
-                .isPositive();
-        assertThat(cuenta(alertas, "METADATA_INCOMPLETA"))
-                .isEqualTo(cuantosEn(foto, "$.declared.incomplete"))
-                .isPositive();
 
-        // Y el detalle enlazado: cada ruta publicada se recorre y tiene que traer tantos elementos
-        // como dice el contador de la alerta. Es lo que convierte el literal en un hecho verificado.
-        for (String tipo : List.of("SIN_ESTIMACION", "SIN_COMPROMISO", "METADATA_INCOMPLETA")) {
-            String detalle = leer(rutaDe(alertas, tipo));
+        // Y el detalle enlazado: la ruta publicada se recorre y tiene que traer tantos elementos como
+        // dice el contador de la alerta. Es lo que convierte el literal en un hecho verificado.
+        String detalle = leer(rutaDe(alertas, "SIN_ESTIMACION"));
 
-            assertThat(cuantosElementos(detalle))
-                    .as("elementos de %s", tipo)
-                    .isEqualTo(cuenta(alertas, tipo));
-        }
+        assertThat(cuantosElementos(detalle)).isEqualTo(cuenta(alertas, "SIN_ESTIMACION"));
     }
 
     @Test
@@ -381,10 +371,10 @@ class PlanningOperationalAlertsEndpointsTest {
     /**
      * El orden de salida: de mas grave a menos, y dentro de cada nivel por el orden del catalogo.
      *
-     * <p>Aqui solo se pueden fijar los dos niveles que el camino real produce —no hay ninguna alerta
-     * critica alcanzable—, asi que el orden completo, con las seis a la vez, lo fija
+     * <p>Aqui solo se pueden fijar los niveles que el camino real produce —no hay ninguna alerta
+     * critica alcanzable—, asi que el orden completo, con las cuatro a la vez, lo fija
      * {@code OperationalAlertServiceTest}. Lo que se fija aqui es que el nivel manda sobre el orden de
-     * declaracion: el incompleto es el ultimo del catalogo y sale el ultimo, despues de tres avisos.
+     * declaracion: el desplazamiento es el primero del catalogo y sale primero.
      */
     @Test
     @DisplayName("La salida va de mas grave a menos, y el nivel manda sobre el orden del catalogo")
@@ -395,9 +385,7 @@ class PlanningOperationalAlertsEndpointsTest {
 
         assertThat(tipos(leerAlertas())).containsExactly(
                 "REQUERIMIENTOS_DESPLAZADOS",
-                "SIN_ESTIMACION",
-                "SIN_COMPROMISO",
-                "METADATA_INCOMPLETA");
+                "SIN_ESTIMACION");
     }
 
     @Test

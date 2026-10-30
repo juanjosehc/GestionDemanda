@@ -122,7 +122,7 @@ describe('ResourceTimeline', () => {
   it('sin planId muestra el estado vacio y no consulta el endpoint', () => {
     renderWithClient(<ResourceTimeline />)
 
-    expect(screen.getByText('Sin plan seleccionado')).toBeInTheDocument()
+    expect(screen.getByText('Ningún plan seleccionado')).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

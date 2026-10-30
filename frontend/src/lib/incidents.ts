@@ -405,7 +405,7 @@ export function factsReader(
  * Lo que hay en pantalla, contado por estado de declaración.
  *
  * **Las cifras se solapan y no se suman.** `pending` es todo lo que no es `PLANIFICABLE`, así que
- * `withoutEstimation` y `withoutCommitment` están **dentro** de él: un ticket sin estimación también
+ * `withoutEstimation` y `withoutGlpiDate` están **dentro** de él: un ticket sin estimación también
  * es un ticket pendiente y aparece en las dos cuentas. Lo que no cae en ninguna de las dos son
  * `SIN_DECLARACION` y `NO_TRADUCIBLE`, que están dentro de `pending` sin nombre propio. Es un
  * desglose, no un reparto, y quien lo pinte tiene que enseñarlo como tal.
@@ -421,8 +421,14 @@ export interface DeclarationBreakdown {
   pending: number
   /** Tienen fila y les falta la estimación. Cuentan también en `pending`. */
   withoutEstimation: number
-  /** Tienen fila y les falta el compromiso. Cuentan también en `pending`. */
-  withoutCommitment: number
+  /**
+   * Tienen fila y GLPI no les publica fecha con la que ubicarlos. Cuentan también en `pending`.
+   *
+   * Se llamó `withoutCommitment` hasta la Fase 77, cuando la fecha se declaraba. Desde que la
+   * publica GLPI, lo que este parcial cuenta no es una declaración que falte sino un ticket al que
+   * el sistema no puede ubicar: el nombre viejo describía una carencia que ya no existe.
+   */
+  withoutGlpiDate: number
 }
 
 export function declarationBreakdown(rows: readonly IncidentRow[]): DeclarationBreakdown {
@@ -430,7 +436,7 @@ export function declarationBreakdown(rows: readonly IncidentRow[]): DeclarationB
     declared: 0,
     pending: 0,
     withoutEstimation: 0,
-    withoutCommitment: 0,
+    withoutGlpiDate: 0,
   }
 
   for (const row of rows) {
@@ -444,7 +450,7 @@ export function declarationBreakdown(rows: readonly IncidentRow[]): DeclarationB
       breakdown.withoutEstimation += 1
     }
     if (row.item.declarationStatus === 'SIN_COMPROMISO') {
-      breakdown.withoutCommitment += 1
+      breakdown.withoutGlpiDate += 1
     }
   }
 

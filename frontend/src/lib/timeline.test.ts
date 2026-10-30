@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   EMPTY_FILTERS,
+  UNSCHEDULED_HEIGHT,
   addDays,
   blockState,
   commitmentRisksOf,
@@ -15,11 +16,13 @@ import {
   itemsByDate,
   minutesOfDay,
   parseLocalDateTime,
+  resourcePresence,
   riskOf,
   timelineDays,
   weekAnchor,
   weekDaysOf,
   unscheduledOf,
+  unscheduledPlacements,
   weekStartOf,
 } from '@/lib/timeline'
 import { declarationsFixture, timelineFixture } from '@/test/fixtures'
@@ -297,6 +300,7 @@ describe('unscheduledOf', () => {
         type: 'REQUERIMIENTO',
         declarationStatus: 'SIN_ESTIMACION',
         operationalDate: '2026-11-19',
+        operationalTime: null,
         operationalDateSource: 'internal_time_to_resolve',
       },
     ],
@@ -311,9 +315,19 @@ describe('unscheduledOf', () => {
         workItemType: 'REQUERIMIENTO',
         developerId: 'ana',
         date: '2026-11-19',
+        time: null,
         cause: 'Sin estimación',
       },
     ])
+  })
+
+  it('la hora del Internal TTR viaja con el día, recortada a HH:mm', () => {
+    // El mismo ticket con la hora que GLPI sí publica: 13:53:48 es el caso 66222.
+    const conHora = declarationsFixture({
+      items: [{ ...sinHoras.items[0], operationalTime: '13:53:48' }],
+    })
+
+    expect(unscheduledOf({ ana: conHora }, new Set(), OPEN)[0]?.time).toBe('13:53')
   })
 
   it('no lo repite si el plan ya lo ubicó', () => {
@@ -404,5 +418,124 @@ describe('commitmentRisksOf', () => {
       '68428': 'HOY',
       '66222': 'VENCIDA',
     })
+  })
+})
+
+
+describe('unscheduledPlacements', () => {
+  const AXIS = { startMinutes: 7 * 60, endMinutes: 17 * 60 + 30 }
+  const HOUR = 44
+  const BODY = ((AXIS.endMinutes - AXIS.startMinutes) / 60) * HOUR
+
+  /** Un ticket sin estimación del 21 de octubre de 2026. */
+  function ghost(workItemId: string, time: string | null, developerId = 'ana') {
+    return {
+      workItemId,
+      workItemType: 'REQUERIMIENTO' as const,
+      developerId,
+      date: '2026-10-21',
+      time,
+      cause: 'Sin estimación',
+    }
+  }
+
+  function top(placements: Map<string, { top: number }>, id: string) {
+    return placements.get(id)?.top ?? -1
+  }
+
+  it('coloca cada ticket en su hora, con alto fijo y sin medir trabajo', () => {
+    const placements = unscheduledPlacements([ghost('A', '07:00'), ghost('B', '13:53')], AXIS, HOUR, BODY)
+
+    expect(top(placements, 'A')).toBe(0)
+    expect(top(placements, 'B')).toBeCloseTo(((13 * 60 + 53 - AXIS.startMinutes) / 60) * HOUR, 5)
+
+    // El alto es el del marcador, no las horas del ticket: no hay horas que medir.
+    expect(placements.get('B')?.height).toBe(UNSCHEDULED_HEIGHT)
+  })
+
+  it('los de la misma hora se apilan hacia abajo', () => {
+    const placements = unscheduledPlacements(
+      [ghost('A', '17:30'), ghost('B', '17:30'), ghost('C', '17:30')],
+      AXIS,
+      HOUR,
+      BODY,
+    )
+
+    expect(top(placements, 'B') - top(placements, 'A')).toBeCloseTo(UNSCHEDULED_HEIGHT, 5)
+    expect(top(placements, 'C') - top(placements, 'B')).toBeCloseTo(UNSCHEDULED_HEIGHT, 5)
+  })
+
+  it('si la pila no cabe en el día sube entera y no deja ninguna fuera', () => {
+    const placements = unscheduledPlacements(
+      [ghost('A', '17:30'), ghost('B', '17:30'), ghost('C', '17:30')],
+      AXIS,
+      HOUR,
+      BODY,
+    )
+
+    for (const id of ['A', 'B', 'C']) {
+      const place = placements.get(id)!
+      expect(place.top).toBeGreaterThanOrEqual(0)
+      expect(place.top + place.height).toBeLessThanOrEqual(BODY + 0.5)
+    }
+    // Sigue apilado: subir el grupo no lo aplasta.
+    expect(top(placements, 'C') - top(placements, 'A')).toBeCloseTo(2 * UNSCHEDULED_HEIGHT, 5)
+  })
+
+  it('una hora fuera del eje se pega al borde y se declara fuera', () => {
+    const placements = unscheduledPlacements([ghost('NOCHE', '23:30'), ghost('PRONTO', '05:00')], AXIS, HOUR, BODY)
+
+    expect(placements.get('NOCHE')).toEqual({ top: BODY - UNSCHEDULED_HEIGHT, height: UNSCHEDULED_HEIGHT, outside: true })
+    expect(placements.get('PRONTO')?.top).toBe(0)
+    expect(placements.get('PRONTO')?.outside).toBe(true)
+  })
+
+  it('sin hora cae al inicio del día, que es lo único que se sabe', () => {
+    const placements = unscheduledPlacements([ghost('SINHORA', null)], AXIS, HOUR, BODY)
+
+    expect(placements.get('SINHORA')?.top).toBe(0)
+  })
+
+  it('cada persona y cada día tienen su propia pila', () => {
+    const placements = unscheduledPlacements(
+      [ghost('A', '10:00', 'ana'), ghost('B', '10:00', 'beto'), { ...ghost('C', '10:00'), date: '2026-10-22' }],
+      AXIS,
+      HOUR,
+      BODY,
+    )
+
+    // Tres tickets a la misma hora en tres celdas distintas no compiten por el mismo renglón.
+    expect(top(placements, 'A')).toBeCloseTo(top(placements, 'B'), 5)
+    expect(top(placements, 'C')).toBeCloseTo(top(placements, 'A'), 5)
+  })
+})
+
+describe('resourcePresence', () => {
+  const sinTrabajo = { tramos: 0, sinEstimacion: 0, pendientes: 0, recuperables: 0 }
+
+  it('con tramos cuenta tramos, que es una cifra que la fila no da en otro sitio', () => {
+    expect(resourcePresence({ ...sinTrabajo, tramos: 1 })).toEqual({ kind: 'TRAMOS', label: '1 tramo' })
+    expect(resourcePresence({ ...sinTrabajo, tramos: 3 })).toEqual({
+      kind: 'TRAMOS',
+      label: '3 tramos',
+    })
+  })
+
+  it('con trabajo y sin tramos no dice nada: los chips de pendientes ya lo cuentan', () => {
+    // El caso de la fase: «Sin estimación» encima de «7 pendientes» repetía el mismo hecho dos veces.
+    expect(resourcePresence({ ...sinTrabajo, sinEstimacion: 2 })).toBeNull()
+    expect(resourcePresence({ ...sinTrabajo, pendientes: 7, recuperables: 7 })).toBeNull()
+    expect(resourcePresence({ ...sinTrabajo, recuperables: 1 })).toBeNull()
+  })
+
+  it('los tramos mandan sobre los compromisos sin horas: no se pierde lo colocado', () => {
+    expect(resourcePresence({ ...sinTrabajo, tramos: 2, sinEstimacion: 5 })).toEqual({
+      kind: 'TRAMOS',
+      label: '2 tramos',
+    })
+  })
+
+  it('sin nada de lo anterior no hay trabajo activo, y se dice así', () => {
+    expect(resourcePresence(sinTrabajo)).toEqual({ kind: 'SIN_TRABAJO', label: 'Sin trabajo activo' })
   })
 })

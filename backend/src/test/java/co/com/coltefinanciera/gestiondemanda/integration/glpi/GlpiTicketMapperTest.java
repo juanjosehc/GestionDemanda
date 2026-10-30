@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 
 import org.junit.jupiter.api.DisplayName;
@@ -221,6 +222,43 @@ class GlpiTicketMapperTest {
         void timeToResolveSinValorNoTraduce() {
             assertThat(mapper.timeToResolve(request(1, 1, 3600L, null))).isEmpty();
             assertThat(mapper.timeToResolve(request(2, 1, 3600L, "no es fecha"))).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("La fecha operativa de GLPI, con su hora")
+    class FechaOperativaConHora {
+
+        @Test
+        @DisplayName("La hora que GLPI publica viaja junto al dia, y el dia no cambia")
+        void laHoraViajaConElDia() {
+            // El 66222 real: Internal TTR del 3 de diciembre a las 13:53:48. El motor sigue viendo el
+            // dia 3; la rejilla necesita el instante para ubicarlo en el eje.
+            GlpiTicket conOla = new GlpiTicket(66222, "Ticket 66222", 1, GlpiTicket.TYPE_REQUEST, 3,
+                    null, null, 14400L, "2026-10-20 07:05:36", "2026-12-03 13:53:48",
+                    "2026-10-01 08:00:00");
+
+            assertThat(mapper.operationalDate(conOla)).hasValueSatisfying(operational -> {
+                assertThat(operational.date()).isEqualTo(LocalDate.of(2026, 12, 3));
+                assertThat(operational.time()).isEqualTo(LocalTime.of(13, 53, 48));
+                assertThat(operational.source())
+                        .isEqualTo(GlpiTicketMapper.OperationalDate.INTERNAL_TTR);
+            });
+        }
+
+        @Test
+        @DisplayName("Sin OLA, la hora del SLA es la que viaja")
+        void sinOlaViajaLaHoraDelSla() {
+            // La OLA falta y queda el respaldo: el ticket se ubica por el SLA, y su hora es la del
+            // SLA. La fuente viaja al lado para que la pantalla pueda decirlo.
+            GlpiTicket conSla = new GlpiTicket(68428, "Ticket 68428", 1, GlpiTicket.TYPE_REQUEST, 3,
+                    null, null, 14400L, "2026-10-20 10:10:10", null, "2026-10-01 08:00:00");
+
+            assertThat(mapper.operationalDate(conSla)).hasValueSatisfying(operational -> {
+                assertThat(operational.date()).isEqualTo(LocalDate.of(2026, 10, 20));
+                assertThat(operational.time()).isEqualTo(LocalTime.of(10, 10, 10));
+                assertThat(operational.source()).isEqualTo(GlpiTicketMapper.OperationalDate.TTR);
+            });
         }
     }
 }

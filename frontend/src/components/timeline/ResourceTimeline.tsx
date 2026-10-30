@@ -114,7 +114,7 @@ export function ResourceTimeline({ planId }: ResourceTimelineProps) {
   if (!planId) {
     return (
       <EmptyState
-        title="Sin plan seleccionado"
+        title="Ningún plan seleccionado"
         detail="Abre el calendario e indica el identificador del plan que quieres ver."
         action={
           <Button asChild variant="outline" size="sm">

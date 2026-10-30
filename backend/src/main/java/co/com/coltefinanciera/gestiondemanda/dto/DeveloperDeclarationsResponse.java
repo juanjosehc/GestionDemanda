@@ -2,6 +2,7 @@ package co.com.coltefinanciera.gestiondemanda.dto;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 
 import co.com.coltefinanciera.gestiondemanda.domain.enums.WorkItemType;
@@ -92,6 +93,10 @@ public record DeveloperDeclarationsResponse(
      *                          internal_time_to_resolve} o, si no existe, {@code time_to_resolve}. Es
      *                          la fecha que usa el plan desde la Fase 66b. Nula en una incidencia
      *                          —que no se ubica por una promesa— y en un ticket sin ninguna de las dos.
+     * @param operationalTime   la hora que GLPI publica junto a esa fecha. Viaja porque el timeline
+     *                          ubica el trabajo sin estimacion en el eje del dia, y sin hora habria
+     *                          que inventarle una. Nula cuando no hay fecha, y tambien cuando GLPI
+     *                          publica la fecha sin hora.
      * @param operationalDateSource de cual de los dos campos salio. Viaja al lado de la fecha porque
      *                          2026-11-19 es la promesa de la OLA o la del SLA, y sin el origen no se
      *                          puede contrastar.
@@ -107,6 +112,7 @@ public record DeveloperDeclarationsResponse(
             List<DiscardView> discards,
             PlanningMetadataResponse declaration,
             LocalDate operationalDate,
+            LocalTime operationalTime,
             String operationalDateSource) {
 
         public DeclarationItem {

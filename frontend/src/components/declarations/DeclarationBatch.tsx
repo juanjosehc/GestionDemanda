@@ -6,18 +6,17 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useSaveDeclarations } from '@/hooks/useDeclarations'
-import { DECLARATION_VARIANTS, formatDeclaredHours } from '@/lib/declarations'
+import { DECLARATION_VARIANTS, formatDeclaredHours, glpiCommitmentOf } from '@/lib/declarations'
 import { readFirmante, rememberFirmante } from '@/lib/firmante'
 import type { BatchSaveResult, SaveDeclarationInput } from '@/hooks/useDeclarations'
 import type { DeclarationItem } from '@/types/declarations'
 
-/** Los dos valores de una fila, tal como se estan escribiendo. */
+/** Lo que se escribe en una fila. Solo horas: la fecha la publica GLPI. */
 interface RowValues {
   hours: string
-  date: string
 }
 
-const EMPTY: RowValues = { hours: '', date: '' }
+const EMPTY: RowValues = { hours: '' }
 
 /** Lo declarado hoy en una fila, como valor inicial: las horas sin ceros de relleno. */
 function initialOf(item: DeclarationItem): RowValues {
@@ -26,14 +25,23 @@ function initialOf(item: DeclarationItem): RowValues {
       item.declaration?.estimatedHours == null
         ? ''
         : formatDeclaredHours(item.declaration.estimatedHours),
-    date: item.declaration?.committedDate ?? '',
   }
 }
 
-function valuesOf(row: RowValues): { estimatedHours: number | null; committedDate: string | null } {
+/**
+ * El cuerpo de la escritura de una fila.
+ *
+ * `committedDate` viaja con lo que ya estaba guardado y no con lo que se escribe: desde la Fase 77
+ * no se declara, pero el `PUT` reemplaza y mandar nulo borraria el valor historico. Ver
+ * `DeclarationForm`, que hace lo mismo.
+ */
+function valuesOf(
+  row: RowValues,
+  item: DeclarationItem,
+): { estimatedHours: number | null; committedDate: string | null } {
   return {
     estimatedHours: row.hours.trim() === '' ? null : Number(row.hours),
-    committedDate: row.date.trim() === '' ? null : row.date,
+    committedDate: item.declaration?.committedDate ?? null,
   }
 }
 
@@ -54,7 +62,11 @@ interface DeclarationBatchProps {
  *
  * **Las filas vacias no se envian.** No hay una validacion nueva: la regla de «al menos un valor» es
  * la del backend, y una fila en blanco simplemente no se manda. Las filas con declaracion llegan
- * precargadas para que cambiar una fecha no borre unas horas que ya estaban.
+ * precargadas para que el que ya tenia horas no las pierda por no reescribirlas.
+ *
+ * **La fecha no se escribe.** Desde la Fase 77 el compromiso es el Internal TTR de GLPI y el lote lo
+ * enseña en su propia columna: pedirlo en una tabla de veinte filas era la peor forma de capturar
+ * una fecha que ademas no coincidia con la del plan.
  *
  * **Un solo firmante para el lote.** Es la misma persona la que esta operando; repetir su nombre por
  * fila era la friccion mas cara de la pantalla. El campo se recuerda entre visitas, y lo que viaja al
@@ -88,10 +100,7 @@ export function DeclarationBatch({ items, developerName, onSaved }: DeclarationB
     const row = rowOf(item)
     const initial = initialOf(item)
 
-    return (
-      (row.hours.trim() !== '' || row.date.trim() !== '') &&
-      (row.hours.trim() !== initial.hours || row.date.trim() !== initial.date)
-    )
+    return row.hours.trim() !== '' && row.hours.trim() !== initial.hours
   })
 
   async function submit(event: FormEvent) {
@@ -104,7 +113,7 @@ export function DeclarationBatch({ items, developerName, onSaved }: DeclarationB
     const entries: SaveDeclarationInput[] = dirty.map((item) => ({
       workItemId: item.workItemId,
       create: item.declaration === null,
-      values: { ...valuesOf(rowOf(item)), changedBy: changedBy.trim() },
+      values: { ...valuesOf(rowOf(item), item), changedBy: changedBy.trim() },
     }))
 
     setResult(null)
@@ -126,9 +135,9 @@ export function DeclarationBatch({ items, developerName, onSaved }: DeclarationB
           Declaración en lote · {developerName}
         </CardTitle>
         <CardDescription>
-          Una fila por ticket pendiente. Escribe las horas, la fecha o las dos; las filas vacías no se
-          envían. Un solo «Quién declara» firma el lote entero, y cada ticket conserva su propia
-          escritura.
+          Una fila por ticket pendiente. Escribe las horas; las filas vacías no se envían. La fecha
+          de compromiso la publica GLPI y se enseña, no se declara. Un solo «Quién declara» firma el
+          lote entero, y cada ticket conserva su propia escritura.
         </CardDescription>
       </CardHeader>
 
@@ -166,7 +175,7 @@ export function DeclarationBatch({ items, developerName, onSaved }: DeclarationB
                       Horas estimadas
                     </th>
                     <th scope="col" className="py-2 text-left font-medium">
-                      Fecha compromiso
+                      Compromiso GLPI
                     </th>
                   </tr>
                 </thead>
@@ -198,8 +207,7 @@ export function DeclarationBatch({ items, developerName, onSaved }: DeclarationB
                             <span className="mt-1 block text-[10px] text-muted-foreground">
                               {initialOf(item).hours === ''
                                 ? 'sin estimación'
-                                : `${initialOf(item).hours} h`}{' '}
-                              · {item.operationalDate ?? 'sin fecha en GLPI'}
+                                : `${initialOf(item).hours} h`}
                             </span>
                           )}
                         </td>
@@ -220,15 +228,9 @@ export function DeclarationBatch({ items, developerName, onSaved }: DeclarationB
                         </td>
 
                         <td className="py-2">
-                          <input
-                            type="date"
-                            aria-label={`Fecha compromiso de ${item.workItemId}`}
-                            value={row.date}
-                            onChange={(event) =>
-                              updateRow(item.workItemId, { date: event.target.value })
-                            }
-                            className="h-9 w-40 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                          />
+                          <span className="block text-xs text-muted-foreground">
+                            {glpiCommitmentOf(item) ?? 'GLPI no publica fecha'}
+                          </span>
                           {failure && (
                             <p role="alert" className="mt-1 max-w-xs text-xs text-red-600">
                               {failure}
@@ -259,7 +261,7 @@ export function DeclarationBatch({ items, developerName, onSaved }: DeclarationB
 
               <span className="text-xs text-muted-foreground">
                 {dirty.length === 0
-                  ? 'Escribe al menos un valor en una fila para poder guardar.'
+                  ? 'Escribe las horas de una fila para poder guardar.'
                   : `${dirty.length} de ${items.length} filas con cambios.`}
               </span>
             </div>

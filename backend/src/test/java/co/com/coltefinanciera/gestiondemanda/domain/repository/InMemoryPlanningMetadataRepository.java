@@ -82,18 +82,14 @@ public class InMemoryPlanningMetadataRepository implements PlanningMetadataRepos
     public DeclaredPlanningMetrics declaredMetrics() {
         return new DeclaredPlanningMetrics(
                 state.size(),
-                state.values().stream().filter(uno -> uno.estimatedHours() == null).count(),
-                state.values().stream().filter(uno -> uno.committedDate() == null).count(),
-                state.values().stream()
-                        .filter(uno -> uno.estimatedHours() == null && uno.committedDate() == null)
-                        .count());
+                state.values().stream().filter(uno -> uno.estimatedHours() == null).count());
     }
 
     /**
      * Las filas que caen en una carencia, en orden de identificador.
      *
-     * <p>El orden no es cosmetico: es el que devuelven las tres consultas derivadas del adaptador
-     * —todas acaban en {@code OrderByWorkItemIdAsc}—, y sin el, el doble y la base de datos darian
+     * <p>El orden no es cosmetico: es el que devuelve la consulta derivada del adaptador
+     * —acaba en {@code OrderByWorkItemIdAsc}—, y sin el, el doble y la base de datos darian
      * listas distintas con los mismos elementos y la prueba del servicio afirmaria un orden que en
      * produccion no se cumple. Un {@code LinkedHashMap} conserva el orden de insercion, no el
      * alfabetico, asi que hay que ordenar de verdad.
@@ -103,9 +99,6 @@ public class InMemoryPlanningMetadataRepository implements PlanningMetadataRepos
         return state.values().stream()
                 .filter(uno -> switch (gap) {
                     case SIN_ESTIMACION -> uno.estimatedHours() == null;
-                    case SIN_COMPROMISO -> uno.committedDate() == null;
-                    case METADATA_INCOMPLETA ->
-                            uno.estimatedHours() == null || uno.committedDate() == null;
                 })
                 .sorted(Comparator.comparing(PlanningMetadata::workItemId))
                 .toList();

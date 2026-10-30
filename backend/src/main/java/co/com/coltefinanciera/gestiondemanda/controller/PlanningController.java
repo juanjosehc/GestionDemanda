@@ -203,16 +203,15 @@ public class PlanningController {
      * la desglosa. El contador y la lista salen del mismo predicado sobre la misma tabla, asi que el
      * numero de elementos es el numero de la tarjeta por construccion y no por coincidencia.
      *
-     * <p>{@code gap} es el nombre de una de las tres constantes: {@code SIN_ESTIMACION},
-     * {@code SIN_COMPROMISO} o {@code METADATA_INCOMPLETA}, tal cual —es el mismo valor que viaja de
-     * vuelta en el campo {@code gap}—. Un valor que no sea ninguno de los tres responde
+     * <p>{@code gap} es el nombre de la constante {@code SIN_ESTIMACION}, tal cual —es el mismo
+     * valor que viaja de vuelta en el campo {@code gap}—. Cualquier otro valor responde
      * <strong>{@code 400 INVALID_PARAMETER}</strong> sin que este endpoint lo maneje: es el mismo
-     * camino que ya recorre cualquier parametro mal formado.
+     * camino que ya recorre cualquier parametro mal formado. Desde la Fase 77 es la unica carencia
+     * declarada que queda: la fecha de compromiso la publica GLPI y no se declara.
      *
      * <p><strong>Lo que no puede decir.</strong> La tabla guarda quien declara, no quien planifica: el
      * desarrollador asignado no esta aqui y nombrarlo exigiria consultar GLPI, que esta fase no toca.
-     * Las columnas se rotulan por lo que son. En {@code metadata-incompleta} si aparece, porque es una
-     * lista de filas declaradas y no una lista de personas.
+     * Las columnas se rotulan por lo que son.
      */
     @GetMapping("/metrics/declared/{gap}")
     public DeclaredGapDetailResponse declaredGap(@PathVariable DeclaredGap gap) {

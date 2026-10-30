@@ -308,12 +308,17 @@ export function Incidents() {
           «Con algo pendiente» y no «sin declarar»: un ticket sin estimación ya tiene su fila, y
           llamarlo sin declarar sería afirmar lo contrario de lo que el backend publica. Las cifras
           van delante de una frase que no concuerda —«1 con su fila creada», «3 con su fila creada»—,
-          porque el número uno es el caso normal de esta pantalla. */}
+          porque el número uno es el caso normal de esta pantalla.
+
+          El segundo parcial no habla de una declaración: desde la Fase 77 la fecha no se declara,
+          la publica GLPI, y lo que cuenta son los tickets a los que no les publica ninguna. Decir
+          «el compromiso sin declarar» afirmaría que hay algo que declarar, que es justo lo que la
+          fase quitó. */}
       <p className="text-xs text-muted-foreground" data-slot="declaration-breakdown">
         De esos {visible.length} tickets: {breakdown.declared} en estado declarado —nada les falta
         para planificarse— y {breakdown.pending} con algo pendiente. De estos últimos,{' '}
         {breakdown.withoutEstimation} con su fila ya creada y la estimación sin declarar, y{' '}
-        {breakdown.withoutCommitment} con su fila creada y el compromiso sin declarar. Las cuentas se
+        {breakdown.withoutGlpiDate} con su fila creada y sin fecha que GLPI publique. Las cuentas se
         solapan —un ticket sin estimación también está pendiente—: es un desglose, no un reparto.
       </p>
 

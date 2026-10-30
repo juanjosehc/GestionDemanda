@@ -1,12 +1,10 @@
 import {
   Activity,
   AlertTriangle,
-  CalendarClock,
   CalendarRange,
   ClipboardList,
   Gauge,
   Layers,
-  ListChecks,
   Timer,
 } from 'lucide-react'
 
@@ -107,7 +105,7 @@ export function Dashboard() {
       block: 'Declarado',
       source: declared.source,
       scope: declared.scope,
-      cards: 'Tickets planificables, sin estimación, sin compromiso y metadata incompleta',
+      cards: 'Tickets planificables y sin estimación',
     },
     {
       block: 'Vigente',
@@ -137,7 +135,7 @@ export function Dashboard() {
           icon={ClipboardList}
           tone="primary"
           value={declared.plannable}
-          hint="Con estimación y compromiso"
+          hint={`de ${declared.total} declaradas`}
         />
 
         <StatCard
@@ -147,24 +145,6 @@ export function Dashboard() {
           value={declared.withoutEstimation.count}
           hint={declared.withoutEstimation.code}
           to={metricPath('sin-estimacion')}
-        />
-
-        <StatCard
-          label="Sin compromiso"
-          icon={CalendarClock}
-          tone="warning"
-          value={declared.withoutCommitment.count}
-          hint={declared.withoutCommitment.code}
-          to={metricPath('sin-compromiso')}
-        />
-
-        <StatCard
-          label="Metadata incompleta"
-          icon={ListChecks}
-          tone="muted"
-          value={declared.incomplete}
-          hint={`de ${declared.total} declaradas · ${declared.retracted} retiradas`}
-          to={metricPath('metadata-incompleta')}
         />
 
         <StatCard

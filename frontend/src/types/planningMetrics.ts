@@ -23,7 +23,7 @@ export type GlpiDiscardReason =
   | 'ESTADO_DESCONOCIDO'
   | 'FECHA_CREACION_ILEGIBLE'
   | 'SIN_ESTIMACION_DECLARADA'
-  | 'SIN_COMPROMISO_DECLARADO'
+  | 'SIN_FECHA_EN_GLPI'
   | 'TRADUCCION_FALLIDA'
 
 /**
@@ -45,14 +45,14 @@ export interface DeclaredMetrics {
   scope: string
   /** Filas declaradas. El denominador. */
   total: number
-  /** Filas con estimacion y compromiso: las que hoy entrarian al motor. */
+  /** Filas con horas: las que hoy entrarian al motor. Es `total - withoutEstimation`. */
   plannable: number
+  /**
+   * Filas sin horas. Es la unica carencia de la declaracion desde la Fase 77: la fecha de
+   * compromiso la publica GLPI —su Internal TTR— y no se declara, asi que no hay una segunda
+   * mitad que contar ni una union de las dos.
+   */
   withoutEstimation: DeclaredGap
-  withoutCommitment: DeclaredGap
-  /** Filas a las que les falta algo. */
-  incomplete: number
-  /** Filas sin ninguno de los dos valores. Sin este, la aritmetica del bloque no cierra. */
-  retracted: number
 }
 
 /** Cuantos planes se han guardado. Cuenta ejecuciones, no planes distintos. */
@@ -110,18 +110,20 @@ export interface PlanningOperationalMetricsResponse {
 }
 
 /**
- * Las tres carencias declaradas que se pueden abrir una a una, con el token de la ruta.
+ * La carencia declarada que se puede abrir, con el token de la ruta.
  *
  * El token es lo que va en la URL —`/metricas/sin-estimacion`— y el valor es lo que viaja a la API,
  * que es el nombre de la constante del backend. Son dos escrituras del mismo hecho y por eso viven
  * en la misma tabla y no en dos sitios: la ruta que se comparte se lee bien y la peticion no lleva
  * un literal inventado. El backend no acepta la forma con guiones, asi que esta tabla es la unica
  * traduccion del sistema.
+ *
+ * Era de tres entradas hasta la Fase 77. `sin-compromiso` y `metadata-incompleta` se retiraron con
+ * la captura manual de la fecha: el backend ya no publica esos contadores y pedirlos responde
+ * `400`, asi que seguir ofreciendolos seria un enlace roto esperando a que alguien lo pulse.
  */
 export const METRIC_GAPS = {
   'sin-estimacion': 'SIN_ESTIMACION',
-  'sin-compromiso': 'SIN_COMPROMISO',
-  'metadata-incompleta': 'METADATA_INCOMPLETA',
 } as const
 
 /** Carencia declarada, por su token de ruta. */
@@ -139,15 +141,15 @@ export function isMetricGap(value: string | undefined): value is MetricGap {
 }
 
 /**
- * El cuarto desglose: los requerimientos desplazados.
+ * El otro desglose: los requerimientos desplazados.
  *
  * No entra en `METRIC_GAPS` porque no es una carencia declarada: su lista sale del plan vigente de
  * cada desarrollador y no de `planning_metadata`, y no tiene un nombre de constante al que traducirse
- * en la API. Comparte la ruta con las otras tres, y por eso comparte el tipo que la valida.
+ * en la API. Comparte la ruta con la carencia, y por eso comparte el tipo que la valida.
  */
 export const DISPLACED_TOKEN = 'desplazados'
 
-/** Cualquiera de los cuatro desgloses a los que lleva una tarjeta del tablero. */
+/** Cualquiera de los dos desgloses a los que lleva una tarjeta del tablero. */
 export type MetricToken = MetricGap | typeof DISPLACED_TOKEN
 
 /** Distingue un desglose valido de un segmento de URL escrito a mano. */
@@ -180,11 +182,8 @@ export interface PlanningMetadataItem {
 export interface DeclaredGapDetailResponse {
   /** La carencia que se listo, por su nombre de constante. */
   gap: string
-  /**
-   * El codigo de descarte con el que se nombra esta carencia. Ausente en `metadata-incompleta`, que
-   * es la union de las otras dos y no un descarte: el backend omite los nulos.
-   */
-  code?: GlpiDiscardReason
+  /** El codigo de descarte con el que se nombra esta carencia. */
+  code: GlpiDiscardReason
   source: string
   scope: string
   generatedAt: string

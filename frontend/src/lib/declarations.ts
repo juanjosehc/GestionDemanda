@@ -67,3 +67,32 @@ export const DECLARABLE_STATUSES: ReadonlySet<DeclarationStatus> = new Set([
 export function isDeclarable(item: DeclarationItem): boolean {
   return DECLARABLE_STATUSES.has(item.declarationStatus)
 }
+
+/**
+ * La fecha con la que GLPI compromete el ticket, escrita como la lee quien opera.
+ *
+ * **Se arma de las partes y no con un `Date`.** `new Date('2026-10-28')` se interpreta como
+ * medianoche UTC, que en Colombia es el dia anterior: la fecha que se enseña tiene que ser la que
+ * viaja, no la que un huso horario decida. El backend manda el dia en ISO y la hora en `HH:mm:ss`,
+ * asi que aqui no hay nada que interpretar.
+ *
+ * **La fecha no se declara, se publica.** Desde la Fase 77 el Internal TTR es el unico compromiso y
+ * esta funcion es la unica manera de escribirlo en pantalla: quien la use hereda la misma frase.
+ *
+ * Devuelve `null` cuando GLPI no publica fecha —una incidencia no se ubica por una promesa— y deja
+ * al llamador la tarea de decirlo con sus palabras.
+ */
+export function glpiCommitmentOf(item: DeclarationItem): string | null {
+  if (item.operationalDate === null) return null
+
+  const [year, month, day] = item.operationalDate.split('-')
+  const time = item.operationalTime === null ? '' : ` ${item.operationalTime.slice(0, 5)}`
+  const origin =
+    item.operationalDateSource === 'internal_time_to_resolve'
+      ? 'Internal TTR'
+      : item.operationalDateSource === 'time_to_resolve'
+        ? 'TTR'
+        : 'GLPI'
+
+  return `${day}/${month}/${year}${time} · Origen: ${origin}`
+}

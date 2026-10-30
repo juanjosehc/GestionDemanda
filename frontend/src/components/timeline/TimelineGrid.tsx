@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarClock, ClipboardList, Clock, Flag } from 'lucide-react'
+import { AlertTriangle, ClipboardList, Flag } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -20,17 +20,18 @@ import {
   itemsByDate,
   localTodayIso,
   minutesOfDay,
+  resourcePresence,
   timelineDays,
+  unscheduledPlacements,
   weekAnchor,
   weekDaysOf,
   weekStartOf,
 } from '@/lib/timeline'
+import { RISK, RISK_ORDER, STATES, STATE_ORDER } from '@/lib/timelineVisuals'
 import { cn } from '@/lib/utils'
 import type { DayPosition, HourAxis } from '@/lib/timeline'
-import type { BadgeVariant } from '@/components/ui/badge'
 import type {
   CommitmentRisk,
-  IncidentSeverity,
   TimelineCapacity,
   TimelineItem,
   TimelineResource,
@@ -58,112 +59,6 @@ const ZOOM = [
 /** Un tramo corto se queda sin sitio para su contenido; se le deja un minimo legible. */
 const MIN_BLOCK_HEIGHT = 18
 
-/** Cuantos pixeles del tramo simulado se enseñan al simular; el resto queda para el panel. */
-const REVEAL = 200
-
-/**
- * La paleta de los seis estados, en un solo sitio.
- *
- * **Cada estado tiene un color que ningún otro usa**, porque el color es lo único que un tramo de
- * dos líneas puede decir antes de que alguien lo lea: azul es «está donde debe», ámbar «el plan lo
- * movió», violeta «espera una decisión de una persona», verde y verde azulado «ya hay acuerdo» —uno
- * lo concilió el sistema y otro lo firmó alguien—, y gris punteado «no se puede planificar todavía».
- *
- * **El gris no es el color del error**: un ticket sin estimación no está mal, está incompleto, y la
- * pantalla lo que hace es pedir el dato, no denunciarlo. El rojo queda para lo único que es un
- * error: capacidad ocupada por encima de la disponible, que ya se pinta en la franja del día.
- *
- * El estado no se decide aquí: llega resuelto por `blockState`, que cruza el plan con el acuerdo.
- */
-const STATES: Record<TimelineState, { label: string; variant: BadgeVariant; block: string }> = {
-  SIN_ESTIMACION: {
-    label: 'Requiere estimación',
-    variant: 'secondary',
-    block: 'border-dashed border-slate-400 bg-slate-50 text-slate-600',
-  },
-  PLANIFICADO: {
-    label: 'Planificado',
-    variant: 'info',
-    block: 'border-sky-200 bg-sky-50 text-sky-900',
-  },
-  DESPLAZADO: {
-    label: 'Desplazado',
-    variant: 'warning',
-    block: 'border-amber-400 bg-amber-50 text-amber-900',
-  },
-  PENDIENTE_DE_ACUERDO: {
-    label: 'Pendiente de acuerdo',
-    variant: 'warning',
-    block: 'border-violet-400 bg-violet-50 text-violet-900',
-  },
-  ACORDADO_GLPI: {
-    label: 'Acordado en GLPI',
-    variant: 'success',
-    block: 'border-emerald-400 bg-emerald-50 text-emerald-900',
-  },
-  ACORDADO_MANUAL: {
-    label: 'Acordado manualmente',
-    variant: 'success',
-    block: 'border-teal-400 bg-teal-50 text-teal-900',
-  },
-}
-
-/**
- * La capa de compromisos: cuánto apremia la fecha que GLPI publica.
- *
- * **Es un eje aparte del de {@link STATES} y no lo reemplaza.** El color del tramo dice qué hizo el
- * plan —lo colocó, lo movió, espera un acuerdo—; esto dice cuánto queda hasta la entrega. Un tramo
- * azul puede vencer hoy, y por eso el riesgo no repinta el bloque: le cambia el icono de entrega y
- * tiñe el chip del ticket que no tiene horas.
- *
- * `FUTURA` no está aquí porque no tiene marca: lo que no corre riesgo no se resalta, y una leyenda
- * que anunciara «todavía no vence» pintaría de excepción lo que es la norma.
- *
- * Los iconos no son decoración: sobreviven al daltonismo y a una captura en blanco y negro, que es
- * lo único que el color no hace.
- */
-const RISK = {
-  VENCIDA: {
-    label: 'Entrega vencida',
-    icon: AlertTriangle,
-    chip: 'border-red-500 bg-red-50 text-red-900',
-    flag: 'text-red-600',
-    swatch: 'border-red-500 bg-red-50',
-  },
-  HOY: {
-    label: 'Entrega hoy',
-    icon: Clock,
-    chip: 'border-orange-500 bg-orange-50 text-orange-900',
-    flag: 'text-orange-600',
-    swatch: 'border-orange-500 bg-orange-50',
-  },
-  PROXIMA: {
-    label: 'Entrega próxima',
-    icon: CalendarClock,
-    chip: 'border-amber-500 bg-amber-50 text-amber-900',
-    flag: 'text-amber-600',
-    swatch: 'border-amber-500 bg-amber-50',
-  },
-} as const satisfies Record<
-  Exclude<CommitmentRisk, 'FUTURA'>,
-  { label: string; icon: typeof Flag; chip: string; flag: string; swatch: string }
->
-
-/** El orden de la leyenda de riesgo: primero lo que ya se incumplió. */
-const RISK_ORDER = ['VENCIDA', 'HOY', 'PROXIMA'] as const
-
-/**
- * El orden en que se leen los estados: primero lo que falta, después lo que el plan decidió y al
- * final los acuerdos. Es el orden de la leyenda y el del recorrido de un gestor.
- */
-const STATE_ORDER: readonly TimelineState[] = [
-  'SIN_ESTIMACION',
-  'PLANIFICADO',
-  'DESPLAZADO',
-  'PENDIENTE_DE_ACUERDO',
-  'ACORDADO_GLPI',
-  'ACORDADO_MANUAL',
-]
 
 const TYPE = {
   INCIDENTE: { label: 'Incidente', icon: AlertTriangle },
@@ -201,10 +96,11 @@ function describe(
     parts.push(RISK[risk].label)
   }
   if (item.committedDate) {
-    // `committedDate` es el compromiso **declarado** del ticket, no la fecha de GLPI. La fecha que el
-    // plan obedeció —el Internal TTR— no viaja en el tramo: lo que se ve es dónde la puso, y los dos
-    // datos no siempre coinciden porque GLPI y la declaración se corrigen por vías distintas.
-    parts.push(`Compromiso declarado ${formatDay(item.committedDate)}`)
+    // `committedDate` es la fecha con la que GLPI comprometió el ticket —su Internal TTR, que el plan
+    // obedeció para colocar el tramo—, no la fecha que alguien declaró: esa dejó de existir como
+    // dato vigente en la Fase 77. Se nombra «compromiso» y no «declarado» porque es la única fecha
+    // de compromiso del sistema.
+    parts.push(`Compromiso ${formatDay(item.committedDate)}`)
   }
   // La causa completa va en el texto: el tramo puede ser demasiado bajo para pintarla, y esconderla
   // porque no cabe no es lo mismo que no tenerla.
@@ -233,13 +129,6 @@ interface BlockProps {
   /** Sin esto el tramo es de solo lectura, que es lo que era antes del timeline accionable. */
   onSelect?: (item: TimelineItem) => void
   selected?: boolean
-  /**
-   * La fecha a la que la simulación movería este tramo, si la simulación lo afecta.
-   *
-   * `undefined` es «no lo afecta»; `null`, «lo afecta y no hay día hábil donde moverlo». Es la
-   * distinción que necesita la marca: un tramo sin fecha propuesta no se pinta como si la tuviera.
-   */
-  displacedTo?: string | null
   /**
    * Cuánto apremia el compromiso de GLPI de este trabajo.
    *
@@ -281,7 +170,6 @@ function Block({
   position,
   onSelect,
   selected,
-  displacedTo,
   risk,
 }: BlockProps) {
   const status = STATES[state]
@@ -292,7 +180,6 @@ function Block({
    */
   const riskMark = risk !== undefined && risk !== 'FUTURA' ? RISK[risk] : null
   const DeliveryIcon = riskMark?.icon ?? Flag
-  const demo = displacedTo !== undefined
   /*
    * Un trabajo de varios días se ve como varios tramos —el plan así lo guarda— y sin marca se leen
    * como trabajos distintos. `continues` dice que hay más después, y solo el último día es la
@@ -328,9 +215,6 @@ function Block({
     dense ? 'py-0.5' : 'py-1',
     status.block,
     clamped && 'border-b border-dashed',
-    // Un tramo que la simulación mueve se marca con un contorno, no se mueve: lo que se ve sigue
-    // siendo la agenda real, y la simulación es una capa encima que se puede quitar.
-    demo && 'border-red-500 ring-2 ring-red-500 ring-offset-1',
   )
 
   const body = (
@@ -383,13 +267,6 @@ function Block({
         </span>
       )}
 
-      {/* La capa de simulación dice a dónde iría el tramo; la fecha real no se toca. */}
-      {demo && height >= MIN_TIME_HEIGHT && (
-        <span className="block truncate font-semibold" data-slot="timeline-demo-displacement">
-          DEMO → {displacedTo ? shortDate(displacedTo) : 'sin hueco'}
-        </span>
-      )}
-
       {height >= MIN_BADGES_HEIGHT && (
         <span className="mt-0.5 flex flex-wrap items-center gap-1">
           <Badge variant={status.variant}>{status.label}</Badge>
@@ -431,9 +308,7 @@ function Block({
     </>
   )
 
-  const title = demo
-    ? `${describe(item, state, position, risk)} · SIMULADO: se movería a ${displacedTo ?? 'ningún día hábil de la ventana'}`
-    : describe(item, state, position, risk)
+  const title = describe(item, state, position, risk)
 
   if (!onSelect) {
     return (
@@ -442,7 +317,6 @@ function Block({
         data-status={item.planningStatus}
         data-state={state}
         data-delivery={delivered ? 'true' : undefined}
-        data-demo={demo ? 'true' : undefined}
         data-clamped={clamped ? 'true' : undefined}
         title={title}
         className={className}
@@ -465,7 +339,6 @@ function Block({
       data-status={item.planningStatus}
       data-state={state}
       data-delivery={delivered ? 'true' : undefined}
-      data-demo={demo ? 'true' : undefined}
       data-clamped={clamped ? 'true' : undefined}
       aria-pressed={selected ?? false}
       title={title}
@@ -537,26 +410,6 @@ function CapacityStrip({ capacity }: { capacity: TimelineCapacity | undefined })
   )
 }
 
-/**
- * El incidente simulado que la rejilla pinta encima de la agenda real.
- *
- * **No es un dato.** Nada de esto viaja al backend ni se guarda: el estado vive en la pantalla y se
- * pierde al recargar. La rejilla solo lo usa para marcar el día y los tramos que la simulación
- * movería, sin tocar los tramos que recibió.
- */
-export interface TimelineSimulation {
-  developerId: string
-  date: string
-  hours: number
-  severity: IncidentSeverity
-  /** La capacidad publicada del día, para poder enseñar cuánto queda después del incidente. */
-  availableHours: number
-  /** Lo que quedaría libre; negativo si no cabe ni vaciando el día. */
-  remainingAfter: number
-  /** Clave `workItemId@startsAt` → fecha propuesta. `null` si no hay día hábil en la ventana. */
-  displaced: ReadonlyMap<string, string | null>
-}
-
 interface TimelineGridProps {
   resources: readonly TimelineResource[]
   items: readonly TimelineItem[]
@@ -625,6 +478,17 @@ interface TimelineGridProps {
   /** El tramo elegido, por su clave `workItemId@startsAt`. Solo sirve para marcarlo. */
   selected?: string | null
   /**
+   * Qué hacer al elegir un ticket sin estimación.
+   *
+   * El marcador existe desde la Fase 72 y hasta aquí solo se miraba. Con esto **el ticket sin horas
+   * deja de ser una bandera muda** y abre el mismo panel que un tramo —donde se declara—, que es lo
+   * que separa «veo que falta» de «lo resuelvo». Sin la prop el marcador sigue siendo una caja de
+   * solo lectura, que es lo correcto en la agenda de un plan suelto.
+   */
+  onTicketSelect?: (ticket: UnscheduledItem) => void
+  /** El ticket sin estimación elegido, por identificador. Solo sirve para marcarlo. */
+  selectedTicket?: string | null
+  /**
    * El estado de cada elemento por ticket, cuando quien llama sabe más que el plan.
    *
    * La rejilla **no pregunta por los acuerdos**: pinta los tramos de un plan y no tiene la lista de
@@ -654,11 +518,6 @@ interface TimelineGridProps {
    * de ahí diría «vencido» de un ticket que vence en diciembre.
    */
   risks?: Readonly<Record<string, CommitmentRisk>>
-  /**
-   * El incidente simulado, si hay uno. Se pinta como una capa de demostración y **no altera ni los
-   * recursos ni los tramos**: al quitarlo, la rejilla vuelve a ser exactamente la misma.
-   */
-  simulation?: TimelineSimulation
 }
 
 /**
@@ -736,7 +595,8 @@ export function TimelineGrid({
   initialZoom = 1,
   onSelect,
   selected,
-  simulation,
+  onTicketSelect,
+  selectedTicket,
   states,
   unscheduled,
   risks,
@@ -763,21 +623,6 @@ export function TimelineGrid({
   const today = useMemo(() => localTodayIso(), [])
   const anchor = useMemo(() => weekAnchor(allDays, today), [allDays, today])
   const [weekStart, setWeekStart] = useState(anchor)
-
-  /*
-   * Simular en un día que no está en la semana visible lleva la vista a su semana. La demostración
-   * no puede desplazar trabajo sobre una semana que no está en pantalla: sería un resultado
-   * invisible, indistinguible de no haber simulado nada. Se ajusta durante el render —el patrón de
-   * React para estado derivado de una prop— y no en un efecto, que pintaría una semana y saltaría
-   * a otra en el cuadro siguiente.
-   */
-  const [seenSimulation, setSeenSimulation] = useState(simulation)
-  if (simulation !== seenSimulation) {
-    setSeenSimulation(simulation)
-    if (simulation && (simulation.date < weekStart || simulation.date > addDays(weekStart, 6))) {
-      setWeekStart(weekStartOf(simulation.date))
-    }
-  }
 
   const days = useMemo(() => weekDaysOf(weekStart), [weekStart])
 
@@ -856,18 +701,6 @@ export function TimelineGrid({
     return RISK_ORDER.filter((risk) => present.has(risk))
   }, [items, unscheduled, risks, days])
 
-  /**
-   * Si hay algún ticket sin horas esta semana.
-   *
-   * La franja donde se enseña se reserva en **todas** las celdas de la semana o en ninguna: si solo
-   * la reservara el día que tiene uno, la rejilla de las horas de esa columna empezaría veinte
-   * píxeles más abajo y las filas dejarían de leerse en horizontal.
-   */
-  const hasGhosts = useMemo(
-    () => (unscheduled ?? []).some((ghost) => days.includes(ghost.date)),
-    [unscheduled, days],
-  )
-
   /* Cambiar de semana empieza en su primer día y no donde quedó el desplazamiento de la anterior. */
   function goToWeek(next: string) {
     const scroller = scrollRef.current
@@ -875,45 +708,6 @@ export function TimelineGrid({
     setScrollLeft(0)
     setWeekStart(next)
   }
-
-  /*
-   * Al simular, el incidente aparece en su día —que puede ser otra semana, ya resuelta arriba—.
-   * Sin esto la demostración se calcula bien y no se ve, que es indistinguible de no haberla
-   * hecho: se centra la celda del incidente a lo ancho del marco. La vertical la gobierna la
-   * página, así que aquí solo hay un eje que mover.
-   */
-  useEffect(() => {
-    const scroller = scrollRef.current
-    if (!scroller || !simulation) return
-
-    const frame = window.requestAnimationFrame(() => {
-      const cell = scroller.querySelector<HTMLElement>(
-        '[data-slot="timeline-cell"][data-demo="true"]',
-      )
-      if (!cell) return
-
-      const cellRect = cell.getBoundingClientRect()
-      const frameRect = scroller.getBoundingClientRect()
-
-      scroller.scrollLeft +=
-        cellRect.left - frameRect.left - (scroller.clientWidth - cellRect.width) / 2
-      // Se lee de vuelta porque el navegador recorta al máximo: la cabecera se pinta con este valor.
-      setScrollLeft(scroller.scrollLeft)
-
-      /*
-       * La vertical la gobierna `main`, el único scroller de la página. Se enseña el principio del
-       * tramo y no el tramo entero: subir hasta su final dejaría fuera el panel que cuenta qué se
-       * movió, que es la otra mitad de la demostración. Nunca se desplaza hacia arriba.
-       */
-      const main = scroller.closest('main')
-      if (main) {
-        const hidden = cellRect.top + REVEAL - main.getBoundingClientRect().bottom
-        if (hidden > 0) main.scrollTop += hidden
-      }
-    })
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [simulation, zoom, weekStart])
 
   /*
    * Cambiar de zoom cambia el ancho del contenido, y el desplazamiento puede quedar recortado sin
@@ -925,6 +719,35 @@ export function TimelineGrid({
   }, [zoom])
 
   const bodyHeight = ((axis.endMinutes - axis.startMinutes) / 60) * hourHeight
+
+  /**
+   * Cuántos compromisos sin estimación tiene cada persona.
+   *
+   * Es de la persona y no de la semana visible: el estado de la fila dice qué tiene —lo tenga en la
+   * semana que se está mirando o en la del mes que viene—, y si se contara por semana la etiqueta
+   * cambiaría al navegar sin que la persona hubiera cambiado.
+   */
+  const ghostsByDeveloper = useMemo(() => {
+    const byDeveloper = new Map<string, number>()
+
+    for (const ghost of unscheduled ?? []) {
+      byDeveloper.set(ghost.developerId, (byDeveloper.get(ghost.developerId) ?? 0) + 1)
+    }
+
+    return byDeveloper
+  }, [unscheduled])
+
+  /**
+   * Dónde cae cada ticket sin estimación dentro del eje de su día.
+   *
+   * Se calcula para todos, no solo para la semana visible: cuesta un recorrido y así el mapa no
+   * cambia al navegar entre semanas. Un marcador que caiga fuera de la ventana no se pinta porque
+   * su celda no existe, no porque falte el dato.
+   */
+  const placements = useMemo(
+    () => unscheduledPlacements(unscheduled ?? [], axis, hourHeight, bodyHeight),
+    [unscheduled, axis, hourHeight, bodyHeight],
+  )
   const hourMarks: number[] = []
   /*
    * Estrictamente menor que el final: la marca del último minuto caía justo en el borde inferior
@@ -1156,6 +979,12 @@ export function TimelineGrid({
               const resourceByDate = itemsByDate(resourceItems)
               const waiting = pending?.[resource.developerId] ?? 0
               const recovering = recoverable?.[resource.developerId] ?? 0
+              const presence = resourcePresence({
+                tramos: resourceItems.length,
+                sinEstimacion: ghostsByDeveloper.get(resource.developerId) ?? 0,
+                pendientes: waiting,
+                recuperables: recovering,
+              })
 
               return (
                 <div
@@ -1178,24 +1007,29 @@ export function TimelineGrid({
                       </span>
                     )}
                     <span className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
-                      {/* La persona simulada se marca en su propia fila: si el día queda fuera de la
-                          vista, la fila sigue diciendo que lo que hay ahí es una demostración. */}
-                      {simulation?.developerId === resource.developerId && (
-                        <Badge variant="danger" data-slot="timeline-demo-row">
-                          DEMO
-                        </Badge>
-                      )}
-                      {/* Una fila sin capacidad es una persona que el equipo tiene y que hoy no tiene
-                          plan: el backend publica la capacidad de todo plan vigente, aunque no tenga
-                          tramos. Se dice «Sin plan» y no «0 tramos» para no afirmar que se miró un
-                          plan que no existe. */}
-                      {resource.capacity.length === 0 ? (
-                        <Badge variant="secondary" data-slot="timeline-no-plan">
-                          Sin plan
-                        </Badge>
-                      ) : (
-                        countOf(resourceItems.length, 'tramo', 'tramos')
-                      )}
+                      {/*
+                        Bajo el nombre queda solo lo que ningún contador dice ya: los tramos —una
+                        cifra que la rejilla no da en otro sitio— y la ausencia total de trabajo.
+                        «Sin estimación» encima de un chip «7 pendientes» decía lo mismo dos veces.
+                      */}
+                      {presence !== null &&
+                        (presence.kind === 'TRAMOS' ? (
+                          <span
+                            data-slot="timeline-resource-state"
+                            data-state={presence.kind}
+                            className="contents"
+                          >
+                            {presence.label}
+                          </span>
+                        ) : (
+                          <Badge
+                            variant="secondary"
+                            data-slot="timeline-resource-state"
+                            data-state={presence.kind}
+                          >
+                            {presence.label}
+                          </Badge>
+                        ))}
                       {waiting > 0 && (
                         <PendingChip
                           count={waiting}
@@ -1253,11 +1087,6 @@ export function TimelineGrid({
                   </div>
 
                   {days.map((day) => {
-                    // El día del incidente simulado, solo en la fila de la persona elegida. La franja de
-                    // capacidad es de alto fijo, así que sustituirla por el aviso no desalinea las
-                    // horas de esta celda con las de las demás.
-                    const demoHere =
-                      simulation?.developerId === resource.developerId && simulation.date === day
                     // La jornada es de la persona, no del equipo: cada celda dice lo suyo.
                     const capacity = capacityOn(resource, day)
                     const closedHere =
@@ -1272,95 +1101,13 @@ export function TimelineGrid({
                         data-working={
                           capacity === undefined ? 'unknown' : closedHere ? 'false' : 'true'
                         }
-                        data-demo={demoHere ? 'true' : undefined}
                         style={{ width: dayWidth }}
                         className={cn(
                           'shrink-0 border-r border-border last:border-r-0',
                           closedHere && 'bg-muted/40',
-                          demoHere && 'bg-red-50/50',
                         )}
                       >
-                        {demoHere && simulation ? (
-                          <div
-                            data-slot="timeline-demo-incident"
-                            className="flex h-10 flex-wrap content-center items-center gap-1 bg-red-100 px-2 py-1 text-[10px] font-semibold text-red-900"
-                          >
-                            <span className="rounded-xs bg-red-600 px-1 py-0.5 text-white">DEMO</span>
-                            <span>
-                              incidente {formatHours(simulation.hours)} h · {simulation.severity}
-                            </span>
-                            {/* La capacidad ya consumida se ve en el sitio donde se consume: lo que
-                                queda después del incidente, no la capacidad intacta del plan. */}
-                            <span
-                              className="font-normal"
-                              data-slot="timeline-demo-capacity"
-                            >
-                              {simulation.remainingAfter >= 0
-                                ? `quedan ${formatHours(simulation.remainingAfter)} h de ${formatHours(simulation.availableHours)}`
-                                : 'no cabe ni vaciando el día'}
-                            </span>
-                          </div>
-                        ) : (
-                          <CapacityStrip capacity={capacity} />
-                        )}
-
-                        {/*
-                          La franja de los tickets que no caben en el eje del tiempo: tienen un día
-                          y no tienen horas, así que no ocupan jornada. Va entre la capacidad y la
-                          escala —fuera del área de los tramos— porque dibujarlos dentro del eje
-                          afirmaría unas horas que nadie declaró.
-                        */}
-                        {hasGhosts && (
-                          <div
-                            data-slot="timeline-unscheduled-band"
-                            className="flex h-5 items-center gap-1 overflow-hidden border-t border-dashed border-border/60 px-1.5"
-                          >
-                            {(ghostsByCell.get(`${resource.developerId}|${day}`) ?? []).map(
-                              (ghost) => {
-                                const ghostRisk = risks?.[ghost.workItemId]
-                                const ghostMark =
-                                  ghostRisk !== undefined && ghostRisk !== 'FUTURA'
-                                    ? RISK[ghostRisk]
-                                    : null
-                                const GhostIcon = ghostMark?.icon ?? Flag
-
-                                return (
-                                <span
-                                  key={ghost.workItemId}
-                                  data-slot="timeline-unscheduled"
-                                  data-work-item={ghost.workItemId}
-                                  data-risk={ghostMark ? ghostRisk : undefined}
-                                  title={`Ticket ${ghost.workItemId}: tiene día en GLPI y no ocupa jornada. ${ghost.cause}: requiere una estimación de horas.${ghostMark ? ` ${ghostMark.label}: ${formatDay(ghost.date)}.` : ''}`}
-                                  className={cn(
-                                    'flex min-w-0 items-center gap-1 rounded-xs border border-dashed px-1 text-[10px] leading-none',
-                                    ghostMark?.chip ?? 'border-slate-400 bg-slate-50 text-slate-700',
-                                  )}
-                                >
-                                  {/*
-                                    La bandera sustituye al interrogante que había, y no se suma a
-                                    él: en un día de 132 px el chip ya truncaba su texto, así que
-                                    cada icono se paga con letras. La bandera dice lo que el texto
-                                    no cabe a decir —**ese día es la fecha de entrega que publica
-                                    GLPI** (Internal TTR)— y el resto lo sigue diciendo el
-                                    «Sin estimación». Lleva `aria-label` y no solo el título,
-                                    porque la regla es que se vea sin tooltip.
-                                  */}
-                                  <GhostIcon
-                                    data-slot="timeline-unscheduled-commitment"
-                                    className={cn('size-3 shrink-0', ghostMark?.flag)}
-                                    aria-label={
-                                      ghostMark ? ghostMark.label : 'Fecha de entrega comprometida en GLPI'
-                                    }
-                                  />
-                                  <span className="truncate">
-                                    {ghost.workItemId} · {ghost.cause}
-                                  </span>
-                                </span>
-                                )
-                              },
-                            )}
-                          </div>
-                        )}
+                        <CapacityStrip capacity={capacity} />
 
                         <div className="relative border-t border-border" style={{ height: bodyHeight }}>
                           {/* La hora se lee en el rail; aquí la línea marca el límite, más fuerte
@@ -1391,13 +1138,100 @@ export function TimelineGrid({
                               position={positions.get(`${item.workItemId}@${item.startsAt}`)}
                               onSelect={onSelect}
                               selected={selected === `${item.workItemId}@${item.startsAt}`}
-                              displacedTo={
-                                demoHere
-                                  ? simulation?.displaced.get(`${item.workItemId}@${item.startsAt}`)
-                                  : undefined
-                              }
                             />
                           ))}
+
+                          {/*
+                            El trabajo sin estimación se pinta **dentro** del eje, no en
+                            una franja aparte: su Internal TTR trae hora, y esa hora es
+                            dónde cae el compromiso. El alto es fijo porque el ticket no
+                            declara horas —no mide trabajo ni consume capacidad—; sólo lo
+                            sitúa. Varios a la misma hora se apilan hacia abajo, y si la
+                            pila no cabe en el día sube entera.
+                          */}
+                          {(ghostsByCell.get(`${resource.developerId}|${day}`) ?? []).map(
+                            (ghost) => {
+                              const place = placements.get(ghost.workItemId)
+                              if (place === undefined) return null
+                              const ghostRisk = risks?.[ghost.workItemId]
+                              const ghostMark =
+                                ghostRisk !== undefined && ghostRisk !== 'FUTURA'
+                                  ? RISK[ghostRisk]
+                                  : null
+                              const GhostIcon = ghostMark?.icon ?? Flag
+                              const when =
+                                ghost.time === null
+                                  ? 'GLPI no publicó la hora'
+                                  : `a las ${ghost.time} del ${formatDay(ghost.date)}`
+                              /*
+                                Con acción, el marcador es un botón y no una caja con `onClick`: así
+                                llega con el tabulador y el lector lo anuncia como lo que es. Es la
+                                misma regla que ya sigue un tramo, y por el mismo motivo.
+                              */
+                              const marker = (
+                                <>
+                                  <GhostIcon
+                                    data-slot="timeline-unscheduled-commitment"
+                                    className={cn('size-3 shrink-0', ghostMark?.flag)}
+                                    aria-label={
+                                      ghostMark ? ghostMark.label : 'Fecha de entrega comprometida en GLPI'
+                                    }
+                                  />
+                                  <span className="truncate">
+                                    {place.outside && ghost.time !== null ? `${ghost.time} · ` : ''}
+                                    {ghost.workItemId} · {ghost.cause}
+                                  </span>
+                                </>
+                              )
+                              const markerTitle = `Ticket ${ghost.workItemId}: vence ${when} según GLPI. No ocupa jornada ni consume capacidad: le falta la estimación de horas.${ghostMark ? ` ${ghostMark.label}: ${formatDay(ghost.date)}.` : ''}`
+                              const markerClassName = cn(
+                                'absolute inset-x-1 flex items-center gap-1 overflow-hidden rounded-xs border border-dashed px-1 text-[10px] leading-none',
+                                ghostMark?.chip ?? 'border-slate-400 bg-slate-50 text-slate-700',
+                                onTicketSelect &&
+                                  'cursor-pointer text-left hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                onTicketSelect &&
+                                  selectedTicket === ghost.workItemId &&
+                                  'ring-2 ring-ring',
+                              )
+
+                              if (!onTicketSelect) {
+                                return (
+                                  <div
+                                    key={ghost.workItemId}
+                                    data-slot="timeline-unscheduled"
+                                    data-work-item={ghost.workItemId}
+                                    data-time={ghost.time ?? undefined}
+                                    data-risk={ghostMark ? ghostRisk : undefined}
+                                    data-outside={place.outside ? 'true' : undefined}
+                                    style={{ top: place.top, height: place.height }}
+                                    title={markerTitle}
+                                    className={markerClassName}
+                                  >
+                                    {marker}
+                                  </div>
+                                )
+                              }
+
+                              return (
+                                <button
+                                  type="button"
+                                  key={ghost.workItemId}
+                                  data-slot="timeline-unscheduled"
+                                  data-work-item={ghost.workItemId}
+                                  data-time={ghost.time ?? undefined}
+                                  data-risk={ghostMark ? ghostRisk : undefined}
+                                  data-outside={place.outside ? 'true' : undefined}
+                                  aria-pressed={selectedTicket === ghost.workItemId}
+                                  style={{ top: place.top, height: place.height }}
+                                  title={markerTitle}
+                                  onClick={() => onTicketSelect(ghost)}
+                                  className={markerClassName}
+                                >
+                                  {marker}
+                                </button>
+                              )
+                            },
+                          )}
                         </div>
                       </div>
                     )

@@ -9,6 +9,9 @@
  * errores y la deteccion de cancelacion viven una sola vez.
  */
 
+import { demoRequest } from '@/demo/demoApi'
+import { isDemoActive } from '@/lib/demoMode'
+
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
 /** Error de transporte o de respuesta HTTP de la API. */
@@ -73,6 +76,8 @@ async function call(
  * @param signal Señal para cancelar la peticion (TanStack Query la entrega al desmontar).
  */
 export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
+  if (isDemoActive()) return demoJson<T>('GET', path)
+
   const response = await call(path, 'GET', undefined, signal)
 
   return (await response.json()) as T
@@ -86,6 +91,8 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
  * recargando la lista, no adivinando.
  */
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  if (isDemoActive()) return demoJson<T>('POST', path, body)
+
   const response = await call(path, 'POST', body)
 
   return (await response.json()) as T
@@ -93,9 +100,33 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 
 /** PUT sobre la API del backend: **reemplaza** el recurso y devuelve como quedo entero. */
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  if (isDemoActive()) return demoJson<T>('PUT', path, body)
+
   const response = await call(path, 'PUT', body)
 
   return (await response.json()) as T
+}
+
+/**
+ * La misma peticion contra el escenario sintetico.
+ *
+ * **No abre un socket.** Es el unico punto donde el Modo DEMO se distingue del modo normal, y por eso
+ * todo el backend —GLPI, la base, los snapshots— queda fuera de alcance por construccion y no por una
+ * bandera que alguien pueda olvidar apagar.
+ */
+function demoJson<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const response = demoRequest(path, method, body)
+
+  if (response === null) {
+    return Promise.reject(new ApiError(`Modo DEMO: la ruta ${method} ${path} no tiene escenario.`, 404))
+  }
+
+  if (response.status >= 400) {
+    const message = (response.body as { message?: string } | null)?.message
+    return Promise.reject(new ApiError(message ?? `La API respondio con estado ${response.status}`, response.status))
+  }
+
+  return Promise.resolve(response.body as T)
 }
 
 /** Extrae el mensaje del contrato ApiError del backend si esta disponible. */

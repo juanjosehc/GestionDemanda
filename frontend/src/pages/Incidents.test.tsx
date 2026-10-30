@@ -605,6 +605,7 @@ describe('Incidents', () => {
     ],
     declaration: null,
     operationalDate: null,
+    operationalTime: null,
     operationalDateSource: null,
   })
 
@@ -697,7 +698,7 @@ describe('Incidents', () => {
     expect(textOf(container, 'declaration-breakdown')).toBe(
       'De esos 4 tickets: 1 en estado declarado —nada les falta para planificarse— y 3 con algo ' +
         'pendiente. De estos últimos, 1 con su fila ya creada y la estimación sin declarar, y 1 con ' +
-        'su fila creada y el compromiso sin declarar. Las cuentas se solapan —un ticket sin ' +
+        'su fila creada y sin fecha que GLPI publique. Las cuentas se solapan —un ticket sin ' +
         'estimación también está pendiente—: es un desglose, no un reparto.',
     )
   })

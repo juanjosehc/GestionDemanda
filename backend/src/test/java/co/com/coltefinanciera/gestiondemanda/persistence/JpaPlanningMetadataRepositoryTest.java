@@ -208,16 +208,15 @@ class JpaPlanningMetadataRepositoryTest {
     }
 
     /**
-     * Las cuatro situaciones del estado declarado, contadas por separado.
+     * El estado declarado, contado por estimacion.
      *
-     * <p>Las tres primeras son las que se espera ver. La cuarta —sin ninguno de los dos valores— no:
-     * es alcanzable porque el endpoint de actualizacion puede retirar los dos, y se cuenta aparte
-     * porque sin ella las dos carencias sumarian mas que las filas incompletas y los tres numeros se
-     * contradirian para un estado que existe.
+     * <p>Desde la Fase 77 esta es la unica carencia que la declaracion puede tener: la fecha de
+     * compromiso la publica GLPI y no se declara. Una fila historica con fecha y sin horas —la que
+     * dejo una declaracion anterior— cuenta como falta de estimacion, que es exactamente lo que es.
      */
     @Test
-    @DisplayName("El estado declarado se cuenta por separado en sus cuatro situaciones")
-    void elEstadoDeclaradoSeCuentaEnSusCuatroSituaciones() {
+    @DisplayName("El estado declarado se cuenta por estimacion")
+    void elEstadoDeclaradoSeCuentaPorEstimacion() {
         repository.create(soloEstimacion("A"), List.of());
         repository.create(soloCompromiso("B"), List.of());
         repository.create(PlanningMetadata.undeclared("C", InputSource.HTTP), List.of());
@@ -227,13 +226,8 @@ class JpaPlanningMetadataRepositoryTest {
 
         assertThat(contado.total()).isEqualTo(4);
         assertThat(contado.withoutEstimation()).isEqualTo(2);
-        assertThat(contado.withoutCommitment()).isEqualTo(2);
-        assertThat(contado.retracted()).isEqualTo(1);
-        // Y lo derivado cierra con lo contado: uno planificable, tres incompletos.
-        assertThat(contado.plannable()).isEqualTo(1);
-        assertThat(contado.incomplete()).isEqualTo(3);
-        assertThat(contado.withoutEstimation() + contado.withoutCommitment())
-                .isEqualTo(contado.incomplete() + contado.retracted());
+        // Y lo derivado cierra con lo contado: dos con horas, dos sin ellas.
+        assertThat(contado.plannable()).isEqualTo(2);
     }
 
     @Test
@@ -243,25 +237,21 @@ class JpaPlanningMetadataRepositoryTest {
 
         assertThat(contado.total()).isZero();
         assertThat(contado.plannable()).isZero();
-        assertThat(contado.incomplete()).isZero();
-        assertThat(contado.retracted()).isZero();
+        assertThat(contado.withoutEstimation()).isZero();
     }
 
     /**
-     * Los tres listados de carencia, contra la base y contra sus propios contadores.
+     * El listado de la carencia, contra la base y contra su propio contador.
      *
      * <p>Es la prueba que sostiene la forma del desglose: la lista y el numero salen del mismo
      * predicado escrito dos veces por Spring Data, y lo que aqui se comprueba es que las dos escrituras
-     * digan lo mismo. Se compara cada lista con el contador que le corresponde —leido de {@code
-     * declaredMetrics}, no escrito a mano— y ademas se comprueba el orden, que es lo que hace que dos
-     * listados iguales se puedan comparar.
-     *
-     * <p>La tercera es la que importa: {@code METADATA_INCOMPLETA} es la union y no la interseccion, asi
-     * que trae las de un solo valor y tambien la retirada, y la retirada aparece una vez y no dos.
+     * digan lo mismo. Se compara la lista con el contador —leido de {@code declaredMetrics}, no escrito
+     * a mano— y ademas se comprueba el orden, que es lo que hace que dos listados iguales se puedan
+     * comparar.
      */
     @Test
-    @DisplayName("Los tres listados de carencia cuadran con sus contadores y van ordenados")
-    void losTresListadosDeCarenciaCuadranConSusContadores() {
+    @DisplayName("El listado de la carencia cuadra con su contador y va ordenado")
+    void elListadoDeLaCarenciaCuadraConSuContador() {
         repository.create(soloEstimacion("67501"), List.of());
         repository.create(soloCompromiso("67502"), List.of());
         repository.create(PlanningMetadata.undeclared("67503", InputSource.HTTP), List.of());
@@ -273,12 +263,6 @@ class JpaPlanningMetadataRepositoryTest {
         assertThat(idsDe(DeclaredGap.SIN_ESTIMACION))
                 .containsExactly("67502", "67503")
                 .hasSize((int) contado.withoutEstimation());
-        assertThat(idsDe(DeclaredGap.SIN_COMPROMISO))
-                .containsExactly("67501", "67503", "67505")
-                .hasSize((int) contado.withoutCommitment());
-        assertThat(idsDe(DeclaredGap.METADATA_INCOMPLETA))
-                .containsExactly("67501", "67502", "67503", "67505")
-                .hasSize((int) contado.incomplete());
     }
 
     /** Una carencia que no tiene filas devuelve una lista vacia, que es el caso de un tablero sano. */
@@ -288,8 +272,6 @@ class JpaPlanningMetadataRepositoryTest {
         repository.create(conAmbos(), List.of());
 
         assertThat(repository.findByDeclaredGap(DeclaredGap.SIN_ESTIMACION)).isEmpty();
-        assertThat(repository.findByDeclaredGap(DeclaredGap.SIN_COMPROMISO)).isEmpty();
-        assertThat(repository.findByDeclaredGap(DeclaredGap.METADATA_INCOMPLETA)).isEmpty();
     }
 
     private List<String> idsDe(DeclaredGap gap) {

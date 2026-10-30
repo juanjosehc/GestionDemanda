@@ -147,9 +147,6 @@ class PlanningMetricsEndpointsTest {
                 .andExpect(jsonPath("$.declared.total").value(0))
                 .andExpect(jsonPath("$.declared.plannable").value(0))
                 .andExpect(jsonPath("$.declared.withoutEstimation.count").value(0))
-                .andExpect(jsonPath("$.declared.withoutCommitment.count").value(0))
-                .andExpect(jsonPath("$.declared.incomplete").value(0))
-                .andExpect(jsonPath("$.declared.retracted").value(0))
                 .andExpect(jsonPath("$.plans.generated").value(0))
                 .andExpect(jsonPath("$.current.byDeveloper.length()").value(0))
                 // Sin planes vigentes no hay ventana que abarcar, y se dice con nulo en vez de
@@ -184,15 +181,15 @@ class PlanningMetricsEndpointsTest {
     }
 
     /**
-     * Las cuatro situaciones del estado declarado.
+     * Lo estimado y lo que no, que es toda la carencia que le queda a la declaracion.
      *
-     * <p>La cuarta —las dos retiradas— se produce por el camino real: se declara con los dos valores y
-     * despues se actualiza con los dos en nulo. Es un estado legitimo del endpoint de actualizacion y
-     * el unico que hace falta para que la aritmetica del bloque no cierre sola.
+     * <p>Una fila historica con fecha y sin horas —B— cuenta como falta de estimacion, que es
+     * exactamente lo que es. D es una declaracion retirada por el camino real: se declaro y despues se
+     * actualizo en nulo, y desde la Fase 77 eso es lo mismo que no tener horas.
      */
     @Test
-    @DisplayName("Las cuentas declaradas separan las cuatro situaciones")
-    void lasCuentasDeclaradasSeparanLasCuatroSituaciones() throws Exception {
+    @DisplayName("Las cuentas declaradas separan lo estimado de lo que no")
+    void lasCuentasDeclaradasSeparanLoEstimadoDeLoQueNo() throws Exception {
         declarar("A", new BigDecimal("8"), null);
         declarar("B", null, LocalDate.parse(LUNES));
         declarar("C", new BigDecimal("4"), LocalDate.parse(MARTES));
@@ -202,20 +199,16 @@ class PlanningMetricsEndpointsTest {
         mockMvc.perform(get("/api/planning/metrics"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.declared.total").value(4))
-                // Solo C tiene las dos cosas: uno de cuatro, que es lo que dice el denominador.
-                .andExpect(jsonPath("$.declared.plannable").value(1))
-                .andExpect(jsonPath("$.declared.withoutEstimation.count").value(2))
-                .andExpect(jsonPath("$.declared.withoutCommitment.count").value(2))
-                .andExpect(jsonPath("$.declared.incomplete").value(3))
-                .andExpect(jsonPath("$.declared.retracted").value(1));
+                // A y C tienen horas: dos de cuatro, que es lo que dice el denominador.
+                .andExpect(jsonPath("$.declared.plannable").value(2))
+                .andExpect(jsonPath("$.declared.withoutEstimation.count").value(2));
     }
 
     /**
      * La identidad que cierra la aritmetica del bloque, leida del JSON.
      *
-     * <p>Sin {@code retracted} los tres numeros se contradirian para un estado que existe, y quien los
-     * lea no tendria forma de saber que la cuenta esta bien. Se afirma sobre la respuesta y no sobre el
-     * dominio a proposito: lo que tiene que cuadrar es lo que se publica.
+     * <p>Se afirma sobre la respuesta y no sobre el dominio a proposito: lo que tiene que cuadrar es lo
+     * que se publica.
      */
     @Test
     @DisplayName("Las cuentas declaradas cierran su aritmetica")
@@ -228,35 +221,27 @@ class PlanningMetricsEndpointsTest {
 
         String foto = leerMetricas();
 
-        long sinEstimacion = cuantosEn(foto, "$.declared.withoutEstimation.count");
-        long sinCompromiso = cuantosEn(foto, "$.declared.withoutCommitment.count");
-        long incompletos = cuantosEn(foto, "$.declared.incomplete");
-        long retirados = cuantosEn(foto, "$.declared.retracted");
-
-        assertThat(sinEstimacion + sinCompromiso).isEqualTo(incompletos + retirados);
-        // Y el denominador cierra con sus dos mitades.
-        assertThat(incompletos + cuantosEn(foto, "$.declared.plannable"))
-                .isEqualTo(cuantosEn(foto, "$.declared.total"));
+        // El denominador cierra con sus dos mitades y no hay una tercera.
+        assertThat(cuantosEn(foto, "$.declared.withoutEstimation.count")
+                + cuantosEn(foto, "$.declared.plannable")).isEqualTo(cuantosEn(foto, "$.declared.total"));
     }
 
     /**
-     * Los codigos viajan como valores del enum, no como texto copiado.
+     * El codigo viaja como valor del enum, no como texto copiado.
      *
      * <p>Es lo que impide que un descarte y una metrica nombren la misma carencia de dos formas. La
      * prueba afirma la cadena tal como sale en el JSON, que es el nombre del enum.
      */
     @Test
-    @DisplayName("Los dos codigos de descarte son los ya definidos")
-    void losDosCodigosDeDescarteSonLosYaDefinidos() throws Exception {
+    @DisplayName("El codigo de la carencia es el ya definido")
+    void elCodigoDeLaCarenciaEsElYaDefinido() throws Exception {
         declarar("A", new BigDecimal("8"), null);
         declarar("B", null, LocalDate.parse(LUNES));
 
         mockMvc.perform(get("/api/planning/metrics"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.declared.withoutEstimation.code")
-                        .value("SIN_ESTIMACION_DECLARADA"))
-                .andExpect(jsonPath("$.declared.withoutCommitment.code")
-                        .value("SIN_COMPROMISO_DECLARADO"));
+                        .value("SIN_ESTIMACION_DECLARADA"));
     }
 
     /**

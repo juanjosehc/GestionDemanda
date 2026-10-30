@@ -86,6 +86,7 @@ function pendiente(workItemId: string): DeclarationItem {
     ],
     declaration: null,
     operationalDate: null,
+    operationalTime: null,
     operationalDateSource: null,
   })
 }

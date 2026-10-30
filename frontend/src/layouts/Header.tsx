@@ -1,6 +1,7 @@
 import { Bell, PanelLeft } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 
+import { DemoToggle } from '@/components/demo/DemoToggle'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { navItemFor } from '@/routes/navigation'
@@ -37,6 +38,8 @@ export function Header({ onToggleSidebar }: HeaderProps) {
       <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">
         Fase 1
       </Badge>
+
+      <DemoToggle />
 
       <Button variant="ghost" size="icon" aria-label="Notificaciones" className="shrink-0">
         <Bell />

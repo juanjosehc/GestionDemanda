@@ -108,10 +108,9 @@ export const OVER_DEVELOPER_ID = 'dev-003'
  * (`remaining` negativo). Los agregados del bloque `current` son la suma exacta de los tres, para
  * que una prueba pueda afirmar cualquiera de los dos niveles sin que se contradigan.
  *
- * Los numeros declarados cierran con el algebra del backend: sin estimacion (4) y sin compromiso (2)
- * se solapan solo en las retiradas (0), asi que incompleta son 6 y planificables 34 de 40. Un
- * `retracted` mayor que `withoutCommitment` describiria un estado que el backend no puede producir, y
- * la prueba de que el detalle cuadra con la tarjeta afirmaria una propiedad sobre datos imposibles.
+ * Los numeros declarados cierran con el algebra del backend: la carencia de la declaracion es una
+ * sola —sin estimacion, 4— asi que planificables son 36 de 40. Desde la Fase 77 no hay una segunda
+ * carencia ni una union de las dos que contar.
  */
 export function planningMetricsFixture(
   overrides: Partial<PlanningOperationalMetricsResponse> = {},
@@ -123,11 +122,8 @@ export function planningMetricsFixture(
       source: 'planning_metadata',
       scope: 'estado declarado hoy, sin ventana temporal',
       total: 40,
-      plannable: 34,
+      plannable: 36,
       withoutEstimation: { code: 'SIN_ESTIMACION_DECLARADA', count: 4 },
-      withoutCommitment: { code: 'SIN_COMPROMISO_DECLARADO', count: 2 },
-      incomplete: 6,
-      retracted: 0,
     },
     plans: {
       source: 'plan_snapshot',
@@ -298,24 +294,6 @@ export function alertsFixture(
         detailUrl: '/api/planning/metrics/declared/SIN_ESTIMACION',
         generatedAt,
       },
-      {
-        type: 'SIN_COMPROMISO',
-        severity: 'WARNING',
-        ...declared,
-        condition: 'filas de planning_metadata con committed_date nulo',
-        count: 2,
-        detailUrl: '/api/planning/metrics/declared/SIN_COMPROMISO',
-        generatedAt,
-      },
-      {
-        type: 'METADATA_INCOMPLETA',
-        severity: 'INFO',
-        ...declared,
-        condition: 'filas de planning_metadata con estimated_hours o committed_date nulos',
-        count: 6,
-        detailUrl: '/api/planning/metrics/declared/METADATA_INCOMPLETA',
-        generatedAt,
-      },
     ],
     ...overrides,
   }
@@ -455,6 +433,7 @@ export function declarationsFixture(
         declaration: planningMetadataFixture(),
         // Una incidencia no se ubica por una promesa, asi que GLPI no le da fecha operativa.
         operationalDate: null,
+        operationalTime: null,
         operationalDateSource: null,
       },
       {
@@ -479,6 +458,7 @@ export function declarationsFixture(
           estimatedAt: null,
         }),
         operationalDate: null,
+        operationalTime: null,
         operationalDateSource: null,
       },
       {
@@ -503,6 +483,7 @@ export function declarationsFixture(
           committedAt: null,
         }),
         operationalDate: null,
+        operationalTime: null,
         operationalDateSource: null,
       },
       {
@@ -524,6 +505,7 @@ export function declarationsFixture(
         ],
         declaration: null,
         operationalDate: null,
+        operationalTime: null,
         operationalDateSource: null,
       },
       {
@@ -543,6 +525,7 @@ export function declarationsFixture(
         ],
         declaration: null,
         operationalDate: null,
+        operationalTime: null,
         operationalDateSource: null,
       },
     ],

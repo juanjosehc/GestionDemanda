@@ -84,36 +84,14 @@ public enum OperationalAlertType {
     /**
      * Hay tickets declarados sin horas estimadas.
      *
-     * <p>Es uno de los dos motivos por los que la capa anticorrupcion descarta un ticket, y nombra a
-     * una persona concreta: el desarrollador que tiene que estimarlo.
+     * <p>Es la unica carencia que la declaracion puede tener desde la Fase 77 —la fecha de
+     * compromiso la publica GLPI y no se declara—, y nombra a una persona concreta: el desarrollador
+     * que tiene que estimarlo.
      */
     SIN_ESTIMACION(
             AlertSeverity.WARNING,
             "/api/planning/metrics/declared/SIN_ESTIMACION",
-            "filas de planning_metadata con estimated_hours nulo"),
-
-    /**
-     * Hay tickets declarados sin fecha compromiso.
-     *
-     * <p>El otro motivo de descarte, y nombra a la otra persona: el gestor que tiene que comprometerlo.
-     */
-    SIN_COMPROMISO(
-            AlertSeverity.WARNING,
-            "/api/planning/metrics/declared/SIN_COMPROMISO",
-            "filas de planning_metadata con committed_date nulo"),
-
-    /**
-     * Cuanto trabajo declarado le falta al menos uno de los dos valores.
-     *
-     * <p>Es la union de las dos carencias anteriores, y por eso es {@code INFO} y no un aviso: sus
-     * elementos ya estan contados y reclamados en las dos alertas de arriba, y subirla a aviso inflaria
-     * la cuenta de lo que urge con trabajo que ya esta contado dos veces. Aqui su oficio es decir
-     * cuanto esta incompleto, no reclamar.
-     */
-    METADATA_INCOMPLETA(
-            AlertSeverity.INFO,
-            "/api/planning/metrics/declared/METADATA_INCOMPLETA",
-            "filas de planning_metadata con estimated_hours o committed_date nulos");
+            "filas de planning_metadata con estimated_hours nulo");
 
     private final AlertSeverity severity;
     private final String detailUrl;

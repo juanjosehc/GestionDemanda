@@ -1,4 +1,4 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, CalendarClock } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 
@@ -7,11 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDeclaration, useSaveDeclaration } from '@/hooks/useDeclarations'
-import { formatDeclaredHours } from '@/lib/declarations'
+import { formatDeclaredHours, glpiCommitmentOf } from '@/lib/declarations'
 import { readFirmante, rememberFirmante } from '@/lib/firmante'
 import type { DeclarationItem, DeclarationUpdateRequest, PlanningMetadata } from '@/types/declarations'
 
-/** Estilo de los tres campos. Es el mismo que usa el selector de filtros, con alto de control. */
+/** Estilo de los campos. Es el mismo que usa el selector de filtros, con alto de control. */
 const FIELD_CLASS =
   'h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
@@ -23,29 +23,62 @@ function initialHours(declaration: PlanningMetadata | null): string {
 }
 
 /**
- * El cuerpo de la escritura, armado con lo que hay en los tres campos.
+ * El cuerpo de la escritura: las horas de los campos y la fecha que ya estaba guardada.
  *
- * **Los dos valores viajan siempre**, con nulo para decir «retiralo»: el `PUT` reemplaza, asi que un
- * cuerpo con solo la fecha borraria las horas. El formulario no puede enviar medio cuerpo porque este
- * objeto no tiene forma de expresarlo.
+ * **La fecha viaja sin tocarse.** Desde la Fase 77 no se declara —el compromiso es el Internal TTR
+ * que publica GLPI—, pero el `PUT` reemplaza: mandar `null` borraria el valor que una declaracion
+ * anterior dejo escrito y con el se iria su rastro en el historial. Reenviar el que habia conserva
+ * el pasado sin volver a pedirlo. En un alta no hay nada que conservar y viaja nulo.
  *
  * Un campo vacio se convierte en nulo y no en cero ni en cadena vacia. Vaciar no es «no lo toques»:
- * es retirar el valor, que es una operacion legitima y queda registrada con su autor.
+ * es retirar la estimacion, que es una operacion legitima y queda registrada con su autor.
  *
- * Lo unico que se valida aqui es lo que el navegador ya exige —un numero o nada—. Los limites y la
- * exigencia de declarar algo los comprueba el backend, que es quien los escribio, y su `400` se
- * enseña tal cual en vez de reinterpretarlo con un mensaje propio.
+ * Lo unico que se valida aqui es lo que el navegador ya exige —un numero o nada—. La exigencia de
+ * declarar algo la comprueba el backend, que es quien la escribio, y su `400` se enseña tal cual en
+ * vez de reinterpretarlo con un mensaje propio.
  */
 function valuesOf(
   estimatedHours: string,
-  committedDate: string,
+  committedDate: string | null,
   changedBy: string,
 ): DeclarationUpdateRequest {
   return {
     estimatedHours: estimatedHours.trim() === '' ? null : Number(estimatedHours),
-    committedDate: committedDate.trim() === '' ? null : committedDate,
+    committedDate,
     changedBy: changedBy.trim(),
   }
+}
+
+/**
+ * La fecha con la que GLPI compromete el ticket, de solo lectura.
+ *
+ * No es un campo deshabilitado sino un dato: no hay nada que rellenar. Ensenarlo en el mismo sitio
+ * donde hasta la Fase 77 se pedia la fecha es lo que responde a la pregunta que el formulario deja
+ * abierta —«¿y cuando hay que entregarlo?»— sin convertir la respuesta en una segunda fuente.
+ */
+function GlpiCommitment({ item }: { item: DeclarationItem }) {
+  const commitment = glpiCommitmentOf(item)
+
+  return (
+    <div
+      data-slot="compromiso-glpi"
+      className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2"
+    >
+      <CalendarClock className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <p className="text-xs">
+        <span className="font-medium">Compromiso GLPI</span>
+        {commitment === null ? (
+          <span className="block text-muted-foreground">
+            {item.type === 'INCIDENTE'
+              ? 'Un incidente no se ubica por una promesa: GLPI no le publica fecha.'
+              : 'GLPI no publica fecha para este ticket.'}
+          </span>
+        ) : (
+          <span className="block text-muted-foreground">{commitment}</span>
+        )}
+      </p>
+    </div>
+  )
 }
 
 interface FieldsProps {
@@ -53,10 +86,11 @@ interface FieldsProps {
   /** Lo declarado hoy, leido justo antes de pintar el formulario. */
   declaration: PlanningMetadata | null
   /**
-   * Apila los tres campos en una columna.
+   * Apila los campos en una columna.
    *
-   * En la pantalla caben tres a lo ancho; en el panel lateral de 448 px cada uno quedaria en 111 px
-   * y la fecha se corta. No es un segundo formulario: es la misma rejilla con otro punto de corte.
+   * En la pantalla caben dos a lo ancho; en el panel lateral de 448 px cada uno quedaria en 200 px,
+   * que es suficiente pero deja el bloque de GLPI en una linea que se parte. No es un segundo
+   * formulario: es la misma rejilla con otro punto de corte.
    */
   stacked?: boolean
   onClose: () => void
@@ -65,7 +99,7 @@ interface FieldsProps {
 }
 
 /**
- * Los tres campos, ya con su valor inicial.
+ * Los campos, ya con su valor inicial.
  *
  * Se monta **despues** de que la lectura haya llegado, y por eso puede tomar el valor inicial en el
  * propio `useState`: no hay que sincronizar nada con un efecto. Cambiar de ticket lo remonta —el
@@ -74,7 +108,6 @@ interface FieldsProps {
  */
 function Fields({ item, declaration, stacked = false, onClose, onSaved }: FieldsProps) {
   const [estimatedHours, setEstimatedHours] = useState(() => initialHours(declaration))
-  const [committedDate, setCommittedDate] = useState(() => declaration?.committedDate ?? '')
   // El firmante se recuerda entre formularios: es la misma persona la que opera la pantalla, y
   // teclearlo en cada ticket era la friccion que el lote tambien quita.
   const [changedBy, setChangedBy] = useState(() => readFirmante())
@@ -88,7 +121,7 @@ function Fields({ item, declaration, stacked = false, onClose, onSaved }: Fields
       {
         workItemId: item.workItemId,
         create,
-        values: valuesOf(estimatedHours, committedDate, changedBy),
+        values: valuesOf(estimatedHours, declaration?.committedDate ?? null, changedBy),
       },
       // Se cierra al guardar: lo que el usuario tiene que ver despues es la fila ya refrescada.
       {
@@ -103,30 +136,23 @@ function Fields({ item, declaration, stacked = false, onClose, onSaved }: Fields
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div className={stacked ? 'grid gap-4' : 'grid gap-4 sm:grid-cols-3'}>
+      <div className={stacked ? 'grid gap-4' : 'grid gap-4 sm:grid-cols-2'}>
         <label className="space-y-1">
           <span className="text-xs text-muted-foreground">Horas estimadas</span>
           {/* El foco entra donde se empieza a escribir. El formulario se monta cuando alguien pulsa
               Declarar —o cuando llega la lectura previa—, así que no roba el foco de la pantalla al
-              cargar: solo cuando está a la vista. */}
+              cargar: solo cuando está a la vista.
+              En un alta es obligatoria porque es lo único que se declara: el backend sigue
+              aceptando una fecha suelta por compatibilidad, pero la pantalla ya no la ofrece. */}
           <input
             type="number"
             step="0.01"
             min="0.01"
             max="999999.9999"
+            required={create}
             autoFocus
             value={estimatedHours}
             onChange={(event) => setEstimatedHours(event.target.value)}
-            className={FIELD_CLASS}
-          />
-        </label>
-
-        <label className="space-y-1">
-          <span className="text-xs text-muted-foreground">Fecha compromiso</span>
-          <input
-            type="date"
-            value={committedDate}
-            onChange={(event) => setCommittedDate(event.target.value)}
             className={FIELD_CLASS}
           />
         </label>
@@ -144,10 +170,12 @@ function Fields({ item, declaration, stacked = false, onClose, onSaved }: Fields
         </label>
       </div>
 
+      <GlpiCommitment item={item} />
+
       <p className="text-xs text-muted-foreground">
         {create
-          ? 'La estimación la pone el desarrollo y la fecha se acuerda con quien pide el trabajo. Hay que declarar al menos una de las dos: una estimación sin fecha no es media planificación, y el motor necesita las dos.'
-          : 'La modificación reemplaza lo declarado, así que se envían siempre los dos valores. Vaciar un campo lo retira; dejar el otro quieto exige reenviarlo, y es lo que este formulario hace.'}
+          ? 'La estimación la pone el desarrollo. La fecha de compromiso no se declara aquí: la publica GLPI y es la única que el sistema conoce.'
+          : 'La modificación reemplaza las horas declaradas. La fecha de compromiso no se declara aquí: la publica GLPI y es la única que el sistema conoce.'}
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -175,7 +203,7 @@ function Fields({ item, declaration, stacked = false, onClose, onSaved }: Fields
 
 interface DeclarationFormProps {
   item: DeclarationItem
-  /** Una columna en vez de tres: lo pide el panel lateral, donde no caben tres campos. */
+  /** Una columna en vez de dos: lo pide el panel lateral, donde no caben dos campos. */
   stacked?: boolean
   onClose: () => void
   /** Avisa de que hubo escritura, para que la pantalla ofrezca el resto del ciclo. */
@@ -183,7 +211,12 @@ interface DeclarationFormProps {
 }
 
 /**
- * El formulario de declaración de un ticket: estimación, compromiso y quién declara.
+ * El formulario de declaración de un ticket: las horas estimadas y quién declara.
+ *
+ * **La fecha no se pide.** Desde la Fase 77 el compromiso es el Internal TTR que publica GLPI y
+ * declararlo a mano era la segunda fecha del sistema: se capturaba en este formulario, no coincidia
+ * con la del plan y obligaba a reconciliar dos valores. Aqui se enseña, de solo lectura, y no viaja
+ * al backend mas que para conservar lo que una declaracion anterior guardo.
  *
  * **Lee antes de escribir.** Cuando el ticket ya tiene declaración, el formulario no se rellena con
  * lo que traía la lista sino con una lectura fresca del recurso. El `PUT` reemplaza lo que no venga
@@ -207,17 +240,11 @@ export function DeclarationForm({ item, stacked, onClose, onSaved }: Declaration
     <Card>
       <CardHeader>
         <CardTitle className="text-sm font-medium">
-          {hasDeclaration ? 'Editar la planificación declarada' : 'Declarar la planificación'}
+          {hasDeclaration ? 'Editar la estimación' : 'Declarar la estimación'}
         </CardTitle>
         <CardDescription>
           <span className="font-mono text-xs">{item.workItemId}</span> · {item.title}
-          {data && (
-            <>
-              {' '}
-              · último cambio: estimación por {data.estimatedBy ?? 'nadie'}, compromiso por{' '}
-              {data.committedBy ?? 'nadie'}
-            </>
-          )}
+          {data && <> · última estimación por {data.estimatedBy ?? 'nadie'}</>}
         </CardDescription>
       </CardHeader>
 

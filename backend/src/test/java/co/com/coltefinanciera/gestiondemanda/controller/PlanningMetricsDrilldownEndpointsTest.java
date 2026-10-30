@@ -169,10 +169,11 @@ class PlanningMetricsDrilldownEndpointsTest {
     /**
      * Lo que la fila si dice.
      *
-     * <p>Una fila declarada se explica con lo que hay declarado: el elemento, la fecha compromiso, quien
-     * la declaro y cuando. La trazabilidad no es decorado —es lo unico que permite reclamarle a
-     * alguien— asi que se afirma que viaja, y con ella los dos textos de procedencia que el bloque de la
-     * fotografia ya publica.
+     * <p>Una fila declarada se explica con lo que hay declarado: el elemento, quien la declaro y cuando.
+     * La trazabilidad no es decorado —es lo unico que permite reclamarle a alguien— asi que se afirma
+     * que viaja, y con ella los dos textos de procedencia que el bloque de la fotografia ya publica.
+     * La fecha compromiso sigue en la fila porque las declaraciones anteriores a la Fase 77 la tienen
+     * escrita: es historia que se conserva, no un campo que se vuelva a pedir.
      */
     @Test
     @DisplayName("Cada fila trae el elemento y lo que si esta declarado, con su procedencia")
@@ -200,38 +201,25 @@ class PlanningMetricsDrilldownEndpointsTest {
     }
 
     /**
-     * La carencia compuesta incluye las dos simples y las retiradas.
+     * Las dos carencias que la Fase 77 retiro ya no se pueden pedir.
      *
-     * <p>Es la parte del algebra que se equivoca sola: {@code metadata incompleta} es la <em>union</em>
-     * —todo lo que le falta al menos un valor— y no la interseccion, asi que la fila a la que le faltan
-     * los dos cuenta una vez y no dos. Las cuatro situaciones se producen por el camino real, incluida
-     * la retirada, que es un estado legitimo de la actualizacion.
+     * <p>{@code SIN_COMPROMISO} y {@code METADATA_INCOMPLETA} contaban la ausencia de la fecha que el
+     * formulario pedia. Desde que esa fecha la publica GLPI —su Internal TTR— una declaracion no puede
+     * estar «sin compromiso», asi que los dos valores salieron del enum y con ellos su listado. La
+     * prueba afirma que pedirlos ya no devuelve una lista: el valor no convierte y sale por el mismo
+     * camino que cualquier parametro invalido. Dejarlos vivos y vacios diria que no hay nada que
+     * senalar, que es cierto, y que la carencia existe, que no.
      */
     @Test
-    @DisplayName("Metadata incompleta es la union: incluye las de un valor y las retiradas")
-    void metadataIncompletaEsLaUnion() throws Exception {
-        declarar("X", new BigDecimal("8"), null);
-        declarar("Y", null, LocalDate.parse(LUNES));
-        declarar("Z", new BigDecimal("2"), LocalDate.parse(LUNES));
-        retirarTodo("Z");
-        declarar("OK", new BigDecimal("4"), LocalDate.parse(MARTES));
+    @DisplayName("Las carencias retiradas ya no tienen listado")
+    void lasCarenciasRetiradasYaNoTienenListado() throws Exception {
+        declarar("A", new BigDecimal("8"), null);
 
-        String detalle = leer("/api/planning/metrics/declared/METADATA_INCOMPLETA");
-        String foto = leerMetricas();
-
-        // X, Y y Z: las tres, y ni la completa ni la retirada contada dos veces.
-        assertThat(JsonPath.parse(detalle).read("$.items[*].workItemId", List.class))
-                .containsExactly("X", "Y", "Z");
-
-        assertThat(cuantosEn(detalle, "$.items.length()"))
-                .isEqualTo(cuantosEn(foto, "$.declared.incomplete"))
-                .isEqualTo(3);
-
-        // Y no tiene codigo, porque no es un descarte: es la union de los dos que si lo tienen. La
-        // fotografia tampoco se lo inventa, asi que inventarlo aqui publicaria un codigo inexistente.
-        mockMvc.perform(get("/api/planning/metrics/declared/METADATA_INCOMPLETA"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist());
+        for (String retirada : List.of("SIN_COMPROMISO", "METADATA_INCOMPLETA")) {
+            mockMvc.perform(get("/api/planning/metrics/declared/{gap}", retirada))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error").value("INVALID_PARAMETER"));
+        }
     }
 
     /**
@@ -251,13 +239,9 @@ class PlanningMetricsDrilldownEndpointsTest {
                 .andExpect(jsonPath("$.gap").value("SIN_ESTIMACION"))
                 .andExpect(jsonPath("$.items.length()").value(0));
 
-        mockMvc.perform(get("/api/planning/metrics/declared/SIN_COMPROMISO"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(0));
-
         // Y con la tabla entera vacia, que es el caso de un arranque en limpio.
         metadataRows.deleteAll();
-        mockMvc.perform(get("/api/planning/metrics/declared/METADATA_INCOMPLETA"))
+        mockMvc.perform(get("/api/planning/metrics/declared/SIN_ESTIMACION"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(0));
     }

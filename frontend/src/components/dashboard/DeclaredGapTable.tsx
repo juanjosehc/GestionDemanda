@@ -30,6 +30,11 @@ interface DeclaredGapTableProps {
  *
  * Los dos valores nulos no se esconden: una fila retirada los tiene los dos y se ve asi, con su
  * guion, en vez de con un cero que afirmaria una estimacion de cero horas.
+ *
+ * **La fecha de la columna es historia.** Desde la Fase 77 no se declara —el compromiso es el
+ * Internal TTR que publica GLPI—, pero las filas anteriores conservan la que alguien escribio y
+ * borrarla seria perder el rastro. El rotulo lo dice: «Compromiso declarado», con la fecha en que se
+ * registro, y no «Fecha compromiso», que hoy solo puede ser una.
  */
 export function DeclaredGapTable({ items }: DeclaredGapTableProps) {
   if (items.length === 0) {
@@ -54,13 +59,13 @@ export function DeclaredGapTable({ items }: DeclaredGapTableProps) {
               Horas estimadas
             </th>
             <th scope="col" className="py-2 pr-4 text-left font-medium">
-              Fecha compromiso
+              Compromiso declarado
             </th>
             <th scope="col" className="py-2 pr-4 text-left font-medium">
               Estimado por
             </th>
             <th scope="col" className="py-2 pr-4 text-left font-medium">
-              Comprometido por
+              Registrado por
             </th>
             <th scope="col" className="py-2 text-left font-medium">
               Origen
@@ -121,8 +126,9 @@ export function DeclaredGapTable({ items }: DeclaredGapTableProps) {
 
       <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
         <ClipboardList className="size-3.5 shrink-0" aria-hidden="true" />
-        Quien estima y quien compromete no es necesariamente quien ejecuta: el desarrollador asignado
-        no está en la planificación declarada.
+        Quien estima y quien registró el compromiso no es necesariamente quien ejecuta: el
+        desarrollador asignado no está en la planificación declarada. La fecha declarada es historia:
+        el compromiso vigente es el Internal TTR que publica GLPI.
       </p>
     </div>
   )

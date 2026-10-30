@@ -91,17 +91,15 @@ describe('Dashboard', () => {
     expect(fetchMock).toHaveBeenCalledWith(METRICS_URL, expect.objectContaining({ method: 'GET' }))
   })
 
-  it('muestra las nueve metricas tal como llegan del backend', async () => {
+  it('muestra las siete metricas tal como llegan del backend', async () => {
     fetchMock.mockResolvedValue(okResponse(planningMetricsFixture()))
 
     renderDashboard()
     await screen.findByText('Tickets planificables')
 
     const expected = [
-      ['Tickets planificables', '34'],
+      ['Tickets planificables', '36'],
       ['Sin estimación', '4'],
-      ['Sin compromiso', '2'],
-      ['Metadata incompleta', '6'],
       ['Requerimientos desplazados', '5'],
       ['Planes generados', '9'],
       ['Capacidad disponible', '160'],
@@ -255,8 +253,6 @@ describe('Dashboard', () => {
 
     const destino = [
       ['Sin estimación', '/metricas/sin-estimacion'],
-      ['Sin compromiso', '/metricas/sin-compromiso'],
-      ['Metadata incompleta', '/metricas/metadata-incompleta'],
       ['Requerimientos desplazados', '/metricas/desplazados'],
     ] as const
 
